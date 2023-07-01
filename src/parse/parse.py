@@ -9,8 +9,8 @@ import pdftotext
 from core.db import execute_sql_query, get_sqltable
 
 from . import (
-    amazonper,
     amazonbus,
+    amazonper,
     citi,
     fedloan,
     fidelity401k,
@@ -21,6 +21,7 @@ from . import (
     occucc,
     transamerica,
     usbank,
+    vanguard,
     wfbus,
     wfper,
     wfploan,
@@ -139,6 +140,8 @@ def parse_pdf(fpath: Path) -> tuple[int, list[datetime], dict[str, list]]:
             date_range, data = hehsa.parse(lines)
         case "transamerica":
             date_range, data = transamerica.parse(lines)
+        case "vanguard":
+            date_range, data = vanguard.parse(lines)
         case _:
             raise ValueError("Support for %s must be added to parse.py" % parser)
 
