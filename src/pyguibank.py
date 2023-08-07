@@ -1,116 +1,103 @@
 # -*- coding: utf-8 -*-
+import sys
 import subprocess
-import tkinter as tk
 from pathlib import Path
+
+from PyQt5.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QAction,
+    QMenu,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from core.categorize import categorize_new_transactions, train_classifier
 from core.import_statements import import_all_statements
 from core.missing import missing
 from core.plots import plot_balances, plot_categories
 
-# Initialize the GUI class
-root = tk.Tk()
 
+class PyGuiBank(QMainWindow):
+    def __init__(self):
+        super().__init__()
 
-def donothing():
-    """
-    Example function
-    """
-    filewin = tk.Toplevel(root)
-    button = tk.Button(filewin, text="Do nothing button")
-    button.pack()
+        # Initialize the GUI window
+        self.setWindowTitle("PyGuiBank")
+        self.setGeometry(100, 100, 640, 480)
 
+        # Create the main layout and central widget
+        central_widget = QWidget(self)
+        self.setCentralWidget(central_widget)
+        layout = QVBoxLayout(central_widget)
 
-def open_db():
-    filename = str(Path("") / "pyguibank.db")
-    subprocess.run(["open", filename], check=True)
+        # Create top level menu bar
+        menubar = self.menuBar()
 
+        # Create File menu
+        file_menu = menubar.addMenu("File")
+        file_menu.addAction("New", self.donothing)
+        file_menu.addAction("Open", self.open_db)
+        file_menu.addAction("Save", self.donothing)
+        file_menu.addAction("Save as...", self.donothing)
+        file_menu.addSeparator()
+        file_menu.addAction("Exit", self.close)
 
-def main_menu():
-    # Create top level menu bar
-    menubar = tk.Menu(root)
+        # Create Edit menu
+        edit_menu = menubar.addMenu("Edit")
+        edit_menu.addAction("Undo", self.donothing)
+        edit_menu.addSeparator()
+        edit_menu.addAction("Cut", self.donothing)
+        edit_menu.addAction("Copy", self.donothing)
+        edit_menu.addAction("Paste", self.donothing)
+        edit_menu.addAction("Delete", self.donothing)
+        edit_menu.addAction("Select All", self.donothing)
 
-    # Create File menu
-    filemenu = tk.Menu(menubar, tearoff=0)
-    filemenu.add_command(label="New", command=donothing)
-    filemenu.add_command(label="Open", command=donothing)
-    filemenu.add_command(label="Save", command=donothing)
-    filemenu.add_command(label="Save as...", command=donothing)
-    filemenu.add_command(label="Close", command=donothing)
-    filemenu.add_separator()
-    filemenu.add_command(label="Exit", command=root.quit)
-    menubar.add_cascade(label="File", menu=filemenu)
+        # Create Help menu
+        help_menu = menubar.addMenu("Help")
+        help_menu.addAction("Help Index", self.donothing)
+        help_menu.addAction("About...", self.donothing)
 
-    # Create Edit menu
-    editmenu = tk.Menu(menubar, tearoff=0)
-    editmenu.add_command(label="Undo", command=donothing)
-    editmenu.add_separator()
-    editmenu.add_command(label="Cut", command=donothing)
-    editmenu.add_command(label="Copy", command=donothing)
-    editmenu.add_command(label="Paste", command=donothing)
-    editmenu.add_command(label="Delete", command=donothing)
-    editmenu.add_command(label="Select All", command=donothing)
-    menubar.add_cascade(label="Edit", menu=editmenu)
+        # Create buttons in the main window
+        self.button_opendb = QPushButton("Open Database", self)
+        self.button_statements = QPushButton("Show Statement Matrix", self)
+        self.button_import = QPushButton("Import New Statements", self)
+        self.button_categorize = QPushButton("Categorize New Transactions", self)
+        self.button_train = QPushButton("Retrain Classifier Model", self)
+        self.button_plot_balances = QPushButton("Plot Balances", self)
+        self.button_plot_categories = QPushButton("Plot Categories", self)
 
-    # Create Help menu
-    helpmenu = tk.Menu(menubar, tearoff=0)
-    helpmenu.add_command(label="Help Index", command=donothing)
-    helpmenu.add_command(label="About...", command=donothing)
-    menubar.add_cascade(label="Help", menu=helpmenu)
+        layout.addWidget(self.button_opendb)
+        layout.addWidget(self.button_statements)
+        layout.addWidget(self.button_import)
+        layout.addWidget(self.button_categorize)
+        layout.addWidget(self.button_train)
+        layout.addWidget(self.button_plot_balances)
+        layout.addWidget(self.button_plot_categories)
 
-    # Add menubar to root configuration
-    root.config(menu=menubar)
+        # Connect buttons to corresponding functions
+        self.button_opendb.clicked.connect(self.open_db)
+        self.button_statements.clicked.connect(missing)
+        self.button_import.clicked.connect(import_all_statements)
+        self.button_categorize.clicked.connect(categorize_new_transactions)
+        self.button_train.clicked.connect(train_classifier)
+        self.button_plot_balances.clicked.connect(plot_balances)
+        self.button_plot_categories.clicked.connect(plot_categories)
 
+    def donothing(self):
+        """
+        Example function
+        """
+        pass
 
-def main_window():
-    """
-    Main GUI window button initialization
-    """
-    button_frame = tk.Frame(root)
-    button_frame.pack()
-
-    button_opendb = tk.Button(button_frame, text="Open Database", command=open_db)
-    button_opendb.pack()
-
-    button_statements = tk.Button(
-        button_frame, text="Show Statement Matrix", command=missing
-    )
-    button_statements.pack()
-
-    button_import = tk.Button(
-        button_frame, text="Import New Statements", command=import_all_statements
-    )
-    button_import.pack()
-
-    button_categorize = tk.Button(
-        button_frame,
-        text="Categorize New Transactions",
-        command=categorize_new_transactions,
-    )
-    button_categorize.pack()
-
-    button_train = tk.Button(
-        button_frame, text="Retrain Classifier Model", command=train_classifier
-    )
-    button_train.pack()
-
-    button_plot_balances = tk.Button(
-        button_frame, text="Plot Balances", command=plot_balances
-    )
-    button_plot_balances.pack()
-
-    button_plot_categories = tk.Button(
-        button_frame, text="Plot Categories", command=plot_categories
-    )
-    button_plot_categories.pack()
+    def open_db(self):
+        filename = str(Path("") / "pyguibank.db")
+        subprocess.run(["open", filename], check=True)
 
 
 if __name__ == "__main__":
-    # Set up the GUI
-    main_menu()
-    main_window()
-
-    # Start the GUI
-    root.title("PyGuiBank")
-    root.geometry("640x480")
-    root.mainloop()
+    app = QApplication(sys.argv)
+    window = PyGuiBank()
+    window.show()
+    sys.exit(app.exec_())
