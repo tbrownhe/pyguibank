@@ -6,14 +6,11 @@ from pathlib import Path
 from PyQt5.QtWidgets import (
     QApplication,
     QMainWindow,
-    QAction,
-    QMenu,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from core.categorize import categorize_new_transactions, train_classifier
 from core.import_statements import import_all_statements
 from core.missing import missing
 from core.plots import plot_balances, plot_categories
@@ -44,16 +41,6 @@ class PyGuiBank(QMainWindow):
         file_menu.addSeparator()
         file_menu.addAction("Exit", self.close)
 
-        # Create Edit menu
-        edit_menu = menubar.addMenu("Edit")
-        edit_menu.addAction("Undo", self.donothing)
-        edit_menu.addSeparator()
-        edit_menu.addAction("Cut", self.donothing)
-        edit_menu.addAction("Copy", self.donothing)
-        edit_menu.addAction("Paste", self.donothing)
-        edit_menu.addAction("Delete", self.donothing)
-        edit_menu.addAction("Select All", self.donothing)
-
         # Create Help menu
         help_menu = menubar.addMenu("Help")
         help_menu.addAction("Help Index", self.donothing)
@@ -63,16 +50,12 @@ class PyGuiBank(QMainWindow):
         self.button_opendb = QPushButton("Open Database", self)
         self.button_statements = QPushButton("Show Statement Matrix", self)
         self.button_import = QPushButton("Import New Statements", self)
-        self.button_categorize = QPushButton("Categorize New Transactions", self)
-        self.button_train = QPushButton("Retrain Classifier Model", self)
         self.button_plot_balances = QPushButton("Plot Balances", self)
         self.button_plot_categories = QPushButton("Plot Categories", self)
 
         layout.addWidget(self.button_opendb)
         layout.addWidget(self.button_statements)
         layout.addWidget(self.button_import)
-        layout.addWidget(self.button_categorize)
-        layout.addWidget(self.button_train)
         layout.addWidget(self.button_plot_balances)
         layout.addWidget(self.button_plot_categories)
 
@@ -80,8 +63,6 @@ class PyGuiBank(QMainWindow):
         self.button_opendb.clicked.connect(self.open_db)
         self.button_statements.clicked.connect(missing)
         self.button_import.clicked.connect(import_all_statements)
-        self.button_categorize.clicked.connect(categorize_new_transactions)
-        self.button_train.clicked.connect(train_classifier)
         self.button_plot_balances.clicked.connect(plot_balances)
         self.button_plot_categories.clicked.connect(plot_categories)
 
