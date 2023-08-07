@@ -143,3 +143,4 @@ config.ini
 # DB Browser for SQLite3
 *.db
 *.sqbpro
+*test.py
