@@ -115,6 +115,9 @@ def missing():
         else:
             raise ValueError("Unsupported OS type %s" % name)
 
+    time.sleep(2)
+    os.remove(f.name)
+
 
 if __name__ == "__main__":
     missing()
