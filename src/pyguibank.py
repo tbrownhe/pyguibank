@@ -12,6 +12,8 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from PyQt5.QtGui import QIcon
+
 from core.import_statements import import_all_statements
 from core.missing import missing
 from core.plots import plot_balances, plot_categories
@@ -88,6 +90,7 @@ class PyGuiBank(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon("pig.png"))
     window = PyGuiBank()
     window.show()
     sys.exit(app.exec_())
