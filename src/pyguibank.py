@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import sys
+import os
 import subprocess
 from pathlib import Path
 
@@ -73,8 +74,16 @@ class PyGuiBank(QMainWindow):
         pass
 
     def open_db(self):
-        filename = str(Path("") / "pyguibank.db")
-        subprocess.run(["open", filename], check=True)
+        filename = Path("").resolve() / "pyguibank.db"
+        name = os.name
+        if name == "nt":
+            args = ["start", "", str(filename)]
+            subprocess.run(args, shell=True, check=True)
+        elif name == "posix":
+            args = ["open", str(filename)]
+            subprocess.run(args, shell=False, check=True)
+        else:
+            raise ValueError("Unsupported OS type %s" % name)
 
 
 if __name__ == "__main__":

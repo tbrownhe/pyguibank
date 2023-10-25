@@ -1,4 +1,6 @@
 import time
+import os
+import warnings
 import webbrowser
 from datetime import timedelta
 from pathlib import Path
@@ -42,9 +44,9 @@ def conditional_formatting(val):
     """
     Conditional formatting for DataFrame exported as HTML table.
     """
-    if val is True:
+    if val == True:
         return "background-color: rgb(140,225,140)"
-    elif val is False:
+    elif val == False:
         return "background-color: rgb(225,160,160)"
     else:
         return ""
@@ -91,20 +93,27 @@ def missing():
     )
 
     # Make the table beautiful and helpful
-    df_styled = (
-        df_pivot.tail(13)
-        .T.style.applymap(conditional_formatting)
-        .set_table_attributes("border=1")
-        .set_properties(**{"text-align": "center"})
-    )
+    df_transpose = df_pivot.tail(13).T
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=FutureWarning)
+        df_styled = (
+            df_transpose.style.applymap(conditional_formatting)
+            .set_table_attributes("border=1")
+            .set_properties(**{"text-align": "center"})
+        )
 
     # Create a temporary html file containing the table.
-    # Open the file in Chrome, wait 1 sec for it to load, then delete the temp file.
-    with NamedTemporaryFile(mode="w+b", delete=True, suffix=".html") as f:
+    # Open the file in default browser, wait 1 sec for it to load, then delete the temp file.
+    with NamedTemporaryFile(mode="w+b", delete=False, suffix=".html") as f:
         df_styled.to_html(f.name, index=True)
-        chrome_path = r"open -a /Applications/Google\ Chrome.app %s"
-        webbrowser.get(chrome_path).open(f.name)
-        time.sleep(1)
+        name = os.name
+        if name == "nt":
+            webbrowser.open(f.name)
+        elif name == "posix":
+            browser = r"open -a /Applications/Google\ Chrome.app %s"
+            webbrowser.get(browser).open(f.name)
+        else:
+            raise ValueError("Unsupported OS type %s" % name)
 
 
 if __name__ == "__main__":
