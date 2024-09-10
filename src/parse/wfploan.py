@@ -101,10 +101,12 @@ def parse_transactions(
         return []
 
     # Uniquely identify the lines
-    if len(transaction_lines) > 2:
+    if len(transaction_lines) > 3:
         raise ValueError("More than two transaction lines found.")
     _, interest_line = find_param_in_line(transaction_lines, "INTEREST PAYMENT")
-    _, principle_line = find_param_in_line(transaction_lines, "PRINCIPAL PAYMENT")
+    principle_lines = [
+        line for line in transaction_lines if "PRINCIPAL PAYMENT" in line
+    ]
 
     # Get the payment date
     date_str = interest_line.split()[0]
@@ -113,9 +115,11 @@ def parse_transactions(
 
     # Parse the amounts
     interest_str = interest_line.split()[-1]
-    principle_str = principle_line.split()[-1]
     interest = convert_amount_to_float(interest_str)
-    principle = convert_amount_to_float(principle_str)
+    principle = 0
+    for line in principle_lines:
+        principle_str = line.split()[-1]
+        principle += convert_amount_to_float(principle_str)
 
     # Get the total payment and interest fee
     payment = principle + interest
