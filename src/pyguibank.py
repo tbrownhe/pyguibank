@@ -12,11 +12,15 @@ from core.plots import plot_balances, plot_categories
 from core.statements import import_all
 from core.utils import read_config
 
+
 # Ensure db file exists
-config = read_config(Path("") / "config.ini")
-db_path = Path(config.get("DATABASE", "db_path")).resolve()
-if not db_path.exists():
-    create_new_db(db_path)
+def ensure_db():
+    config = read_config(Path("") / "config.ini")
+    db_path = Path(config.get("DATABASE", "db_path")).resolve()
+    if not db_path.exists():
+        print("No database found!")
+        create_new_db(db_path)
+        print(f"Created new database {db_path}")
 
 
 class PyGuiBank(QMainWindow):
@@ -60,19 +64,24 @@ class PyGuiBank(QMainWindow):
         self.button_plot_categories.clicked.connect(plot_categories)
 
     def open_db(self):
-        filename = Path("").resolve() / "pyguibank.db"
+        config = read_config(Path("") / "config.ini")
+        db_path = Path(config.get("DATABASE", "db_path")).resolve()
         name = os.name
         if name == "nt":
-            args = ["start", "", str(filename)]
+            args = ["start", "", str(db_path)]
             subprocess.run(args, shell=True, check=True)
         elif name == "posix":
-            args = ["open", str(filename)]
+            args = ["open", str(db_path)]
             subprocess.run(args, shell=False, check=True)
         else:
             raise ValueError("Unsupported OS type %s" % name)
 
 
 if __name__ == "__main__":
+    # Make sure a db file exists
+    ensure_db()
+
+    # Kick off the GUI
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon("pyguibank.png"))
     window = PyGuiBank()
