@@ -9,14 +9,8 @@ from pathlib import Path
 from loguru import logger
 
 from core.db import execute_sql_query, insert_into_db
+from core.parse import parse
 from core.utils import read_config
-from parse.parse import parse
-
-"""
-This script reads in all the statement files in directory "TO BE SORTED",
-determines the statement type, then feeds the file into the appropriate
-parsing scripts. Will eventually be called by GUI but is standalone for now.
-"""
 
 
 def write_to_csv(rows, file_):

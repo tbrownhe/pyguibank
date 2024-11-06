@@ -29,6 +29,7 @@ from parsers import (
 
 
 def get_account(text: str) -> tuple[str, str]:
+    raise ValueError("IS THIS FUNCTION USED?")
     """
     Determine what kind of account this statement is
     """
@@ -59,12 +60,11 @@ def get_account(text: str) -> tuple[str, str]:
     return account, parser
 
 
-def select_parser(text: str, extension=None) -> tuple[int, str]:
+def select_parser(db_path: Path, text: str, extension=None) -> tuple[int, str]:
     """
     Determine what kind of statement this is so the correct parser can be used.
     """
     # Get the list of accounts and search strings from the db.
-    db_path = Path("pyguibank.db")
     query = "SELECT STID, SearchString, Parser FROM StatementTypes"
     if extension:
         query += " WHERE Extension='%s'" % extension
@@ -107,14 +107,16 @@ def read_pdf(fpath: Path) -> tuple[str, list[str], list[str]]:
     return text, lines_raw, lines
 
 
-def parse_pdf(fpath: Path) -> tuple[int, list[datetime], dict[str, list]]:
+def parse_pdf(
+    db_path: Path, fpath: Path
+) -> tuple[int, list[datetime], dict[str, list]]:
     """
     Opens the pdf and routes the contents to the appropriate parsing script
     """
     text, lines_raw, lines = read_pdf(fpath)
 
     # Determine statement type
-    STID, parser = select_parser(text, extension=".pdf")
+    STID, parser = select_parser(db_path, text, extension=".pdf")
 
     # Parse lines into transactions for each account type
     match parser:
@@ -148,7 +150,9 @@ def parse_pdf(fpath: Path) -> tuple[int, list[datetime], dict[str, list]]:
     return STID, date_range, data
 
 
-def parse_csv(fpath: Path) -> tuple[int, list[datetime], dict[str, list]]:
+def parse_csv(
+    db_path: Path, fpath: Path
+) -> tuple[int, list[datetime], dict[str, list]]:
     """
     Opens the csv and routes the contents to the appropriate parsing script.
     """
@@ -164,7 +168,7 @@ def parse_csv(fpath: Path) -> tuple[int, list[datetime], dict[str, list]]:
             array.append(row)
 
     # Determine which parsing script to use
-    STID, parser = select_parser(text, extension=".csv")
+    STID, parser = select_parser(db_path, text, extension=".csv")
 
     # Parse lines into transactions for each account type
     match parser:
@@ -194,7 +198,9 @@ def read_xlsx(fpath: Path) -> dict[str, list]:
     return sheets
 
 
-def parse_xlsx(fpath: Path) -> tuple[int, list[datetime], dict[str, list]]:
+def parse_xlsx(
+    db_path: Path, fpath: Path
+) -> tuple[int, list[datetime], dict[str, list]]:
     """
     Opens the xlsx and routes the contents to the appropriate parsing script.
     """
@@ -215,7 +221,7 @@ def parse_xlsx(fpath: Path) -> tuple[int, list[datetime], dict[str, list]]:
     text = "\n".join(doc)
 
     # Determine the parser and route the sheets to that module
-    STID, parser = select_parser(text, extension=".xlsx")
+    STID, parser = select_parser(db_path, text, extension=".xlsx")
     match parser:
         case "fedloan":
             date_range, data = fedloan.parse(sheets)
@@ -227,7 +233,9 @@ def parse_xlsx(fpath: Path) -> tuple[int, list[datetime], dict[str, list]]:
     return STID, date_range, data
 
 
-def parse(fpath: Path) -> tuple[int, list[datetime], dict[str, list[tuple]]]:
+def parse(
+    db_path: Path, fpath: Path
+) -> tuple[int, list[datetime], dict[str, list[tuple]]]:
     """
     Routes the file to the appropriate parser based on file type.
     Scrape all the transactions from the file and get simplified filename
@@ -235,10 +243,10 @@ def parse(fpath: Path) -> tuple[int, list[datetime], dict[str, list[tuple]]]:
     suffix = fpath.suffix.lower()
     match suffix:
         case ".pdf":
-            return parse_pdf(fpath)
+            return parse_pdf(db_path, fpath)
         case ".csv":
-            return parse_csv(fpath)
+            return parse_csv(db_path, fpath)
         case ".xlsx":
-            return parse_xlsx(fpath)
+            return parse_xlsx(db_path, fpath)
         case _:
             raise ValueError("Unsupported file extension: %s" % suffix)
