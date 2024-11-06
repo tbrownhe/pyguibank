@@ -8,7 +8,7 @@ import pdftotext
 
 from core.db import execute_sql_query, get_sqltable
 
-from . import (
+from parsers import (
     amazonbus,
     amazonper,
     citi,
