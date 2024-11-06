@@ -74,7 +74,7 @@ def pivot_tables(df: pd.DataFrame) -> None:
 def reports():
     # Get all the transactions
     # where = "Date >= '2022-08' AND Date < '2022-11'"
-    where = "Date >= '2021-01'"
+    where = "Date >= '2024'"
     if True:
         df = get_transactions(where)
         transaction_report(df)
