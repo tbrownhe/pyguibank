@@ -135,7 +135,6 @@ dmypy.json
 .DS_Store
 
 # Pyguibank output
-config.ini
 *.csv
 *.xlsx
 *.mdl
