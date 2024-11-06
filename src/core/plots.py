@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 from matplotlib import pyplot as plt
 import matplotlib.dates as mdates
+from matplotlib.ticker import MultipleLocator
 
 from .db import execute_sql_file, execute_sql_query
 
@@ -86,13 +87,24 @@ def plot_balances() -> None:
     df_pivot["Total Assets"] = df_pivot[assets].sum(axis=1)
     df_pivot["Total Debts"] = df_pivot[debts].sum(axis=1)
 
-    plt.figure(figsize=(14, 8))
+    fig, ax1 = plt.subplots(figsize=(14, 8))
+    ax2 = ax1.twinx()
+
+    # plt.figure(figsize=(14, 8))
     for account in df_pivot.columns.values:
         linestyle = "solid" if asset_type.get(account, "Asset") == "Asset" else "dashed"
         plt.plot(df_pivot.index, df_pivot[account], linestyle=linestyle)
 
     # Set bottom right cursor info to contain full datetime string instead of YYYY
-    plt.gca().fmt_xdata = lambda x: mdates.num2date(x).strftime(r"%Y-%m-%d")
+    ax1.fmt_xdata = lambda x: mdates.num2date(x).strftime(r"%Y-%m-%d")
+
+    # Add horizontal gridlines every 25,000 units
+    major_locator = MultipleLocator(base=25000)
+    ax1.yaxis.set_major_locator(major_locator)
+    ax2.yaxis.set_major_locator(major_locator)
+
+    # Hide the tick labels on the left axis
+    ax1.yaxis.set_tick_params(labelleft=False)
 
     # Add labels and show plot
     plt.legend(df_pivot.columns.values)

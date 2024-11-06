@@ -72,6 +72,7 @@ def train(df: pd.DataFrame, model=LinearSVC(), test=False) -> None:
         y_pred = classifier.predict(x_test_counts)
         score = classifier.score(x_test_counts, y_test)
         logger.info("Classifier accuracy is {a}", a="{0:.1%}".format(score))
+        # plot confusion matrix is broken, not sure why
         plot_confusion_matrix(y_test, y_pred, df["Category"].unique())
     else:
         # Save the trained model to disk

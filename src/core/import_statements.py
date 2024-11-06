@@ -241,7 +241,9 @@ def import_single_statement(fpath: Path, config: ConfigParser):
     """
     # Abort if this statement has already been imported to db
     if statement_already_imported(fpath):
-        raise ValueError("This statement has already been uploaded to the database.")
+        # raise ValueError("This statement has already been uploaded to the database.")
+        print("Skipping: This statement has already been uploaded to the database.")
+        return
 
     # Get all the transactions in this file.
     STID, date_range, data = parse(fpath)
@@ -282,7 +284,7 @@ def import_single_statement(fpath: Path, config: ConfigParser):
     move_to_archive(fpath, Path(config.get("SETTINGS", "archive_dir")), new_fname)
 
 
-def import_all_statements() -> None:
+def import_all_statements(skip_errors=True) -> None:
     """
     Finds all statements in the input_dir and imports all of them.
     """
@@ -301,7 +303,6 @@ def import_all_statements() -> None:
     for fpath in sorted(fpaths):
         logger.info("Importing {f}", f=fpath.name)
 
-        skip_errors = False
         if skip_errors:
             try:
                 import_single_statement(fpath, config)
