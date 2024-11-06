@@ -53,55 +53,55 @@ def standardize_fname(fpath: Path, parser: str, date_range) -> str:
     return new_fname
 
 
-def get_statement_id(md5hash: str) -> int:
+def get_statement_id(db_path: Path, md5hash: str) -> int:
     """
     Retrieves a StatementID based on the md5hash.
     """
-    db_path = Path("") / "pyguibank.db"
     query = "SELECT StatementID FROM Statements WHERE MD5 = '%s'" % md5hash
-    result, _ = execute_sql_query(db_path, query)
-    if len(result) == 0:
+    data, _ = execute_sql_query(db_path, query)
+    if len(data) == 0:
         return -1
-    elif len(result) == 1:
-        return result[0][0]
+    elif len(data) == 1:
+        return data[0][0]
     else:
         raise KeyError("MD5 hash %s is not unique in Statements table." % md5hash)
 
 
-def get_account_id(account: str) -> int:
+def get_account_id(db_path: Path, account_num: str) -> int:
     """
     Retrieves an AccountID based on an account string found in a statement.
     """
-    db_path = Path("") / "pyguibank.db"
-    query = "SELECT AccountID FROM AccountNumbers WHERE AccountNumber = '%s'" % account
-    result, _ = execute_sql_query(db_path, query)
-    if len(result) == 0:
-        raise ValueError("'%s' not found in Accounts table." % account)
+    query = (
+        "SELECT AccountID FROM AccountNumbers WHERE AccountNumber = '%s'" % account_num
+    )
+    data, _ = execute_sql_query(db_path, query)
+    if len(data) == 0:
+        raise ValueError("'%s' not found in Accounts table." % account_num)
     else:
-        return result[0][0]
+        return data[0][0]
 
 
-def get_account_nickname(account_id: int) -> str:
+def get_account_nickname(db_path: Path, account_id: int) -> str:
     """
     Retrieves an Account Nickname based on an account string found in a statement.
     """
-    db_path = Path("") / "pyguibank.db"
     query = "SELECT NickName FROM Accounts WHERE AccountID = %s" % account_id
-    result, _ = execute_sql_query(db_path, query)
-    if len(result) == 0:
+    data, _ = execute_sql_query(db_path, query)
+    if len(data) == 0:
         raise ValueError("No Account with AccountID = %s" % account_id)
     else:
-        return result[0][0]
+        return data[0][0]
 
 
-def statement_already_imported(fpath: Path) -> bool:
+def statement_already_imported(db_path: Path, fpath: Path) -> bool:
     # Check if the file has already been saved to the db
     md5hash = hash_file_contents(fpath)
-    imported = get_statement_id(md5hash) != -1
+    imported = get_statement_id(db_path, md5hash) != -1
     return imported
 
 
 def insert_statement_metadata(
+    db_path: Path,
     fpath: Path,
     STID: int,
     main_account_id: int,
@@ -138,25 +138,26 @@ def insert_statement_metadata(
     )
 
     # Insert metadata into db
-    db_path = Path("") / "pyguibank.db"
     insert_into_db(db_path, "Statements", columns, [metadata])
 
     # Get the new StatementID
-    statement_id = get_statement_id(md5hash)
+    statement_id = get_statement_id(db_path, md5hash)
 
     return new_fname, statement_id
 
 
-def get_account_info(accounts: list[str]) -> tuple[dict[str, int], str]:
+def get_account_info(
+    db_path: Path, account_nums: list[str]
+) -> tuple[dict[str, int], str]:
     """
     Makes sure all accounts in the statement have an entry in the lookup table.
     Return the nicknames of all accounts
     """
     account_ids = {}
-    for account in accounts:
-        account_id = get_account_id(account)
-        account_ids[account] = account_id
-    nick_name = get_account_nickname(account_ids[accounts[0]])
+    for account_num in account_nums:
+        account_id = get_account_id(db_path, account_num)
+        account_ids[account_num] = account_id
+    nick_name = get_account_nickname(db_path, account_ids[account_nums[0]])
     return account_ids, nick_name
 
 
@@ -194,7 +195,7 @@ def hash_transactions(transactions: list[tuple]) -> list[tuple]:
     return hashed_transactions
 
 
-def insert_into_shopping(transactions: list[tuple]) -> None:
+def insert_into_shopping(db_path: Path, transactions: list[tuple]) -> None:
     """
     Insert the transactions into the shopping db table
     """
@@ -211,11 +212,10 @@ def insert_into_shopping(transactions: list[tuple]) -> None:
     ]
 
     # Insert rows into database
-    db_path = Path("") / "pyguibank.db"
     insert_into_db(db_path, "Shopping", columns, transactions, skip_duplicates=True)
 
 
-def insert_into_transactions(transactions: list[tuple]) -> None:
+def insert_into_transactions(db_path: Path, transactions: list[tuple]) -> None:
     """
     Insert the transactions into the transactions db table
     """
@@ -231,16 +231,17 @@ def insert_into_transactions(transactions: list[tuple]) -> None:
     ]
 
     # Insert rows into database
-    db_path = Path("") / "pyguibank.db"
     insert_into_db(db_path, "Transactions", columns, transactions, skip_duplicates=True)
 
 
-def import_single(fpath: Path, config: ConfigParser):
+def import_single(config: ConfigParser, fpath: Path):
     """
     Parses the statement and saves the transaction data to the database.
     """
+    db_path = Path(config.get("DATABASE", "db_path")).resolve()
+
     # Abort if this statement has already been imported to db
-    if statement_already_imported(fpath):
+    if statement_already_imported(db_path, fpath):
         duplicate_dir = Path(config.get("IMPORT", "duplicate_dir")).resolve()
         dpath = duplicate_dir / fpath.name
         fpath.rename(dpath)
@@ -248,15 +249,15 @@ def import_single(fpath: Path, config: ConfigParser):
         return
 
     # Get all the transactions in this file.
-    STID, date_range, data = parse(fpath)
+    STID, date_range, data = parse(db_path, fpath)
 
     # Ensure there are listings for this account in the AccountNumbers table
-    account_ids, nick_name = get_account_info(list(data.keys()))
+    account_ids, nick_name = get_account_info(db_path, list(data.keys()))
 
     # Insert statement metadata into db
     main_account_id = list(account_ids.values())[0]
     new_fname, statement_id = insert_statement_metadata(
-        fpath, STID, main_account_id, nick_name, date_range
+        db_path, fpath, STID, main_account_id, nick_name, date_range
     )
 
     # Save transaction data for each account to the db
@@ -276,14 +277,14 @@ def import_single(fpath: Path, config: ConfigParser):
 
         match account:
             case "amazonper":
-                insert_into_shopping(transactions)
+                insert_into_shopping(db_path, transactions)
             case "amazonbus":
-                insert_into_shopping(transactions)
+                insert_into_shopping(db_path, transactions)
             case _:
-                insert_into_transactions(transactions)
+                insert_into_transactions(db_path, transactions)
 
     # Archive the file
-    move_to_archive(fpath, Path(config.get("SETTINGS", "archive_dir")), new_fname)
+    move_to_archive(fpath, Path(config.get("SETTINGS", "success_dir")), new_fname)
 
 
 def import_all() -> None:
@@ -305,13 +306,16 @@ def import_all() -> None:
     for fpath in sorted(fpaths):
         logger.info("Importing {f}", f=fpath.name)
         try:
-            import_single(fpath, config)
+            import_single(config, fpath)
         except Exception:
             logger.exception("Import failed: ")
-            failed_dir = Path(config.get("IMPORT", "failed_dir")).resolve()
-            dpath = failed_dir / fpath.name
-            fpath.rename(dpath)
-            logger.info("Failed statement moved to {d}", d=dpath)
+            if config.getboolean("IMPORT", "hard_fail"):
+                return
+            else:
+                failed_dir = Path(config.get("IMPORT", "fail_dir")).resolve()
+                dpath = failed_dir / fpath.name
+                fpath.rename(dpath)
+                logger.info("Failed statement moved to {d}", d=dpath)
 
 
 def main() -> None:
