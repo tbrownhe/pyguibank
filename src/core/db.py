@@ -9,9 +9,19 @@ from loguru import logger
 @contextmanager
 def open_sqlite3(db_path: Path) -> Generator:
     conn = sqlite3.connect(db_path)
-    yield conn.cursor()
-    conn.commit()
-    conn.close()
+    try:
+        yield conn.cursor()
+    finally:
+        conn.commit()
+        conn.close()
+
+
+def create_new_db(db_path: Path):
+    sql_path = Path("") / "src/sql/new_db.sql"
+    with sql_path.open("r") as f:
+        query = f.read()
+    with open_sqlite3(db_path) as cursor:
+        cursor.executescript(query)
 
 
 def get_table_names(db_path: Path, table: str):

@@ -235,14 +235,16 @@ def insert_into_transactions(transactions: list[tuple]) -> None:
     insert_into_db(db_path, "Transactions", columns, transactions, skip_duplicates=True)
 
 
-def import_single_statement(fpath: Path, config: ConfigParser):
+def import_single(fpath: Path, config: ConfigParser):
     """
     Parses the statement and saves the transaction data to the database.
     """
     # Abort if this statement has already been imported to db
     if statement_already_imported(fpath):
-        # raise ValueError("This statement has already been uploaded to the database.")
-        print("Skipping: This statement has already been uploaded to the database.")
+        duplicate_dir = Path(config.get("IMPORT", "duplicate_dir")).resolve()
+        dpath = duplicate_dir / fpath.name
+        fpath.rename(dpath)
+        logger.info("Duplicate statement moved to {d}", d=dpath)
         return
 
     # Get all the transactions in this file.
@@ -284,39 +286,39 @@ def import_single_statement(fpath: Path, config: ConfigParser):
     move_to_archive(fpath, Path(config.get("SETTINGS", "archive_dir")), new_fname)
 
 
-def import_all_statements(skip_errors=True) -> None:
+def import_all() -> None:
     """
-    Finds all statements in the input_dir and imports all of them.
+    Finds all statements in the import_dir and imports all of them.
     """
     # Get the config
     config_path = Path("") / "config.ini"
     config = read_config(config_path)
 
     # Get the list of files in the input_dir
-    input_dir = Path(config.get("SETTINGS", "input_dir")).resolve()
-    extensions = ("*.pdf", "*.csv", "*.xlsx")
+    input_dir = Path(config.get("IMPORT", "import_dir")).resolve()
+    extensions = [ext.strip() for ext in config.get("IMPORT", "extensions").split(",")]
     fpaths = []
     for ext in extensions:
-        fpaths.extend(input_dir.glob(ext))
+        fpaths.extend(input_dir.glob("*." + ext))
 
     # Read all the files and store as individual .csv files in the csv directory.
     for fpath in sorted(fpaths):
         logger.info("Importing {f}", f=fpath.name)
-
-        if skip_errors:
-            try:
-                import_single_statement(fpath, config)
-            except Exception as err:
-                print(err)
-        else:
-            import_single_statement(fpath, config)
+        try:
+            import_single(fpath, config)
+        except Exception:
+            logger.exception("Import failed: ")
+            failed_dir = Path(config.get("IMPORT", "failed_dir")).resolve()
+            dpath = failed_dir / fpath.name
+            fpath.rename(dpath)
+            logger.info("Failed statement moved to {d}", d=dpath)
 
 
 def main() -> None:
     """
     Script executes when run as main. Imports all statements.
     """
-    import_all_statements()
+    import_all()
 
 
 if __name__ == "__main__":

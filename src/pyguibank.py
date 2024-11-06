@@ -1,22 +1,22 @@
-# -*- coding: utf-8 -*-
-import sys
 import os
 import subprocess
+import sys
 from pathlib import Path
 
-from PyQt5.QtWidgets import (
-    QApplication,
-    QMainWindow,
-    QPushButton,
-    QVBoxLayout,
-    QWidget,
-)
-
 from PyQt5.QtGui import QIcon
+from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget
 
-from core.import_statements import import_all_statements
+from core.db import create_new_db
 from core.missing import missing
 from core.plots import plot_balances, plot_categories
+from core.statements import import_all
+from core.utils import read_config
+
+# Ensure db file exists
+config = read_config(Path("") / "config.ini")
+db_path = Path(config.get("DATABASE", "db_path")).resolve()
+if not db_path.exists():
+    create_new_db(db_path)
 
 
 class PyGuiBank(QMainWindow):
@@ -37,17 +37,7 @@ class PyGuiBank(QMainWindow):
 
         # Create File menu
         file_menu = menubar.addMenu("File")
-        file_menu.addAction("New", self.donothing)
         file_menu.addAction("Open", self.open_db)
-        file_menu.addAction("Save", self.donothing)
-        file_menu.addAction("Save as...", self.donothing)
-        file_menu.addSeparator()
-        file_menu.addAction("Exit", self.close)
-
-        # Create Help menu
-        help_menu = menubar.addMenu("Help")
-        help_menu.addAction("Help Index", self.donothing)
-        help_menu.addAction("About...", self.donothing)
 
         # Create buttons in the main window
         self.button_opendb = QPushButton("Open Database", self)
@@ -65,15 +55,9 @@ class PyGuiBank(QMainWindow):
         # Connect buttons to corresponding functions
         self.button_opendb.clicked.connect(self.open_db)
         self.button_statements.clicked.connect(missing)
-        self.button_import.clicked.connect(import_all_statements)
+        self.button_import.clicked.connect(import_all)
         self.button_plot_balances.clicked.connect(plot_balances)
         self.button_plot_categories.clicked.connect(plot_categories)
-
-    def donothing(self):
-        """
-        Example function
-        """
-        pass
 
     def open_db(self):
         filename = Path("").resolve() / "pyguibank.db"
