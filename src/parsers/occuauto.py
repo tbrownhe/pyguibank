@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 
-from parse.utils import convert_amount_to_float
+from parsers.utils import convert_amount_to_float
 
 
 def get_account_number(array: list[list[str]]) -> str:

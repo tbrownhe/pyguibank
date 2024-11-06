@@ -2,7 +2,11 @@
 import re
 from datetime import datetime, timedelta
 
-from parse.utils import convert_amount_to_float, find_line_startswith, get_absolute_date
+from parsers.utils import (
+    convert_amount_to_float,
+    find_line_startswith,
+    get_absolute_date,
+)
 
 
 def get_account_number(lines: list[str]) -> str:

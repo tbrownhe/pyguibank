@@ -2,7 +2,8 @@
 import re
 from datetime import datetime, timedelta
 from typing import Union
-from parse.utils import (
+
+from parsers.utils import (
     convert_amount_to_float,
     find_line_startswith,
     find_param_in_line,
