@@ -7,7 +7,6 @@ import openpyxl
 import pdftotext
 
 from core.db import execute_sql_query, get_sqltable
-
 from parsers import (
     amazonbus,
     amazonper,
@@ -65,7 +64,7 @@ def select_parser(db_path: Path, text: str, extension=None) -> tuple[int, str]:
     Determine what kind of statement this is so the correct parser can be used.
     """
     # Get the list of accounts and search strings from the db.
-    query = "SELECT STID, SearchString, Parser FROM StatementTypes"
+    query = "SELECT StatementTypeID, SearchString, Parser FROM StatementTypes"
     if extension:
         query += " WHERE Extension='%s'" % extension
     parser_data, _ = execute_sql_query(db_path, query)
