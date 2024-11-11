@@ -1,5 +1,3 @@
-import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -10,7 +8,7 @@ from core.db import create_new_db
 from core.missing import missing
 from core.plots import plot_balances, plot_categories
 from core.statements import import_all
-from core.utils import read_config
+from core.utils import open_file_in_os, read_config
 
 
 # Ensure db file exists
@@ -66,15 +64,7 @@ class PyGuiBank(QMainWindow):
     def open_db(self):
         config = read_config(Path("") / "config.ini")
         db_path = Path(config.get("DATABASE", "db_path")).resolve()
-        name = os.name
-        if name == "nt":
-            args = ["start", "", str(db_path)]
-            subprocess.run(args, shell=True, check=True)
-        elif name == "posix":
-            args = ["open", str(db_path)]
-            subprocess.run(args, shell=False, check=True)
-        else:
-            raise ValueError("Unsupported OS type %s" % name)
+        open_file_in_os(db_path)
 
 
 if __name__ == "__main__":

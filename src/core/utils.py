@@ -1,6 +1,7 @@
-# -*- coding: utf-8 -*-
-from pathlib import Path
 import configparser
+import os
+import subprocess
+from pathlib import Path
 
 
 def p(val):
@@ -30,3 +31,15 @@ def read_config(config_path: Path):
     config.read(config_path)
 
     return config
+
+
+def open_file_in_os(db_path):
+    name = os.name
+    if name == "nt":
+        args = ["start", "", str(db_path)]
+        subprocess.run(args, shell=True, check=True)
+    elif name == "posix":
+        args = ["open", str(db_path)]
+        subprocess.run(args, shell=False, check=True)
+    else:
+        raise ValueError("Unsupported OS type %s" % name)
