@@ -1,29 +1,34 @@
 from pathlib import Path
 
+import matplotlib.dates as mdates
 import pandas as pd
 from matplotlib import pyplot as plt
-import matplotlib.dates as mdates
 from matplotlib.ticker import MultipleLocator
 
 from .db import execute_sql_file, execute_sql_query
+from .utils import read_config
 
 
-def get_asset_type() -> dict[str, str]:
+def asset_types(db_path: Path) -> dict[str, str]:
     """
-    Returns entire contents of Accounts table as a dict
+    Returns Asset Type of Accounts table as df
     """
-    db_path = Path("") / "pyguibank.db"
-    query = "SELECT NickName, AssetType FROM Accounts"
+    query = (
+        "SELECT NickName, AssetType"
+        " FROM Accounts"
+        " JOIN AccountTypes ON Accounts.AccountTypeID = AccountTypes.AccountTypeID"
+    )
     data, _ = execute_sql_query(db_path, query)
-    asset_type = dict(data)
-    return asset_type
+    asset_dict = {}
+    for row in data:
+        asset_dict[row[0]] = row[1]
+    return asset_dict
 
 
-def get_transactions() -> pd.DataFrame:
+def get_transactions(db_path: Path) -> pd.DataFrame:
     """
     Returns all transactions as pd.DataFrame
     """
-    db_path = Path("") / "pyguibank.db"
     sql_path = Path("") / "src" / "sql" / "transactions_all.sql"
     data, columns = execute_sql_file(db_path, sql_path)
     df = pd.DataFrame(data, columns=columns)
@@ -55,8 +60,11 @@ def plot_balances() -> None:
     Gets all transactions, makes a pivot table, then plots the result
     to display balance over time.
     """
+    config = read_config(Path("") / "config.ini")
+    db_path = Path(config.get("DATABASE", "db_path")).resolve()
+
     # Get all the transactions
-    df = get_transactions()
+    df = get_transactions(db_path)
 
     # Make a pivot table containing the EOD (last) balance for each day
     df_pivot = df.pivot_table(
@@ -70,30 +78,35 @@ def plot_balances() -> None:
     # These are locations where an account doesn't exist yet.
     df_pivot = df_pivot.fillna(0)
 
-    # Create totals columns
-    assets = []
-    debts = []
-    asset_type = get_asset_type()
-    for account in df_pivot.columns.values:
-        match asset_type[account]:
+    # Determine which columns in the pivot table are assets and debts
+    asset_cols = []
+    debt_cols = []
+    asset_dict = asset_types(db_path)
+    for nick_name in df_pivot.columns.values:
+        match asset_dict[nick_name]:
             case "Asset":
-                assets.append(account)
+                asset_cols.append(nick_name)
             case "Debt":
-                debts.append(account)
+                debt_cols.append(nick_name)
             case _:
-                raise ValueError("Account %s is neither an asset nor debt." % account)
+                raise ValueError(f"Account {nick_name} is neither an asset nor debt.")
 
+    # Compute total assets and debts
     df_pivot["Net Worth"] = df_pivot.sum(axis=1)
-    df_pivot["Total Assets"] = df_pivot[assets].sum(axis=1)
-    df_pivot["Total Debts"] = df_pivot[debts].sum(axis=1)
+    df_pivot["Total Assets"] = df_pivot[asset_cols].sum(axis=1)
+    df_pivot["Total Debts"] = df_pivot[debt_cols].sum(axis=1)
+    # asset_dict["Net Worth"] = "Asset"
+    # asset_dict["Total Assets"] = "Asset"
+    # asset_dict["Total Debts"] = "Debt"
 
+    # Plot all balances on the same chart
     fig, ax1 = plt.subplots(figsize=(14, 8))
     ax2 = ax1.twinx()
-
-    # plt.figure(figsize=(14, 8))
-    for account in df_pivot.columns.values:
-        linestyle = "solid" if asset_type.get(account, "Asset") == "Asset" else "dashed"
-        plt.plot(df_pivot.index, df_pivot[account], linestyle=linestyle)
+    for nick_name in df_pivot.columns.values:
+        linestyle = (
+            "dashed" if asset_dict.get(nick_name, "Asset") == "Debt" else "solid"
+        )
+        plt.plot(df_pivot.index, df_pivot[nick_name], linestyle=linestyle)
 
     # Set bottom right cursor info to contain full datetime string instead of YYYY
     ax1.fmt_xdata = lambda x: mdates.num2date(x).strftime(r"%Y-%m-%d")
