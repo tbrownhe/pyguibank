@@ -1,29 +1,39 @@
-from db import execute_sql_query
 from pathlib import Path
+
 import pandas as pd
 
+from .db import execute_sql_query
+from .utils import read_config
 
-def get_transactions(where: str) -> pd.DataFrame:
+
+def get_transactions(db_path: Path, where="") -> pd.DataFrame:
     """
     Returns all transactions as pd.DataFrame
     """
-    db_path = Path("") / "pyguibank.db"
-    sql_path = Path("") / "src" / "sql" / "transactions_where.sql"
+    if where:
+        sql_path = Path("") / "src" / "sql" / "transactions_where.sql"
+    else:
+        sql_path = Path("") / "src" / "sql" / "transactions.sql"
     with sql_path.open("r") as f:
         query = f.read()
-    query = query % where
+
+    if where:
+        query = query.replace("$$WH$$", where)
+
     data, columns = execute_sql_query(db_path, query)
     df = pd.DataFrame(data, columns=columns)
+
+    # Create month column for pivot tables
     df["Date"] = pd.to_datetime(df["Date"])
-    df["Month"] = df["Date"].dt.strftime("%Y-%m")
+    df["Month"] = df["Date"].dt.to_period("M").astype(str)
+
     return df
 
 
-def get_shopping(where: str) -> pd.DataFrame:
+def get_shopping(db_path: Path, where: str) -> pd.DataFrame:
     """
     Returns all transactions as pd.DataFrame
     """
-    db_path = Path("") / "pyguibank.db"
     sql_path = Path("") / "src" / "sql" / "shopping_where.sql"
     with sql_path.open("r") as f:
         query = f.read()
@@ -33,14 +43,6 @@ def get_shopping(where: str) -> pd.DataFrame:
     df["Date"] = pd.to_datetime(df["Date"])
     df["Month"] = df["Date"].dt.strftime("%Y-%m")
     return df
-
-
-def transaction_report(df: pd.DataFrame):
-    """
-    Saves verbose transaction list as Excel for creating expense reports for wifey <3
-    """
-    df = df.sort_values(by=["Date", "TranID"], axis=0)
-    df.to_excel("transactions.xlsx", index=False)
 
 
 def shopping_report(where: str):
@@ -71,17 +73,15 @@ def pivot_tables(df: pd.DataFrame) -> None:
         df_pivot_assets.to_excel(writer, "CategoryAsset")
 
 
-def reports():
-    # Get all the transactions
-    # where = "Date >= '2022-08' AND Date < '2022-11'"
-    where = "Date >= '2024'"
-    if True:
-        df = get_transactions(where)
-        transaction_report(df)
-        pivot_tables(df)
+def make_reports():
+    # Get the db path
+    config = read_config(Path("") / "config.ini")
+    db_path = Path(config.get("DATABASE", "db_path")).resolve()
 
-    if False:
-        shopping_report("Date >= '2022-08' AND Date < '2023-03'")
+    # Pull recent transactions and create reports
+    df = get_transactions(db_path, where="Date >= DATE('now', '-1 year')")
+    df.to_excel("transactions.xlsx", index=False)
+    pivot_tables(df)
 
 
 if __name__ == "__main__":
