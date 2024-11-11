@@ -7,10 +7,318 @@ from datetime import datetime
 from pathlib import Path
 
 from loguru import logger
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QComboBox,
+    QDialog,
+    QFormLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+)
 
 from core.db import execute_sql_query, insert_into_db
 from core.parse import parse
-from core.utils import read_config
+from core.utils import open_file_in_os, read_config
+
+
+def p(val):
+    print(val)
+    exit()
+
+
+def update_accounts_table(
+    dialog: QDialog, accounts_table: QTableWidget, max_height_ratio=0.8
+):
+    accounts_table.setSortingEnabled(True)
+    accounts_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+    accounts_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    query = """
+        SELECT AccountID, Company, Description, AccountType, NickName
+        FROM Accounts
+        JOIN AccountTypes ON Accounts.AccountTypeID = AccountTypes.AccountTypeID
+    """
+    data, columns = execute_sql_query(dialog.db_path, query)
+    accounts_table.setRowCount(len(data))
+    accounts_table.setColumnCount(len(columns))
+    accounts_table.setHorizontalHeaderLabels(columns)
+    accounts_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+
+    for row_idx, row_data in enumerate(data):
+        for col_idx, cell_data in enumerate(row_data):
+            item = QTableWidgetItem(str(cell_data))
+            item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+            accounts_table.setItem(row_idx, col_idx, item)
+
+    # Set minimum width based on table contents
+    accounts_table.resizeColumnsToContents()
+    pad = 200 if len(data) == 0 else 60
+    total_width = sum(
+        accounts_table.columnWidth(i) for i in range(accounts_table.columnCount())
+    )
+    total_width += accounts_table.verticalHeader().width()
+    total_width += accounts_table.frameWidth() * 2
+
+    dialog.setMinimumWidth(total_width + pad)
+    dialog.adjustSize()
+
+
+class AddAccount(QDialog):
+    def __init__(self, db_path: Path, company="", description="", account_type=""):
+        super().__init__()
+        self.setWindowTitle("Add New Account")
+
+        screen_height = QApplication.primaryScreen().availableGeometry().height()
+        max_height = int(screen_height * 0.8)
+        self.setMinimumHeight(400)
+        self.setMaximumHeight(max_height)
+        self.setContentsMargins(10, 10, 10, 10)
+
+        self.db_path = db_path
+        self.account_cols = None
+
+        # Main layout
+        layout = QVBoxLayout(self)
+
+        # Descriptive text
+        desc1_text = "List of existing accounts:"
+        desc1_label = QLabel(desc1_text)
+        layout.addWidget(desc1_label)
+
+        # Display Accounts table
+        self.accounts_table = QTableWidget(self)
+        layout.addWidget(self.accounts_table)
+        update_accounts_table(self, self.accounts_table)
+
+        # Descriptive text
+        desc2_text = "Please fill out the following information for the new account:"
+        desc2_label = QLabel(desc2_text)
+        layout.addWidget(desc2_label)
+
+        # Form layout for user inputs
+        form_layout = QFormLayout()
+
+        self.nickname_edit = QLineEdit(self)
+
+        self.company_edit = QLineEdit(self)
+        if company:
+            self.company_edit.setText(company)
+
+        self.description_edit = QLineEdit(self)
+        if description:
+            self.description_edit.setText(description)
+
+        self.account_type_combo = QComboBox(self)
+        data, _ = execute_sql_query(db_path, "SELECT AccountType FROM AccountTypes")
+        account_type_list = [item[0] for item in data]
+        self.account_type_combo.addItems(account_type_list)
+        if account_type:
+            index = account_type_list.index(account_type)
+            self.account_type_combo.setCurrentIndex(index)
+
+        # Tool tips
+        self.nickname_edit.setPlaceholderText("Enter a UNIQUE nickname for the account")
+        self.company_edit.setToolTip("Company associated with this account")
+        self.description_edit.setPlaceholderText(
+            "Account description, e.g., Personal, Business, Student, etc"
+        )
+        self.account_type_combo.setToolTip("Choose the account type from the list")
+
+        # Create form layout
+        form_layout.addRow("Nickname:", self.nickname_edit)
+        form_layout.addRow("Company:", self.company_edit)
+        form_layout.addRow("Description:", self.description_edit)
+        form_layout.addRow("Account Type:", self.account_type_combo)
+
+        layout.addLayout(form_layout)
+
+        # Submit button with validation
+        self.submit_button = QPushButton("Submit")
+        self.submit_button.clicked.connect(self.submit)
+        layout.addWidget(self.submit_button)
+
+        # Set the layout in the QDialog
+        self.setLayout(layout)
+
+    def submit(self):
+        # Ensure required fields are filled
+        if not all(
+            [
+                self.nickname_edit.text(),
+                self.company_edit.text(),
+                self.description_edit.text(),
+            ]
+        ):
+            QMessageBox.warning(
+                self, "Missing Information", "Please fill in all required fields."
+            )
+            return
+
+        # Grab the AccountTypeID
+        account_type = self.account_type_combo.currentText()
+        query = f"""
+            SELECT AccountTypeID
+            FROM AccountTypes
+            WHERE AccountType = '{account_type}'
+        """
+        data, _ = execute_sql_query(self.db_path, query)
+        account_type_id = data[0][0]
+
+        # Insert new account into Accounts Table
+        columns = ["AccountTypeID", "Company", "Description", "NickName"]
+        row = (
+            account_type_id,
+            self.company_edit.text(),
+            self.description_edit.text(),
+            self.nickname_edit.text(),
+        )
+        try:
+            insert_into_db(self.db_path, "Accounts", columns, [row])
+            QMessageBox.information(
+                self, "Success", "New account has been added successfully."
+            )
+            self.accept()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to create account:\n{str(e)}")
+            return
+
+
+class AssignAccountNumber(QDialog):
+    def __init__(
+        self, db_path: Path, fpath: Path, STID: int, account_num: str, parent=None
+    ):
+        super().__init__(parent)
+        self.setWindowTitle("New Account Number Found")
+
+        screen_height = QApplication.primaryScreen().availableGeometry().height()
+        max_height = int(screen_height * 0.8)
+        self.setMinimumHeight(400)
+        self.setMaximumHeight(max_height)
+        self.setContentsMargins(10, 10, 10, 10)
+
+        self.db_path = db_path
+        self.fpath = fpath
+        self.account_num = account_num
+        self.account_id = None
+
+        # Set up layout
+        layout = QVBoxLayout()
+
+        # Grab StatementType info for the new account number
+        query = f"""
+            SELECT Company, Description, AccountType
+            FROM StatementTypes 
+            JOIN AccountTypes
+            ON StatementTypes.AccountTypeID = AccountTypes.AccountTypeID
+            WHERE StatementTypeID = {STID}
+        """
+        data, _ = execute_sql_query(self.db_path, query)
+        self.company = data[0][0]
+        self.description = data[0][1]
+        self.account_type = data[0][2]
+        account_description = (" ".join(data[0][1:])).strip()
+
+        # Display info to user
+        desc1 = (
+            f"A {self.company} {account_description} statement with an unknown "
+            "account number was found.\n"
+            f"New Account Number: {account_num}"
+        )
+        desc1_label = QLabel(desc1)
+        layout.addWidget(desc1_label)
+
+        # View statement button
+        view_statement_button = QPushButton("View Statement")
+        view_statement_button.clicked.connect(self.open_statement)
+        layout.addWidget(view_statement_button)
+
+        # Display info to user
+        desc2 = "Which of the Accounts below does this account number belong to?"
+        desc2_label = QLabel(desc2)
+        layout.addWidget(desc2_label)
+
+        # Display Accounts table
+        self.accounts_table = QTableWidget(self)
+        self.accounts_table.cellClicked.connect(self.handle_cell_click)
+        layout.addWidget(self.accounts_table)
+        update_accounts_table(self, self.accounts_table)
+
+        # Add New Account button
+        new_account_button = QPushButton("Create New Account")
+        new_account_button.clicked.connect(self.new_account)
+
+        # Add submit button
+        submit_button = QPushButton("Submit")
+        submit_button.clicked.connect(self.submit)
+
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(new_account_button)
+        button_layout.addWidget(submit_button)
+        layout.addLayout(button_layout)
+
+        # Set the layout in the QDialog
+        self.setLayout(layout)
+
+    def open_statement(self):
+        open_file_in_os(self.fpath)
+
+    def handle_cell_click(self, row, column):
+        # Capture the AccountID of the clicked row
+        account_id_item = self.accounts_table.item(
+            row, 0
+        )  # Assuming AccountID is in the first column
+        if account_id_item:
+            self.account_id = account_id_item.text()
+
+    def new_account(self):
+        dialog = AddAccount(
+            self.db_path, self.company, self.description, self.account_type
+        )
+        if dialog.exec_() == QDialog.Accepted:
+            update_accounts_table(self, self.accounts_table)
+
+            # Auto-select the newly created account (assuming it's added to the last row)
+            self.accounts_table.selectRow(self.accounts_table.rowCount() - 1)
+            self.account_id = self.accounts_table.item(
+                self.accounts_table.rowCount() - 1, 0
+            ).text()
+
+    def submit(self):
+        """
+        Gather all input values into the results dictionary and close the dialog.
+        """
+        # Close dialog and accept the current account ID selection
+        if self.account_id is None:
+            QMessageBox.warning(
+                self,
+                "No Account Selected",
+                "Please select an account or create a new one.",
+            )
+        else:
+            # Create the AccountNumber -> AccountID association in the db
+            insert_into_db(
+                self.db_path,
+                "AccountNumbers",
+                ["AccountID", "AccountNumber"],
+                [(self.account_id, self.account_num)],
+            )
+            self.accept()
+
+    def get_account_id(self):
+        """
+        Returns the results dictionary with user inputs after the dialog is accepted.
+        """
+        return self.account_id
 
 
 def write_to_csv(rows, file_):
@@ -61,18 +369,17 @@ def get_statement_id(db_path: Path, md5hash: str) -> int:
         raise KeyError("MD5 hash %s is not unique in Statements table." % md5hash)
 
 
-def get_account_id(db_path: Path, account_num: str) -> int:
+def get_account_id(db_path: Path, STID: int, account_num: str) -> int:
     """
-    Retrieves an AccountID based on an account string found in a statement.
+    Retrieves an AccountID based on an account_num string found in a statement.
     """
     query = (
         "SELECT AccountID FROM AccountNumbers WHERE AccountNumber = '%s'" % account_num
     )
     data, _ = execute_sql_query(db_path, query)
     if len(data) == 0:
-        raise ValueError("'%s' not found in Accounts table." % account_num)
-    else:
-        return data[0][0]
+        raise KeyError("Account number not found in AccountNumbers.AccountNumber")
+    return data[0][0]
 
 
 def get_account_nickname(db_path: Path, account_id: int) -> str:
@@ -98,7 +405,7 @@ def insert_statement_metadata(
     db_path: Path,
     fpath: Path,
     STID: int,
-    main_account_id: int,
+    account_id: int,
     nick_name: str,
     date_range: list[datetime],
 ) -> tuple[str, int]:
@@ -109,8 +416,8 @@ def insert_statement_metadata(
     md5hash = hash_file_contents(fpath)
     db_date = r"%Y-%m-%d"
     columns = [
-        "STID",
-        "MainAccountID",
+        "StatementTypeID",
+        "AccountID",
         "StartDate",
         "EndDate",
         "ImportDate",
@@ -123,7 +430,7 @@ def insert_statement_metadata(
     new_fname = standardize_fname(fpath, nick_name, date_range)
     metadata = (
         STID,
-        main_account_id,
+        account_id,
         start_date,
         end_date,
         import_date,
@@ -140,8 +447,21 @@ def insert_statement_metadata(
     return new_fname, statement_id
 
 
+def prompt_account_num(db_path: Path, fpath: Path, STID: int, account_num: str) -> int:
+    """
+    Ask user to associate this unknown account_num with an Accounts.AccountID
+    """
+    account_id = None
+    dialog = AssignAccountNumber(db_path, fpath, STID, account_num)
+    if dialog.exec_() == QDialog.Accepted:
+        account_id = dialog.get_account_id()
+        return account_id
+    else:
+        raise ValueError("No AccountID selected.")
+
+
 def get_account_info(
-    db_path: Path, account_nums: list[str]
+    db_path: Path, fpath: Path, STID: int, account_nums: list[str]
 ) -> tuple[dict[str, int], str]:
     """
     Makes sure all accounts in the statement have an entry in the lookup table.
@@ -149,7 +469,11 @@ def get_account_info(
     """
     account_ids = {}
     for account_num in account_nums:
-        account_id = get_account_id(db_path, account_num)
+        try:
+            account_id = get_account_id(db_path, STID, account_num)
+        except KeyError as err:
+            print(err)
+            account_id = prompt_account_num(db_path, fpath, STID, account_num)
         account_ids[account_num] = account_id
     nick_name = get_account_nickname(db_path, account_ids[account_nums[0]])
     return account_ids, nick_name
@@ -164,7 +488,20 @@ def move_to_archive(fpath: Path, archive_dir: Path, dname: str) -> None:
 
     # Move the original file to the archive
     dpath = archive_dir / dname
-    shutil.move(fpath, dpath)
+    while True:
+        try:
+            shutil.move(fpath, dpath)
+            return
+        except PermissionError:
+            msg_box = QMessageBox()
+            msg_box.setIcon(QMessageBox.Warning)
+            msg_box.setText(
+                f"The statement {fpath.name} could not be moved to archive. "
+                "If it's open in another program, please close it and click OK"
+            )
+            msg_box.setWindowTitle("Unable to move to archive")
+            msg_box.setStandardButtons(QMessageBox.Ok)
+            msg_box.exec_()
 
 
 def hash_transactions(transactions: list[tuple]) -> list[tuple]:
@@ -246,7 +583,7 @@ def import_single(config: ConfigParser, fpath: Path):
     STID, date_range, data = parse(db_path, fpath)
 
     # Ensure there are listings for this account in the AccountNumbers table
-    account_ids, nick_name = get_account_info(db_path, list(data.keys()))
+    account_ids, nick_name = get_account_info(db_path, fpath, STID, list(data.keys()))
 
     # Insert statement metadata into db
     main_account_id = list(account_ids.values())[0]
@@ -278,7 +615,7 @@ def import_single(config: ConfigParser, fpath: Path):
                 insert_into_transactions(db_path, transactions)
 
     # Archive the file
-    move_to_archive(fpath, Path(config.get("SETTINGS", "success_dir")), new_fname)
+    move_to_archive(fpath, Path(config.get("IMPORT", "success_dir")), new_fname)
 
 
 def import_all() -> None:
@@ -304,7 +641,7 @@ def import_all() -> None:
         except Exception:
             logger.exception("Import failed: ")
             if config.getboolean("IMPORT", "hard_fail"):
-                return
+                raise
             else:
                 failed_dir = Path(config.get("IMPORT", "fail_dir")).resolve()
                 dpath = failed_dir / fpath.name
