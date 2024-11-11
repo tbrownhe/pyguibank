@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout,
 from core.db import create_new_db
 from core.missing import missing
 from core.plots import plot_balances, plot_categories
+from core.reports import make_reports
 from core.statements import import_all
 from core.utils import open_file_in_os, read_config
 
@@ -42,24 +43,29 @@ class PyGuiBank(QMainWindow):
         file_menu.addAction("Open", self.open_db)
 
         # Create buttons in the main window
-        self.button_opendb = QPushButton("Open Database", self)
-        self.button_statements = QPushButton("Show Statement Matrix", self)
-        self.button_import = QPushButton("Import New Statements", self)
-        self.button_plot_balances = QPushButton("Plot Balances", self)
-        self.button_plot_categories = QPushButton("Plot Categories", self)
+        self.open_db_button = QPushButton("Open Database", self)
+        self.open_db_button.clicked.connect(self.open_db)
+        layout.addWidget(self.open_db_button)
 
-        layout.addWidget(self.button_opendb)
-        layout.addWidget(self.button_statements)
-        layout.addWidget(self.button_import)
-        layout.addWidget(self.button_plot_balances)
-        layout.addWidget(self.button_plot_categories)
+        self.statement_matrix_button = QPushButton("Show Statement Matrix", self)
+        self.statement_matrix_button.clicked.connect(missing)
+        layout.addWidget(self.statement_matrix_button)
 
-        # Connect buttons to corresponding functions
-        self.button_opendb.clicked.connect(self.open_db)
-        self.button_statements.clicked.connect(missing)
-        self.button_import.clicked.connect(import_all)
-        self.button_plot_balances.clicked.connect(plot_balances)
-        self.button_plot_categories.clicked.connect(plot_categories)
+        self.import_statements_button = QPushButton("Import New Statements", self)
+        self.import_statements_button.clicked.connect(import_all)
+        layout.addWidget(self.import_statements_button)
+
+        self.plot_balances_button = QPushButton("Plot Balances", self)
+        self.plot_balances_button.clicked.connect(plot_balances)
+        layout.addWidget(self.plot_balances_button)
+
+        self.plot_categories_button = QPushButton("Plot Categories", self)
+        self.plot_categories_button.clicked.connect(plot_categories)
+        layout.addWidget(self.plot_categories_button)
+
+        self.make_reports_button = QPushButton("Make Reports", self)
+        self.make_reports_button.clicked.connect(make_reports)
+        layout.addWidget(self.make_reports_button)
 
     def open_db(self):
         config = read_config(Path("") / "config.ini")
