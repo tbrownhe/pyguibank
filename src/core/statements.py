@@ -43,11 +43,11 @@ def update_accounts_table(
     accounts_table.setSelectionBehavior(QAbstractItemView.SelectRows)
     accounts_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-    query = """
-        SELECT AccountID, Company, Description, AccountType, NickName
-        FROM Accounts
-        JOIN AccountTypes ON Accounts.AccountTypeID = AccountTypes.AccountTypeID
-    """
+    query = (
+        "SELECT AccountID, Company, Description, AccountType, NickName"
+        " FROM Accounts"
+        " JOIN AccountTypes ON Accounts.AccountTypeID = AccountTypes.AccountTypeID"
+    )
     data, columns = execute_sql_query(dialog.db_path, query)
     accounts_table.setRowCount(len(data))
     accounts_table.setColumnCount(len(columns))
@@ -166,11 +166,11 @@ class AddAccount(QDialog):
 
         # Grab the AccountTypeID
         account_type = self.account_type_combo.currentText()
-        query = f"""
-            SELECT AccountTypeID
-            FROM AccountTypes
-            WHERE AccountType = '{account_type}'
-        """
+        query = (
+            "SELECT AccountTypeID"
+            " FROM AccountTypes"
+            f" WHERE AccountType = '{account_type}'"
+        )
         data, _ = execute_sql_query(self.db_path, query)
         account_type_id = data[0][0]
 
@@ -215,13 +215,13 @@ class AssignAccountNumber(QDialog):
         layout = QVBoxLayout()
 
         # Grab StatementType info for the new account number
-        query = f"""
-            SELECT Company, Description, AccountType
-            FROM StatementTypes 
-            JOIN AccountTypes
-            ON StatementTypes.AccountTypeID = AccountTypes.AccountTypeID
-            WHERE StatementTypeID = {STID}
-        """
+        query = (
+            "SELECT Company, Description, AccountType"
+            " FROM StatementTypes"
+            " JOIN AccountTypes"
+            " ON StatementTypes.AccountTypeID = AccountTypes.AccountTypeID"
+            f" WHERE StatementTypeID = {STID}"
+        )
         data, _ = execute_sql_query(self.db_path, query)
         self.company = data[0][0]
         self.description = data[0][1]
