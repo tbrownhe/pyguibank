@@ -1,30 +1,15 @@
+--SQLite
 SELECT
-	a.TranID,
-	b.NickName,
-	b.AssetType,
-	a.Date,
-	a.Amount,
-	a.Balance,
-	a.Description,
-	a.Category
-FROM (
-	SELECT
-		TranID,
-		AccountID,
-		Date,
-		Amount,
-		Balance, 
-		Description,
-		Category
-	FROM Transactions
-	WHERE %s
-	) as a
-	LEFT JOIN (
-		SELECT
-			AccountID,
-			NickName,
-			AssetType
-		FROM Accounts
-		) as b
-		ON a.AccountID = b.AccountID
-ORDER BY a.Date ASC, a.TranID ASC
+	Transactions.TransactionID,
+	Accounts.NickName,
+	AccountTypes.AssetType,
+	Transactions.Date,
+	Transactions.Amount,
+	Transactions.Balance,
+	Transactions.Description,
+	Transactions.Category
+FROM Transactions
+JOIN Accounts ON Transactions.AccountID = Accounts.AccountID
+JOIN AccountTypes ON Accounts.AccountTypeID = AccountTypes.AccountTypeID
+WHERE $$WH$$
+ORDER BY Transactions.Date ASC, Transactions.TransactionID ASC
