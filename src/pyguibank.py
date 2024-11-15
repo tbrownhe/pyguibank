@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from core import plots, reports, statements
+from core import plot, reports, statements
 from core.categorize import categorize_new_transactions, train_classifier
 from core.db import create_new_db
 from core.dialog import AddAccount
@@ -106,7 +106,7 @@ class PyGuiBank(QMainWindow):
         msg_box.exec_()
 
     def show_accounts(self):
-        dialog = dialog.AddAccount(self.db_path)
+        dialog = AddAccount(self.db_path)
         if dialog.exec_() == QDialog.Accepted:
             print("New account was added")
 
@@ -133,10 +133,10 @@ class PyGuiBank(QMainWindow):
             statements.import_one(self.config, fpath)
 
     def plot_balances(self):
-        plots.balances(self.db_path)
+        plot.balances(self.db_path)
 
     def plot_categories(self):
-        plots.categories(self.db_path)
+        plot.categories(self.db_path)
 
     def make_reports(self):
         report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
