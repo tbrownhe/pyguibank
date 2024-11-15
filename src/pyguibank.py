@@ -4,6 +4,7 @@ from pathlib import Path
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget
 
+from core.categorize import categorize_new_transactions, train_classifier
 from core.db import create_new_db
 from core.missing import missing
 from core.plots import plot_balances, plot_categories
@@ -66,6 +67,14 @@ class PyGuiBank(QMainWindow):
         self.make_reports_button = QPushButton("Make Reports", self)
         self.make_reports_button.clicked.connect(make_reports)
         layout.addWidget(self.make_reports_button)
+
+        self.button_categorize = QPushButton("Categorize New Transactions", self)
+        self.button_categorize.clicked.connect(categorize_new_transactions)
+        layout.addWidget(self.button_categorize)
+
+        self.button_train = QPushButton("Retrain Classifier Model", self)
+        layout.addWidget(self.button_train)
+        self.button_train.clicked.connect(train_classifier)
 
     def open_db(self):
         config = read_config(Path("") / "config.ini")
