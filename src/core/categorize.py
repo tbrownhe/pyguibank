@@ -3,9 +3,11 @@ import itertools
 from pathlib import Path
 
 import pandas as pd
+from loguru import logger
+
 from .db import execute_sql_file, execute_sql_query, update_db_where
 from .learn import predict, train
-from loguru import logger
+from .query import transactions
 
 """
 Contains functions used to categorize transactions.
@@ -29,25 +31,6 @@ def transactions_from_csv(csv_path: Path, required_cols: list[str]) -> pd.DataFr
     # Drop any rows with missing data in any of the required columns.
     df = df.dropna(axis=0, subset=required_cols)
 
-    return df
-
-
-def transactions_from_db(where=None) -> pd.DataFrame:
-    """
-    Returns all transactions in the database as DataFrame.
-    """
-    logger.info("Retrieving transactions from database.")
-    db_path = Path("") / "pyguibank.db"
-    if where:
-        sql_path = Path("") / "src" / "sql" / "transactions_where.sql"
-        with sql_path.open("r") as f:
-            query = f.read()
-        query = query % where
-        data, columns = execute_sql_query(db_path, query)
-    else:
-        sql_path = Path("") / "src" / "sql" / "transactions_all.sql"
-        data, columns = execute_sql_file(db_path, sql_path)
-    df = pd.DataFrame(data, columns=columns)
     return df
 
 
@@ -79,7 +62,7 @@ def update_db_from_csv(fpath: Path) -> None:
     df_csv = df[["TranID", "Description", "Category"]]
     df_csv = df_csv.rename(columns={"Category": "Category_csv"})
 
-    df_db = transactions_from_db()
+    df_db = transactions()
     df_db = df_db.rename(columns={"Category": "Category_db"})
 
     df_merge = df_db[["TranID", "Description", "Category_db"]].merge(
@@ -113,7 +96,7 @@ def train_classifier() -> None:
     and uses it to train the ML model.
     """
     # Pull all category verified transactions
-    df = transactions_from_db(where="Verified=1")
+    df = transactions(where="Verified=1")
     if len(df) == 0:
         raise ValueError(
             "No verified transactions available to train classifier model."
@@ -141,7 +124,7 @@ def categorize_new_transactions() -> None:
     Category='Uncategorized' or blank.
     """
     # Pull all uncategorized transactions
-    df = transactions_from_db(where="Category='Uncategorized' OR Category=''")
+    df = transactions(where="Category='Uncategorized' OR Category=''")
     if len(df) == 0:
         print("No new transactions to categorize!")
         return

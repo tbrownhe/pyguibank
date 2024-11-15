@@ -5,37 +5,8 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from matplotlib.ticker import MultipleLocator
 
-from .db import execute_sql_file, execute_sql_query
+from . import query
 from .utils import read_config
-
-
-def asset_types(db_path: Path) -> dict[str, str]:
-    """
-    Returns Asset Type of Accounts table as df
-    """
-    query = (
-        "SELECT NickName, AssetType"
-        " FROM Accounts"
-        " JOIN AccountTypes ON Accounts.AccountTypeID = AccountTypes.AccountTypeID"
-    )
-    data, _ = execute_sql_query(db_path, query)
-    asset_dict = {}
-    for row in data:
-        asset_dict[row[0]] = row[1]
-    return asset_dict
-
-
-def get_transactions(db_path: Path) -> pd.DataFrame:
-    """
-    Returns all transactions as pd.DataFrame
-    """
-    sql_path = Path("") / "src" / "sql" / "transactions_all.sql"
-    data, columns = execute_sql_file(db_path, sql_path)
-    df = pd.DataFrame(data, columns=columns)
-    df["Date"] = pd.to_datetime(df["Date"])
-    df["Month"] = df["Date"].dt.strftime("%Y-%m")
-    return df
-
 
 r"""
 def auto_depreciation(df_auto: pd.DataFrame) -> pd.DataFrame:
@@ -55,16 +26,16 @@ def auto_depreciation(df_auto: pd.DataFrame) -> pd.DataFrame:
 """
 
 
-def plot_balances() -> None:
+def balances(db_path: Path) -> None:
     """
     Gets all transactions, makes a pivot table, then plots the result
     to display balance over time.
     """
-    config = read_config(Path("") / "config.ini")
-    db_path = Path(config.get("DATABASE", "db_path")).resolve()
 
     # Get all the transactions
-    df = get_transactions(db_path)
+    data, columns = query.transactions(db_path)
+    df = pd.DataFrame(data, columns=columns)
+    df["Date"] = pd.to_datetime(df["Date"])
 
     # Make a pivot table containing the EOD (last) balance for each day
     df_pivot = df.pivot_table(
@@ -81,7 +52,7 @@ def plot_balances() -> None:
     # Determine which columns in the pivot table are assets and debts
     asset_cols = []
     debt_cols = []
-    asset_dict = asset_types(db_path)
+    asset_dict = query.asset_types(db_path)
     for nick_name in df_pivot.columns.values:
         match asset_dict[nick_name]:
             case "Asset":
@@ -126,16 +97,20 @@ def plot_balances() -> None:
     plt.show()
 
 
-def plot_categories() -> None:
+def categories(db_path: Path) -> None:
     """
     Gets all transactions, makes a pivot table, then plots the result
     to display categozied expenses over time.
     """
     # Get all the transactions
-    df = get_transactions()
+    data, columns = query.transactions(
+        db_path, where="WHERE Date >= DATE('now', '-4 year')"
+    )
+    df = pd.DataFrame(data, columns=columns)
 
-    # Filter Dates
-    df = df[df["Month"] >= "2020-01"]
+    # Create month column for pivot tables
+    df["Date"] = pd.to_datetime(df["Date"])
+    df["Month"] = df["Date"].dt.to_period("M").astype(str)
 
     # Make pivot tables
     df_pivot_detail = df.pivot_table(
@@ -170,5 +145,7 @@ def plot_categories() -> None:
 
 if __name__ == "__main__":
     # Plot account balances over time
-    plot_balances()
-    plot_categories()
+    config = read_config(Path("") / "config.ini")
+    db_path = Path(config.get("DATABASE", "db_path")).resolve()
+    balances(db_path)
+    categories(db_path)

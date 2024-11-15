@@ -2,14 +2,21 @@ import sys
 from pathlib import Path
 
 from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import (
+    QApplication,
+    QDialog,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
+from core import plots, reports
 from core.categorize import categorize_new_transactions, train_classifier
 from core.db import create_new_db
 from core.missing import missing
-from core.plots import plot_balances, plot_categories
-from core.reports import make_reports
-from core.statements import import_all
+from core.statements import AddAccount, import_all
 from core.utils import open_file_in_os, read_config
 
 
@@ -36,36 +43,39 @@ class PyGuiBank(QMainWindow):
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
 
-        # Create top level menu bar
+        # Create menu bar
         menubar = self.menuBar()
 
-        # Create File menu
+        # File Menu
         file_menu = menubar.addMenu("File")
-        file_menu.addAction("Open", self.open_db)
+        file_menu.addAction("Open Database", self.open_db)
 
-        # Create buttons in the main window
-        self.open_db_button = QPushButton("Open Database", self)
-        self.open_db_button.clicked.connect(self.open_db)
-        layout.addWidget(self.open_db_button)
+        # Accounts Menu
+        accounts_menu = menubar.addMenu("Accounts")
+        accounts_menu.addAction("Show Accounts", self.show_accounts)
 
-        self.statement_matrix_button = QPushButton("Show Statement Matrix", self)
-        self.statement_matrix_button.clicked.connect(missing)
-        layout.addWidget(self.statement_matrix_button)
+        # Help Menu
+        help_menu = menubar.addMenu("Help")
+        help_menu.addAction("About", self.about)
 
         self.import_statements_button = QPushButton("Import New Statements", self)
         self.import_statements_button.clicked.connect(import_all)
         layout.addWidget(self.import_statements_button)
 
+        self.statement_matrix_button = QPushButton("Show Statement Matrix", self)
+        self.statement_matrix_button.clicked.connect(missing)
+        layout.addWidget(self.statement_matrix_button)
+
         self.plot_balances_button = QPushButton("Plot Balances", self)
-        self.plot_balances_button.clicked.connect(plot_balances)
+        self.plot_balances_button.clicked.connect(self.plot_balances)
         layout.addWidget(self.plot_balances_button)
 
         self.plot_categories_button = QPushButton("Plot Categories", self)
-        self.plot_categories_button.clicked.connect(plot_categories)
+        self.plot_categories_button.clicked.connect(self.plot_categories)
         layout.addWidget(self.plot_categories_button)
 
         self.make_reports_button = QPushButton("Make Reports", self)
-        self.make_reports_button.clicked.connect(make_reports)
+        self.make_reports_button.clicked.connect(self.make_reports)
         layout.addWidget(self.make_reports_button)
 
         self.button_categorize = QPushButton("Categorize New Transactions", self)
@@ -76,10 +86,34 @@ class PyGuiBank(QMainWindow):
         layout.addWidget(self.button_train)
         self.button_train.clicked.connect(train_classifier)
 
+        self.config = read_config(Path("") / "config.ini")
+        self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
+
     def open_db(self):
-        config = read_config(Path("") / "config.ini")
-        db_path = Path(config.get("DATABASE", "db_path")).resolve()
-        open_file_in_os(db_path)
+        open_file_in_os(self.db_path)
+
+    def about(self):
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.setText(f"Copyright Tobias Brown-Heft, 2024")
+        msg_box.setWindowTitle("About")
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec_()
+
+    def show_accounts(self):
+        dialog = AddAccount(self.db_path)
+        if dialog.exec_() == QDialog.Accepted:
+            print("New account was added")
+
+    def plot_balances(self):
+        plots.balances(self.db_path)
+
+    def plot_categories(self):
+        plots.categories(self.db_path)
+
+    def make_reports(self):
+        report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
+        reports.make_reports(self.db_path, report_dir)
 
 
 if __name__ == "__main__":

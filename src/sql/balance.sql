@@ -1,20 +1,8 @@
+--SQLite
 SELECT
-	b.NickName,
-	a.Date,
-	a.Balance
-FROM (
-	SELECT
-		TranID,
-		AccountID,
-		Date,
-		Balance
-	FROM Transactions
-	) as a
-	INNER JOIN (
-		SELECT
-			AccountID,
-			NickName
-		FROM Accounts
-		) as b
-		ON a.AccountID = b.AccountID
-ORDER BY a.Date ASC, a.TranID ASC
+	Accounts.NickName,
+	Transactions.Date,
+	Transactions.Balance
+FROM Transactions
+JOIN Accounts ON Transactions.AccountID = Accounts.AccountID
+ORDER BY Transactions.Date ASC, Transactions.TransactionID ASC

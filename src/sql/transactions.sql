@@ -11,5 +11,5 @@ SELECT
 FROM Transactions
 JOIN Accounts ON Transactions.AccountID = Accounts.AccountID
 JOIN AccountTypes ON Accounts.AccountTypeID = AccountTypes.AccountTypeID
-WHERE $$WH$$
+{where}
 ORDER BY Transactions.Date ASC, Transactions.TransactionID ASC

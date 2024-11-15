@@ -76,12 +76,11 @@ def update_accounts_table(
 class AddAccount(QDialog):
     def __init__(self, db_path: Path, company="", description="", account_type=""):
         super().__init__()
-        self.setWindowTitle("Add New Account")
+        self.setWindowTitle("Accounts")
 
         screen_height = QApplication.primaryScreen().availableGeometry().height()
-        max_height = int(screen_height * 0.8)
-        self.setMinimumHeight(400)
-        self.setMaximumHeight(max_height)
+        self.setMinimumHeight(int(screen_height * 0.6))
+        self.setMaximumHeight(int(screen_height))
         self.setContentsMargins(10, 10, 10, 10)
 
         self.db_path = db_path
@@ -101,7 +100,7 @@ class AddAccount(QDialog):
         update_accounts_table(self, self.accounts_table)
 
         # Descriptive text
-        desc2_text = "Please fill out the following information for the new account:"
+        desc2_text = "To add an account, please fill out the following information:"
         desc2_label = QLabel(desc2_text)
         layout.addWidget(desc2_label)
 
@@ -135,20 +134,30 @@ class AddAccount(QDialog):
         self.account_type_combo.setToolTip("Choose the account type from the list")
 
         # Create form layout
-        form_layout.addRow("Nickname:", self.nickname_edit)
         form_layout.addRow("Company:", self.company_edit)
         form_layout.addRow("Description:", self.description_edit)
         form_layout.addRow("Account Type:", self.account_type_combo)
+        form_layout.addRow("Nickname:", self.nickname_edit)
 
         layout.addLayout(form_layout)
 
         # Submit button with validation
-        self.submit_button = QPushButton("Submit")
-        self.submit_button.clicked.connect(self.submit)
-        layout.addWidget(self.submit_button)
+        cancel_button = QPushButton("Cancel")
+        cancel_button.clicked.connect(self.cancel)
+
+        submit_button = QPushButton("Submit")
+        submit_button.clicked.connect(self.submit)
+
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(cancel_button)
+        button_layout.addWidget(submit_button)
+        layout.addLayout(button_layout)
 
         # Set the layout in the QDialog
         self.setLayout(layout)
+
+    def cancel(self):
+        self.reject()
 
     def submit(self):
         # Ensure required fields are filled
