@@ -1,8 +1,7 @@
-# -*- coding: utf-8 -*-
 import re
 from datetime import datetime
 
-from parsers.utils import (
+from ..core.utils import (
     convert_amount_to_float,
     find_param_in_line,
     find_regex_in_line,
@@ -69,7 +68,7 @@ def get_transaction_pages(lines: list[str]) -> list[list[str]]:
     """
     re_transaction = re.compile(r"^\s\s+\d{1,2}/\d{1,2}\s\s+")
     # re_columns = re.compile(r"^\s\s+Date\s+.*Description", re.IGNORECASE)
-    columns = ["Date", "Description", "Additions", "Subtractions", "balance"]
+    columns = ["Date", "Description", "Credits", "Debits", "balance"]
     transaction_pages = []
     transaction_lines = []
 
@@ -116,9 +115,9 @@ def column_slices(header: str) -> dict[str, slice]:
         "Date": {"just": "L", "buffer_left": -2, "buffer_right": 2},
         "Number": {"just": "L", "buffer_left": -1, "buffer_right": 2},
         "Description": {"just": "L", "buffer_left": 0, "buffer_right": 0},
-        "Additions": {"just": "L", "buffer_left": -1, "buffer_right": 0},
-        "Subtractions": {"just": "R", "buffer_left": 0, "buffer_right": 1},
-        "balance": {"just": "R", "buffer_left": 0, "buffer_right": 1},
+        "Credits": {"just": "L", "buffer_left": -4, "buffer_right": 1},
+        "Debits": {"just": "L", "buffer_left": -2, "buffer_right": 2},
+        "balance": {"just": "L", "buffer_left": -2, "buffer_right": 2},
     }
 
     # Deal with sometimes-vanishing check number column
@@ -170,7 +169,7 @@ def parse_transaction_page(page: list[str], date_range: list[datetime]) -> list[
     transactions = []
     for line in lines:
         # Get the transaction date
-        date_str = line[slices["Date"]][:8].strip()
+        date_str = line[slices["Date"]].strip()
         date = get_absolute_date(date_str, date_range)
         date = date.strftime(r"%Y-%m-%d")
 
@@ -178,18 +177,21 @@ def parse_transaction_page(page: list[str], date_range: list[datetime]) -> list[
         description = line[slices["Description"]]
         description = " ".join(description.split())
         description = re.sub(
+            r"Recurring Payment authorized on \d{1,2}/\d{1,2} ", "", description
+        )
+        description = re.sub(
             r"Purchase authorized on \d{1,2}/\d{1,2} ", "", description
         )
 
         # Get the addition
-        addn_str = line[slices["Additions"]].strip()
+        addn_str = line[slices["Credits"]].strip()
         addn = 0.0 if addn_str == "" else convert_amount_to_float(addn_str)
 
         # Get the subtraction
-        subt_str = line[slices["Subtractions"]].strip()
+        subt_str = line[slices["Debits"]].strip()
         subt = 0.0 if subt_str == "" else convert_amount_to_float(subt_str)
 
-        # Combine additiona dn subtraction
+        # Combine additions and subtraction
         amount = round(addn - subt, 2)
 
         # Get the EOD balance, if present on this line

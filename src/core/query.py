@@ -17,6 +17,14 @@ def statement_id(db_path: Path, md5hash: str) -> int:
         raise KeyError(f"{md5hash} is not unique in Statements.MD5.")
 
 
+def statement_types(db_path: Path, extension=""):
+    # Get the list of accounts and search strings from the db.
+    query = "SELECT StatementTypeID, SearchString, Parser FROM StatementTypes"
+    if extension:
+        query += f" WHERE Extension = '{extension}'"
+    return execute_sql_query(db_path, query)
+
+
 def account_id(db_path: Path, account_num: str) -> int:
     """
     Retrieves an AccountID based on an account_num string found in a statement.

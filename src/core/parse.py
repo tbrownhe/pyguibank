@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import csv
 from datetime import datetime
 from pathlib import Path
@@ -6,85 +5,27 @@ from pathlib import Path
 import openpyxl
 import pdftotext
 
-from core.db import execute_sql_query, get_sqltable
-from parsers import (
-    amazonbus,
-    amazonper,
-    citi,
-    fedloan,
-    fidelity401k,
-    fidelityhsa,
-    hehsa,
-    occuauto,
-    occubank,
-    occucc,
-    transamerica,
-    usbank,
-    vanguard,
-    wfbus,
-    wfper,
-    wfploan,
-)
+from . import parsepdf, parsecsv, parsexlsx
+from .query import statement_types
 
 
-def get_account(text: str) -> tuple[str, str]:
-    raise ValueError("IS THIS FUNCTION USED?")
-    """
-    Determine what kind of account this statement is
-    """
-    # Get the list of accounts and search strings from the db.
-    db_path = Path("pyguibank.db")
-    data, columns = get_sqltable(db_path, "AccountNumbers")
-
-    # Search the text block for each search string
-    account_id = None
-    col = columns.index("SearchString")
-    for row in data:
-        search_str = row[col]
-        if search_str in text:
-            # If the string was found, retrieve the AccountID
-            account_id = row[columns.index("AccountID")]
-            break
-
-    # If the AccountID was not found, raise an error
-    if account_id is None:
-        raise ValueError("Statement not recognized. Update tables and scripts.")
-
-    # Get the name of the account and parser for this text.
-    data, columns = execute_sql_query(
-        db_path, "SELECT Account, Parser FROM Accounts WHERE AccountID=%s" % account_id
-    )
-    account, parser = data[0]
-
-    return account, parser
-
-
-def select_parser(db_path: Path, text: str, extension=None) -> tuple[int, str]:
+def select_parser(db_path: Path, text: str, extension="") -> tuple[int, str]:
     """
     Determine what kind of statement this is so the correct parser can be used.
     """
-    # Get the list of accounts and search strings from the db.
-    query = "SELECT StatementTypeID, SearchString, Parser FROM StatementTypes"
-    if extension:
-        query += " WHERE Extension='%s'" % extension
-    parser_data, _ = execute_sql_query(db_path, query)
+    data, _ = statement_types(db_path, extension=extension)
 
     # Search the text block for each search string
     parser = None
     STID = None
     text_lower = text.lower()
-    for row in parser_data:
-        search_pattern = row[1].lower()
-        search_strs = search_pattern.split("&&")
+    for STID, pattern, parser in data:
+        search_strs = pattern.lower().split("&&")
         matching = all([search_str in text_lower for search_str in search_strs])
         if matching:
-            # If the string was found, retrieve the Parser name
-            STID = row[0]
-            parser = row[2]
             break
 
-    # If the AccountID was not found, raise an error
-    if STID is None or parser is None:
+    if not matching:
         raise ValueError("Statement type not recognized. Update tables and scripts.")
 
     return STID, parser
@@ -120,31 +61,31 @@ def parse_pdf(
     # Parse lines into transactions for each account type
     match parser:
         case "occubank":
-            date_range, data = occubank.parse(lines)
+            date_range, data = parsepdf.occubank.parse(lines)
         case "citi":
-            date_range, data = citi.parse(lines)
+            date_range, data = parsepdf.citi.parse(lines)
         case "usbank":
-            date_range, data = usbank.parse(lines)
+            date_range, data = parsepdf.usbank.parse(lines)
         case "occucc":
-            date_range, data = occucc.parse(lines)
+            date_range, data = parsepdf.occucc.parse(lines)
         case "wfper":
-            date_range, data = wfper.parse(lines_raw, lines)
+            date_range, data = parsepdf.wfper.parse(lines_raw, lines)
         case "wfbus":
-            date_range, data = wfbus.parse(lines_raw, lines)
+            date_range, data = parsepdf.wfbus.parse(lines_raw, lines)
         case "wfploan":
-            date_range, data = wfploan.parse(lines)
+            date_range, data = parsepdf.wfploan.parse(lines)
         case "fidelity401k":
-            date_range, data = fidelity401k.parse(lines)
+            date_range, data = parsepdf.fidelity401k.parse(lines)
         case "fidelityhsa":
-            date_range, data = fidelityhsa.parse(lines)
+            date_range, data = parsepdf.fidelityhsa.parse(lines)
         case "hehsa":
-            date_range, data = hehsa.parse(lines)
+            date_range, data = parsepdf.hehsa.parse(lines)
         case "transamerica":
-            date_range, data = transamerica.parse(lines)
+            date_range, data = parsepdf.transamerica.parse(lines)
         case "vanguard":
-            date_range, data = vanguard.parse(lines)
+            date_range, data = parsepdf.vanguard.parse(lines)
         case _:
-            raise ValueError("Support for %s must be added to parse.py" % parser)
+            raise ValueError(f"Parser name {parser} must be added to parse.py")
 
     return STID, date_range, data
 
@@ -172,15 +113,13 @@ def parse_csv(
     # Parse lines into transactions for each account type
     match parser:
         case "occuauto":
-            date_range, data = occuauto.parse(array)
+            date_range, data = parsecsv.occuauto.parse(array)
         case "amazonper":
-            date_range, data = amazonper.parse(array)
+            date_range, data = parsecsv.amazonper.parse(array)
         case "amazonbus":
-            date_range, data = amazonbus.parse(array)
+            date_range, data = parsecsv.amazonbus.parse(array)
         case _:
-            raise ValueError(
-                ValueError("Support for %s must be added to parse.py" % parser)
-            )
+            raise ValueError(f"Parser name {parser} must be added to parse.py")
 
     return STID, date_range, data
 
@@ -223,11 +162,9 @@ def parse_xlsx(
     STID, parser = select_parser(db_path, text, extension=".xlsx")
     match parser:
         case "fedloan":
-            date_range, data = fedloan.parse(sheets)
+            date_range, data = parsexlsx.fedloan.parse(sheets)
         case _:
-            raise ValueError(
-                ValueError("Support for %s must be added to parse.py" % parser)
-            )
+            raise ValueError(f"Parser name {parser} must be added to parse.py")
 
     return STID, date_range, data
 

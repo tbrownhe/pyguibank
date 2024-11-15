@@ -1,8 +1,7 @@
-# -*- coding: utf-8 -*-
 import re
 from datetime import datetime
 
-from parsers.utils import (
+from ..core.utils import (
     convert_amount_to_float,
     find_line_startswith,
     find_param_in_line,

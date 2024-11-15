@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 from datetime import datetime
 from pathlib import Path
 from typing import Union
 
-from core.db import execute_sql_query
-from parsers.utils import convert_amount_to_float
+from ..core.db import execute_sql_query
+from ..core.utils import convert_amount_to_float
 
 
 def get_card_id(payment_instrument: str) -> Union[int, None]:

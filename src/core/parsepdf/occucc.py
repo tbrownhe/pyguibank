@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from parsers.utils import (
+from ..core.utils import (
     convert_amount_to_float,
     find_line_startswith,
-    find_param_in_line,
     get_absolute_date,
 )
 
@@ -13,46 +11,51 @@ from parsers.utils import (
 def get_account_number(lines: list[str]) -> str:
     """
     Retrieve the account  number from the statement
-
-    The line looks like this:
-    Open Date: 12/24/2014 Closing Date: 01/23/2015 Account: nnnn nnnn nnnn nnnn
+    Account Number XXXX XXXX XXXX 3479 Page 1 of 4
     """
-    search_str = "Account: "
-    _, line = find_param_in_line(lines, search_str)
+    search_str = "Account Number "
+    _, line = find_line_startswith(lines, search_str)
     rline = line.split(search_str)[-1]
-    account = "".join(rline.split())
+    account = "".join(rline.split()[:4])
     return account
 
 
 def get_statement_dates(lines: list[str]) -> list[datetime]:
     """
     Parse the lines into datetime and return variable date_range
-    dateline looks like:
-    Open Date: 12/24/2014    Closing Date: 01/23/2015
+    Statement Closing Date 03/16/20 Late Payment Warning:
+    Days in Billing Cycle 29 If we do not receive your minimum payment by the dat...
     """
-    date_format = r"%m/%d/%Y"
-    open_str = r"Open Date: "
-    close_str = r"Closing Date: "
+    # Declare the search pattern and dateformat
+    date_format = r"%m/%d/%y"
+    close_str = "Statement Closing Date "
+    ndays_str = "Days in Billing Cycle "
+    _, close_line = find_line_startswith(lines, close_str)
+    _, ndays_line = find_line_startswith(lines, ndays_str)
 
-    _, date_line = find_line_startswith(lines, open_str)
-    parts = date_line.split(open_str)
-    start_date_str = parts[1].split()[0]
-    parts = date_line.split(close_str)
-    end_date_str = parts[1].split()[0]
+    close_line_r = close_line.split(close_str)[-1]
+    ndays_line_r = ndays_line.split(ndays_str)[-1]
+    end_date_str = close_line_r.split()[0]
+    ndays_str = ndays_line_r.split()[0]
+    ndays = int(ndays_str)
 
-    start_date = datetime.strptime(start_date_str, date_format)
     end_date = datetime.strptime(end_date_str, date_format)
+    start_date = end_date - timedelta(days=ndays - 1)
+
     date_range = [start_date, end_date]
+
     return date_range
 
 
 def get_starting_balance(lines: list[str]) -> float:
     """
     Get the starting balance, which looks like:
-    Minimum Payment Due $103.00 Previous Balance + $3,123.84
+    Previous Balance 1,014.71
     """
-    _, balance_line = find_param_in_line(lines, "Previous Balance ")
-    balance_str = [word for word in balance_line.split() if "$" in word][-1]
+    search_str = "Previous Balance "
+    _, balance_line = find_line_startswith(lines, search_str)
+    balance_line_r = balance_line.split(search_str)[-1]
+    balance_str = balance_line_r.split()[0]
     balance = -convert_amount_to_float(balance_str)
     return balance
 
@@ -68,57 +71,51 @@ def get_transaction_lines(lines: list[str]) -> list[str]:
         if not re.search(leading_date, line):
             continue
 
-        if "$" in line:
-            # Normal transaction line
-            transaction_lines.append(line)
-            continue
+        transaction_lines.append(line)
 
     return transaction_lines
 
 
 def parse_transactions(
-    date_range: list[datetime], balance: float, transaction_list: list[str]
+    date_range: list[datetime], balance: float, transaction_lines: list[str]
 ) -> list[tuple]:
     """
     Converts the raw transaction text into an organized list of transactions.
     """
     date_format = re.compile(r"\d{2}/\d{2}")
     transactions = []
-    for line in transaction_list:
+    for line in transaction_lines:
         # Split the line into a list of words
         words = line.split()
 
         # The first item is the posted date
-        # The second item should be the transaction date
-        # Remove the dates from the list of words as we go
+        # Second item is the transaction date if present
+        # Remove the dates from words as we go
         if re.search(date_format, words[1]):
-            date = get_absolute_date(words.pop(1), date_range)
+            date_str = words.pop(1)
             words.pop(0)
         else:
-            date = get_absolute_date(words.pop(0), date_range)
+            date_str = words.pop(0)
+        date = get_absolute_date(date_str, date_range)
         date = date.strftime(r"%Y-%m-%d")
 
-        # Delete intermittent transaction reference number
-        if words[0].isdigit() and len(words[0]) == 4:
-            words.pop(0)
-
-        # Amount is always the last word
-        amount = -convert_amount_to_float(words[-1])
+        # The amount is the last item in the list
+        amount_str = words[-1]
+        amount = -convert_amount_to_float(amount_str)
         balance = round(balance + amount, 2)
 
-        # Description is everything in between dates and amount.
-        description = " ".join(words[0:-1])
+        # Everything else is the description
+        description = " ".join(words[:-1])
 
-        # Combine them all into a list of lists called transactions
         transaction = (date, amount, balance, description)
         transactions.append(transaction)
 
     return transactions
 
 
-def parse(lines):
+def parse(lines: list[str]) -> tuple[list[datetime], dict[str, list[tuple]]]:
     """
-    Parse lines of US Bank statement PDF to obtain structured transaction data
+    Parse lines of OCCU Credit Card statement PDF.
     """
     account = get_account_number(lines)
     date_range = get_statement_dates(lines)

@@ -9,15 +9,10 @@ from loguru import logger
 from PyQt5.QtWidgets import QDialog, QMessageBox
 
 from . import query
-from .db import execute_sql_query, insert_into_db
+from .db import insert_into_db
 from .dialog import AssignAccountNumber
 from .parse import parse
 from .utils import read_config
-
-
-def p(val):
-    print(val)
-    exit()
 
 
 def write_to_csv(rows, file_):
