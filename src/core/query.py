@@ -3,6 +3,54 @@ from pathlib import Path
 from .db import execute_sql_query
 
 
+def statement_id(db_path: Path, md5hash: str) -> int:
+    """
+    Retrieves a StatementID based on the md5hash.
+    """
+    query = f"SELECT StatementID FROM Statements WHERE MD5 = '{md5hash}'"
+    data, _ = execute_sql_query(db_path, query)
+    if len(data) == 0:
+        return -1
+    elif len(data) == 1:
+        return data[0][0]
+    else:
+        raise KeyError(f"{md5hash} is not unique in Statements.MD5.")
+
+
+def account_id(db_path: Path, account_num: str) -> int:
+    """
+    Retrieves an AccountID based on an account_num string found in a statement.
+    """
+    query = (
+        f"SELECT AccountID FROM AccountNumbers WHERE AccountNumber = '{account_num}'"
+    )
+    data, _ = execute_sql_query(db_path, query)
+    if len(data) == 0:
+        raise KeyError(f"{account_num} not found in AccountNumbers.AccountNumber")
+    return data[0][0]
+
+
+def account_nickname(db_path: Path, account_id: int) -> str:
+    """
+    Retrieves an Account Nickname based on an account string found in a statement.
+    """
+    query = f"SELECT NickName FROM Accounts WHERE AccountID = {account_id}"
+    data, _ = execute_sql_query(db_path, query)
+    if len(data) == 0:
+        raise ValueError(f"No Account with AccountID = {account_id}")
+    else:
+        return data[0][0]
+
+
+def accounts(db_path: Path) -> tuple[list[tuple], list[str]]:
+    query = (
+        "SELECT AccountID, Company, Description, AccountType, NickName"
+        " FROM Accounts"
+        " JOIN AccountTypes ON Accounts.AccountTypeID = AccountTypes.AccountTypeID"
+    )
+    return execute_sql_query(db_path, query)
+
+
 def transactions(db_path: Path, where="") -> tuple[list[tuple], list[str]]:
     """
     Returns all transactions as pd.DataFrame

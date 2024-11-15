@@ -5,6 +5,7 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
     QApplication,
     QDialog,
+    QFileDialog,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -12,11 +13,11 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from core import plots, reports
+from core import plots, reports, statements
 from core.categorize import categorize_new_transactions, train_classifier
 from core.db import create_new_db
+from core.dialog import AddAccount
 from core.missing import missing
-from core.statements import AddAccount, import_all
 from core.utils import open_file_in_os, read_config
 
 
@@ -59,7 +60,11 @@ class PyGuiBank(QMainWindow):
         help_menu.addAction("About", self.about)
 
         self.import_statements_button = QPushButton("Import New Statements", self)
-        self.import_statements_button.clicked.connect(import_all)
+        self.import_statements_button.clicked.connect(self.import_all_statements)
+        layout.addWidget(self.import_statements_button)
+
+        self.import_statements_button = QPushButton("Import One Statement", self)
+        self.import_statements_button.clicked.connect(self.import_one_statement)
         layout.addWidget(self.import_statements_button)
 
         self.statement_matrix_button = QPushButton("Show Statement Matrix", self)
@@ -95,15 +100,37 @@ class PyGuiBank(QMainWindow):
     def about(self):
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Information)
-        msg_box.setText(f"Copyright Tobias Brown-Heft, 2024")
+        msg_box.setText("Copyright Tobias Brown-Heft, 2024")
         msg_box.setWindowTitle("About")
         msg_box.setStandardButtons(QMessageBox.Ok)
         msg_box.exec_()
 
     def show_accounts(self):
-        dialog = AddAccount(self.db_path)
+        dialog = dialog.AddAccount(self.db_path)
         if dialog.exec_() == QDialog.Accepted:
             print("New account was added")
+
+    def import_all_statements(self):
+        statements.import_all(self.config)
+        import_dir = Path(self.config.get("IMPORT", "import_dir")).resolve()
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.setText(f"Imported all files in {import_dir}")
+        msg_box.setWindowTitle("Import Complete")
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec_()
+
+    def import_one_statement(self):
+        default_folder = self.config.get("IMPORT", "import_dir")
+        options = QFileDialog.Options()
+        options |= QFileDialog.ReadOnly
+        file_filter = "Supported Files (*.csv *.pdf *.xlsx);;All Files (*)"
+        fpath, _ = QFileDialog.getOpenFileName(
+            None, "Select a File", default_folder, file_filter, options=options
+        )
+        if fpath:
+            fpath = Path(fpath).resolve()
+            statements.import_one(self.config, fpath)
 
     def plot_balances(self):
         plots.balances(self.db_path)
