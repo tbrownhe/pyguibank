@@ -1,7 +1,7 @@
 import re
 from datetime import datetime
 
-from ..core.utils import (
+from ..utils import (
     convert_amount_to_float,
     find_param_in_line,
     find_regex_in_line,

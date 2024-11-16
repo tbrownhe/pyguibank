@@ -1,11 +1,7 @@
 import re
 from datetime import datetime, timedelta
 
-from ..core.utils import (
-    convert_amount_to_float,
-    find_line_startswith,
-    get_absolute_date,
-)
+from ..utils import convert_amount_to_float, find_line_startswith, get_absolute_date
 
 
 def get_account_number(lines: list[str]) -> str:

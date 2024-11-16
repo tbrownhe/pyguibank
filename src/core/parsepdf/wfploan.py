@@ -2,11 +2,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Union
 
-from ..core.utils import (
-    convert_amount_to_float,
-    find_line_startswith,
-    find_param_in_line,
-)
+from ..utils import convert_amount_to_float, find_line_startswith, find_param_in_line
 
 
 def get_account_number(lines: list[str]) -> str:
