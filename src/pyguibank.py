@@ -128,9 +128,22 @@ class PyGuiBank(QMainWindow):
         fpath, _ = QFileDialog.getOpenFileName(
             None, "Select a File", default_folder, file_filter, options=options
         )
-        if fpath:
-            fpath = Path(fpath).resolve()
-            statements.import_one(self.config, fpath)
+
+        # Prevent weird things from happening
+        if not fpath:
+            return
+        fpath = Path(fpath).resolve()
+        if fpath.parents[0] == Path(self.config.get("IMPORT", "success_dir")).resolve():
+            msg_box = QMessageBox()
+            msg_box.setIcon(QMessageBox.Warning)
+            msg_box.setText(f"Cannot import statements from the SUCCESS folder")
+            msg_box.setWindowTitle("Protected Folder")
+            msg_box.setStandardButtons(QMessageBox.Ok)
+            msg_box.exec_()
+            return
+
+        # Import statement
+        statements.import_one(self.config, fpath)
 
     def plot_balances(self):
         plot.balances(self.db_path)
