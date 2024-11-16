@@ -116,6 +116,7 @@ VALUES
 	('Wells Fargo', '6', 'Personal', '.pdf', 'wells fargo&&personal loan statement', 'wfploan'),
 	('Citibank', '3', '', '.pdf', 'www.citicards.com', 'citi'),
 	('US Bank', '3', '', '.pdf', 'u.s. bank&&reivisa.com', 'usbank'),
+	('US Bank', '3', '', '.pdf', 'u.s. bank&&reimastercard.com', 'usbank'),
 	('Fidelity', '4', 'Intel', '.pdf', 'intel 401(k)&&fidelity', 'fidelity401k'),
 	('Fidelity', '5', '', '.pdf', 'fidelity health savings account', 'fidelityhsa'),
 	('Health Equity', '5', '', '.pdf', 'healthequity&&health savings account', 'hehsa'),
