@@ -10,7 +10,9 @@ def get_missing_coverage(db_path: Path):
     """
     Returns a DataFrame showing coverage for the first of the month for each account.
     """
-    data, columns = statements(db_path)
+    data, columns = statements(
+        db_path, where="WHERE StartDate >= DATE('now', '-15 Months')"
+    )
     df = pd.DataFrame(data, columns=columns)
     df["StartDate"] = pd.to_datetime(df["StartDate"])
     df["EndDate"] = pd.to_datetime(df["EndDate"])

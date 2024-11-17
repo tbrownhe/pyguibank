@@ -503,6 +503,8 @@ class PandasModel(QAbstractTableModel):
                 return QColor(140, 225, 140)  # Light green
             elif value == "False":
                 return QColor(225, 160, 160)  # Light red
+        elif role == Qt.TextAlignmentRole:
+            return Qt.AlignCenter  # Center-align the text
         return None
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
@@ -518,10 +520,9 @@ class CompletenessDialog(QDialog):
     def __init__(self, db_path, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Statement Completeness Grid")
-        self.resize(800, 600)
 
         # Main layout
-        layout = QVBoxLayout(self)
+        layout = QVBoxLayout()
 
         # Fetch DataFrame from the function
         self.df = get_missing_coverage(db_path).astype(str)
@@ -530,10 +531,14 @@ class CompletenessDialog(QDialog):
         self.table_model = PandasModel(self.df)
         self.table_view = QTableView()
         self.table_view.setModel(self.table_model)
-        self.table_view.horizontalHeader().setStretchLastSection(True)
+
+        # Ensure columns resize to fit contents
         self.table_view.resizeColumnsToContents()
 
-        # Add table view to layout
+        # Calculate the total width required for the table
+        self.adjust_table_size()
+
+        # Add the table view to the layout
         layout.addWidget(self.table_view)
 
         # Add a Close button
@@ -542,3 +547,51 @@ class CompletenessDialog(QDialog):
         layout.addWidget(close_button)
 
         self.setLayout(layout)
+
+    def adjust_table_size(self):
+        """
+        Adjust the size of the dialog and fix the table width based on its contents.
+        """
+        # Calculate the total width of the table
+        total_column_width = sum(
+            self.table_view.columnWidth(col)
+            for col in range(self.table_model.columnCount())
+        )
+        vertical_scrollbar_width = (
+            self.table_view.verticalScrollBar().sizeHint().width()
+        )
+        table_width = total_column_width + vertical_scrollbar_width + 100
+
+        # Calculate the total height of the table
+        total_row_height = sum(
+            self.table_view.rowHeight(row) for row in range(self.table_model.rowCount())
+        )
+        horizontal_header_height = self.table_view.horizontalHeader().height()
+        horizontal_scrollbar_height = (
+            self.table_view.horizontalScrollBar().sizeHint().height()
+        )
+        table_height = (
+            total_row_height
+            + horizontal_header_height
+            + horizontal_scrollbar_height
+            + 50
+        )
+
+        # Get the available screen size
+        screen = QApplication.primaryScreen().availableGeometry()
+        max_width = int(screen.width() * 0.9)  # 90% of screen width
+        max_height = int(screen.height() * 0.9)  # 90% of screen height
+
+        # Constrain the dialog size to the screen size
+        final_width = min(table_width, max_width)
+        final_height = min(table_height, max_height)
+
+        # Fix the table's width
+        self.table_view.setMaximumWidth(final_width)
+        self.table_view.setMinimumWidth(final_width)
+
+        # Fix the layout width (optional)
+        self.setFixedWidth(final_width)
+
+        # Resize the dialog
+        self.resize(final_width, final_height)
