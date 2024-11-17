@@ -1,4 +1,3 @@
-import csv
 import hashlib
 import shutil
 from configparser import ConfigParser
@@ -12,46 +11,12 @@ from . import query
 from .db import insert_into_db
 from .dialog import AssignAccountNumber
 from .parse import parse
-from .utils import read_config
-
-
-def write_to_csv(rows, file_):
-    with open(file_, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerows(rows)
-
-
-def hash_file_contents(fpath: Path) -> str:
-    """
-    Hashes the contents of a file.
-    """
-    with fpath.open("rb") as f:
-        contents = f.read()
-    md5hash = hashlib.md5(contents).hexdigest()
-    return md5hash
-
-
-def standardize_fname(fpath: Path, parser: str, date_range) -> str:
-    """
-    Creates consistent fname
-    """
-    fname_date = r"%Y%m%d"
-    new_fname = (
-        "_".join(
-            [
-                parser,
-                date_range[0].strftime(fname_date),
-                date_range[1].strftime(fname_date),
-            ]
-        )
-        + fpath.suffix.lower()
-    )
-    return new_fname
+from .utils import hash_file, hash_transactions, read_config, standardize_fname
 
 
 def statement_already_imported(db_path: Path, fpath: Path) -> bool:
     # Check if the file has already been saved to the db
-    md5hash = hash_file_contents(fpath)
+    md5hash = hash_file(fpath)
     imported = query.statement_id(db_path, md5hash) != -1
     return imported
 
@@ -68,8 +33,7 @@ def insert_statement_metadata(
     Updates db with information about this statement file.
     """
     # Assemble the metadata
-    md5hash = hash_file_contents(fpath)
-    db_date = r"%Y-%m-%d"
+    md5hash = hash_file(fpath)
     columns = [
         "StatementTypeID",
         "AccountID",
@@ -79,9 +43,9 @@ def insert_statement_metadata(
         "Filename",
         "MD5",
     ]
-    start_date = date_range[0].strftime(db_date)
-    end_date = date_range[1].strftime(db_date)
-    import_date = datetime.now().strftime(db_date)
+    start_date = date_range[0].strftime(r"%Y-%m-%d")
+    end_date = date_range[1].strftime(r"%Y-%m-%d")
+    import_date = datetime.now().strftime(r"%Y-%m-%d")
     new_fname = standardize_fname(fpath, nick_name, date_range)
     metadata = (
         STID,
@@ -126,8 +90,7 @@ def get_account_info(
     for account_num in account_nums:
         try:
             account_id = query.account_id(db_path, account_num)
-        except KeyError as err:
-            print(err)
+        except KeyError:
             account_id = prompt_account_num(db_path, fpath, STID, account_num)
         account_ids[account_num] = account_id
     nick_name = query.account_nickname(db_path, account_ids[account_nums[0]])
@@ -151,41 +114,19 @@ def move_to_archive(fpath: Path, archive_dir: Path, dname: str) -> None:
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Warning)
             msg_box.setText(
-                f"The statement {fpath.name} could not be moved to archive. "
-                "If it's open in another program, please close it and click OK"
+                f"The statement {fpath.name} could not be moved to archive."
+                " If it's open in another program, please close it and click OK"
             )
-            msg_box.setWindowTitle("Unable to move to archive")
+            msg_box.setWindowTitle("Unable to move file to archive")
             msg_box.setStandardButtons(QMessageBox.Ok)
             msg_box.exec_()
-
-
-def hash_transactions(transactions: list[tuple]) -> list[tuple]:
-    """
-    Appends the MD5 hash of the transaction contents to the last element of each row.
-    This statement is only called for transactions within one statement.
-    Assume statements do not contain duplicate transactions.
-    If a duplicate md5 is found, modify the description and rehash.
-    Description is always the last item in the row.
-    """
-    md5_list = []
-    hashed_transactions = []
-    for row in transactions:
-        md5 = hashlib.md5(str(row).encode()).hexdigest()
-        while md5 in md5_list:
-            logger.debug("Modifying duplicate item in statement to ensure uniqueness.")
-            description = row[-1] + " D"
-            row = row[:-1] + (description,)
-            md5 = hashlib.md5(str(row).encode()).hexdigest()
-        md5_list.append(md5)
-        hashed_transactions.append(row + (md5,))
-    return hashed_transactions
 
 
 def insert_into_shopping(db_path: Path, transactions: list[tuple]) -> None:
     """
     Insert the transactions into the shopping db table
     """
-    # Add the AccountID and StatementID to the transaction list
+    # Insert rows into database
     columns = [
         "StatementID",
         "AccountID",
@@ -196,8 +137,6 @@ def insert_into_shopping(db_path: Path, transactions: list[tuple]) -> None:
         "Description",
         "MD5",
     ]
-
-    # Insert rows into database
     insert_into_db(db_path, "Shopping", columns, transactions, skip_duplicates=True)
 
 
@@ -205,7 +144,7 @@ def insert_into_transactions(db_path: Path, transactions: list[tuple]) -> None:
     """
     Insert the transactions into the transactions db table
     """
-    # Add the AccountID and StatementID to the transaction list
+    # Insert rows into database
     columns = [
         "StatementID",
         "AccountID",
@@ -215,8 +154,6 @@ def insert_into_transactions(db_path: Path, transactions: list[tuple]) -> None:
         "Description",
         "MD5",
     ]
-
-    # Insert rows into database
     insert_into_db(db_path, "Transactions", columns, transactions, skip_duplicates=True)
 
 
@@ -257,7 +194,7 @@ def import_one(config: ConfigParser, fpath: Path):
         transactions = [(account_id,) + row for row in transactions]
 
         # Hash each transaction
-        transactions = hash_transactions(transactions)
+        transactions = hash_transactions(account_id, transactions)
 
         # Prepend the StatementID to each transaction row
         transactions = [(statement_id,) + row for row in transactions]

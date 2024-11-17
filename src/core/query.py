@@ -95,3 +95,13 @@ def asset_types(db_path: Path) -> dict[str, str]:
     for row in data:
         asset_dict[row[0]] = row[1]
     return asset_dict
+
+
+def latest_balance(db_path: Path, account_id: int) -> dict[str, str]:
+    query = (
+        "SELECT Date, Balance FROM Transactions"
+        f" WHERE AccountID = {account_id}"
+        " ORDER BY Date DESC, TransactionID DESC"
+        " LIMIT 1"
+    )
+    return execute_sql_query(db_path, query)

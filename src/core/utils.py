@@ -1,9 +1,12 @@
 import configparser
+import hashlib
 import os
 import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
+
+from loguru import logger
 
 
 def read_config(config_path: Path):
@@ -147,3 +150,55 @@ def convert_amount_to_float(amount_str: str) -> float:
         amount = -amount
 
     return amount
+
+
+def hash_transactions(transactions: list[tuple]) -> list[tuple]:
+    """
+    Appends the MD5 hash of the transaction contents to the last element of each row.
+    This statement is only called for transactions within one statement.
+    Assume statements do not contain duplicate transactions.
+    If a duplicate md5 is found, modify the description and rehash.
+    Description is always the last item in the row.
+
+    transactions = (account_id, date, amount, balance, description)
+    """
+    md5_list = []
+    hashed_transactions = []
+    for row in transactions:
+        md5 = hashlib.md5(str(row).encode()).hexdigest()
+        while md5 in md5_list:
+            logger.debug("Modifying description to ensure unique hash.")
+            description = row[-1] + " "
+            row = row[:-1] + (description,)
+            md5 = hashlib.md5(str(row).encode()).hexdigest()
+        md5_list.append(md5)
+        hashed_transactions.append(row + (md5,))
+    return hashed_transactions
+
+
+def hash_file(fpath: Path) -> str:
+    """
+    Hashes the byte contents of a file to compare to db values
+    and prevent duplicate import.
+    """
+    with fpath.open("rb") as f:
+        contents = f.read()
+    md5hash = hashlib.md5(contents).hexdigest()
+    return md5hash
+
+
+def standardize_fname(fpath: Path, parser: str, date_range) -> str:
+    """
+    Creates consistent fname
+    """
+    new_fname = (
+        "_".join(
+            [
+                parser,
+                date_range[0].strftime(r"%Y%m%d"),
+                date_range[1].strftime(r"%Y%m%d"),
+            ]
+        )
+        + fpath.suffix.lower()
+    )
+    return new_fname

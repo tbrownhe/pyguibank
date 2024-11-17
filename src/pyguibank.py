@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import (
 from core import plot, reports, statements
 from core.categorize import categorize_new_transactions, train_classifier
 from core.db import create_new_db
-from core.dialog import AddAccount
+from core.dialog import AddAccount, InsertTransaction
 from core.missing import missing
 from core.utils import open_file_in_os, read_config
 
@@ -109,6 +109,11 @@ class PyGuiBank(QMainWindow):
         dialog = AddAccount(self.db_path)
         if dialog.exec_() == QDialog.Accepted:
             print("New account was added")
+
+    def insert_transaction(self):
+        dialog = InsertTransaction(self.db_path)
+        if dialog.exec_() == QDialog.Accepted:
+            print("New transaction was added")
 
     def import_all_statements(self):
         statements.import_all(self.config)

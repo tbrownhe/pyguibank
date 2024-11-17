@@ -1,10 +1,11 @@
 from pathlib import Path
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QDate, Qt
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QComboBox,
+    QDateEdit,
     QDialog,
     QFormLayout,
     QHBoxLayout,
@@ -20,7 +21,7 @@ from PyQt5.QtWidgets import (
 )
 
 from . import db, query
-from .utils import open_file_in_os
+from .utils import hash_transactions, open_file_in_os
 
 
 def update_accounts_table(
@@ -310,3 +311,165 @@ class AssignAccountNumber(QDialog):
         Returns the results dictionary with user inputs after the dialog is accepted.
         """
         return self.account_id
+
+
+class InsertTransaction(QDialog):
+    def __init__(self, db_path: Path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Insert Transaction")
+        self.setGeometry(100, 100, 400, 200)
+        self.db_path = db_path
+
+        raise ValueError("test")
+
+        # Main layout
+        layout = QVBoxLayout(self)
+
+        # Form layout for inputs
+        form_layout = QFormLayout()
+
+        # Dropdown to select account
+        self.account_dropdown = QComboBox(self)
+        self.account_dropdown.currentIndexChanged.connect(self.update_balance)
+
+        # Labels for latest balance info
+        self.latest_balance_value = QLineEdit("$0.00")
+        self.latest_balance_value.setReadOnly(True)
+        self.latest_balance_value.setStyleSheet(
+            "color: gray; background-color: #f0f0f0;"
+        )
+
+        self.latest_date_value = QLineEdit("N/A")
+        self.latest_date_value.setReadOnly(True)
+        self.latest_date_value.setStyleSheet("color: gray; background-color: #f0f0f0;")
+
+        # New transaction date selector
+        self.date_selector = QDateEdit(self)
+        self.date_selector.setCalendarPopup(True)
+        self.date_selector.setDate(QDate.currentDate())
+        self.date_selector.setDisplayFormat("yyyy-MM-dd")
+
+        # Amount input
+        self.amount_input = QLineEdit(self)
+        self.amount_input.setPlaceholderText("Enter transaction amount")
+
+        # Description input
+        self.description_input = QLineEdit(self)
+        self.description_input.setPlaceholderText("Enter transaction description")
+
+        # Add inputs to the form layout
+        form_layout.addRow("Account:", self.account_dropdown)
+        form_layout.addRow("Latest Balance:", self.latest_balance_value)
+        form_layout.addRow("As of Date:", self.latest_date_value)
+        form_layout.addRow("Effective Date:", self.date_selector)
+        form_layout.addRow("Amount:", self.amount_input)
+        form_layout.addRow("Description:", self.description_input)
+
+        layout.addLayout(form_layout)
+
+        # Submit button
+        self.submit_button = QPushButton("Submit")
+        self.submit_button.clicked.connect(self.submit)
+        layout.addWidget(self.submit_button)
+
+        # Set the layout
+        self.setLayout(layout)
+
+        # Update the initial values
+        self.load_accounts()
+        self.update_balance()
+
+    def load_accounts(self):
+        """
+        Load account names and IDs from the database and populate the dropdown.
+        """
+        try:
+            data, _ = db.execute_sql_query(
+                self.db_path, "SELECT AccountID, NickName FROM Accounts"
+            )
+            for account_id, nickname in data:
+                self.account_dropdown.addItem(
+                    f"{nickname} (ID: {account_id})", account_id
+                )
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load accounts:\n{str(e)}")
+
+    def update_balance(self):
+        account_id = self.account_dropdown.currentData()
+        if account_id:
+            # Query the database for the most recent balance for this account
+            data, _ = query.latest_balance(self.db_path, account_id)
+            if data:
+                # Set latest balance fields
+                latest_date, latest_balance = data[0]
+                self.latest_balance_value.setText(f"{latest_balance:.2f}")
+                self.latest_date_value.setText(f"{latest_date}")
+            else:
+                # If no transactions found, assume balance is zero
+                self.latest_balance_value.setText("$0.00")
+        else:
+            # Clear balance display if no account is selected
+            self.latest_balance_value.setText("$0.00")
+
+    def validate_input(self):
+        # Get inputs
+        account_id = self.account_dropdown.currentData()
+        date = self.date_selector.date().toString("yyyy-MM-dd")
+        amount = self.amount_input.text()
+        balance = self.latest_balance_value.text()
+        description = self.description_input.text()
+
+        # Validate inputs
+        if not account_id or not amount or not balance or not description:
+            QMessageBox.warning(
+                self, "Missing Information", "Please fill in all fields."
+            )
+            return
+
+        # Ensure the amount is a valid number
+        try:
+            amount = float(amount)
+            balance = float(balance) + amount
+        except ValueError:
+            QMessageBox.warning(
+                self,
+                "Invalid Amount",
+                "Please enter a valid number for the amount.",
+            )
+            return
+
+        # Traceability for manual entry
+        description = "Manual Entry: " + description
+
+        # Create MD5 hash
+        transaction = [(account_id, date, amount, balance, description)]
+        transaction = hash_transactions(transaction)
+
+        return transaction
+
+    def submit(self):
+        """
+        Validate inputs and insert the transaction into the database.
+        """
+        # try:
+        transaction = self.validate_input()
+
+        if transaction is None:
+            return
+
+        # Insert transaction into the database
+        db.insert_into_db(
+            self.db_path,
+            "Transactions",
+            ["AccountID", "Date", "Amount", "Balance", "Description", "MD5"],
+            transaction,
+        )
+
+        QMessageBox.information(
+            self, "Success", "Transaction has been added successfully."
+        )
+        self.accept()
+        # except Exception as e:
+        #    QMessageBox.critical(
+        #        self, "Error", f"Failed to insert transaction:\n{str(e)}"
+        #    )

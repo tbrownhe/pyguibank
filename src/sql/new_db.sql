@@ -48,13 +48,12 @@ CREATE TABLE "Statements" (
 	PRIMARY KEY("StatementID" AUTOINCREMENT),
 	FOREIGN KEY("StatementTypeID") REFERENCES "StatementTypes"("StatementTypeID"),
 	FOREIGN KEY("AccountID") REFERENCES "Accounts"("AccountID")
-	
 );
 
 CREATE TABLE "Transactions" (
 	"TransactionID"	INTEGER,
-	"AccountID"	INTEGER,
 	"StatementID"	INTEGER,
+	"AccountID"	INTEGER,
 	"Date"	TEXT,
 	"Amount"	REAL,
 	"Balance"	REAL,
@@ -63,8 +62,8 @@ CREATE TABLE "Transactions" (
 	"Category"	TEXT DEFAULT 'Uncategorized',
 	"Verified"	INTEGER DEFAULT 0,
 	PRIMARY KEY("TransactionID" AUTOINCREMENT),
-	FOREIGN KEY("AccountID") REFERENCES "Accounts"("AccountID"),
-	FOREIGN KEY("StatementID") REFERENCES "Statements"("StatementID")
+	FOREIGN KEY("StatementID") REFERENCES "Statements"("StatementID"),
+	FOREIGN KEY("AccountID") REFERENCES "Accounts"("AccountID")
 );
 
 CREATE TABLE "CardNumbers" (
