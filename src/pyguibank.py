@@ -1,4 +1,5 @@
 import sys
+import traceback
 from pathlib import Path
 
 from PyQt5.QtGui import QIcon
@@ -34,6 +35,8 @@ def ensure_db():
 class PyGuiBank(QMainWindow):
     def __init__(self):
         super().__init__()
+        # Set the custom exception hook
+        sys.excepthook = self.exception_hook
 
         # Initialize the GUI window
         self.setWindowTitle("PyGuiBank")
@@ -93,6 +96,22 @@ class PyGuiBank(QMainWindow):
 
         self.config = read_config(Path("") / "config.ini")
         self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
+
+
+    def exception_hook(self, exc_type, exc_value, exc_traceback):
+        """
+        Handle uncaught exceptions by displaying an error dialog.
+        """
+        # Format the traceback
+        tb = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+
+        # Show the error in a message box
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Critical)
+        msg_box.setWindowTitle("Unhandled Exception")
+        msg_box.setText("An unexpected error occurred:\n" + tb)
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec_()
 
     def open_db(self):
         open_file_in_os(self.db_path)
