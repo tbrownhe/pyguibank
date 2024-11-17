@@ -1,7 +1,7 @@
 --SQLite
 SELECT
 	Shopping.ItemID,
-	Accounts.NickName,
+	Accounts.AccountName,
 	Accounts.AssetType,
 	Shopping.Date,
 	Shopping.Amount,

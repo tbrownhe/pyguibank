@@ -1,7 +1,7 @@
 --SQLite
 SELECT
 	Transactions.TransactionID,
-	Accounts.NickName,
+	Accounts.AccountName,
 	AccountTypes.AssetType,
 	Transactions.Date,
 	Transactions.Amount,

@@ -1,6 +1,6 @@
 --SQLite
 SELECT
-	Accounts.NickName,
+	Accounts.AccountName,
 	Transactions.Date,
 	Transactions.Balance
 FROM Transactions

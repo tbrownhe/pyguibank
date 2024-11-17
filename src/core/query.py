@@ -3,6 +3,11 @@ from pathlib import Path
 from .db import execute_sql_query
 
 
+def optimize_db(db_path: Path):
+    _, _ = execute_sql_query(db_path, "VACUUM")
+    _, _ = execute_sql_query(db_path, "ANALYZE")
+
+
 def statement_id(db_path: Path, md5hash: str) -> int:
     """
     Retrieves a StatementID based on the md5hash.
@@ -49,11 +54,11 @@ def account_id(db_path: Path, account_num: str) -> int:
     return data[0][0]
 
 
-def account_nickname(db_path: Path, account_id: int) -> str:
+def account_name(db_path: Path, account_id: int) -> str:
     """
-    Retrieves an Account Nickname based on an account string found in a statement.
+    Retrieves an Account AccountName based on an account string found in a statement.
     """
-    query = f"SELECT NickName FROM Accounts WHERE AccountID = {account_id}"
+    query = f"SELECT AccountName FROM Accounts WHERE AccountID = {account_id}"
     data, _ = execute_sql_query(db_path, query)
     if len(data) == 0:
         raise ValueError(f"No Account with AccountID = {account_id}")
@@ -63,7 +68,7 @@ def account_nickname(db_path: Path, account_id: int) -> str:
 
 def accounts(db_path: Path) -> tuple[list[tuple], list[str]]:
     query = (
-        "SELECT AccountID, Company, Description, AccountType, NickName"
+        "SELECT AccountID, AccountName, Company, Description, AccountType"
         " FROM Accounts"
         " JOIN AccountTypes ON Accounts.AccountTypeID = AccountTypes.AccountTypeID"
     )
@@ -97,7 +102,7 @@ def asset_types(db_path: Path) -> dict[str, str]:
     Returns Asset Type of Accounts table as df
     """
     query = (
-        "SELECT NickName, AssetType"
+        "SELECT AccountName, AssetType"
         " FROM Accounts"
         " JOIN AccountTypes ON Accounts.AccountTypeID = AccountTypes.AccountTypeID"
     )
@@ -115,4 +120,48 @@ def latest_balance(db_path: Path, account_id: int) -> dict[str, str]:
         " ORDER BY Date DESC, TransactionID DESC"
         " LIMIT 1"
     )
+    return execute_sql_query(db_path, query)
+
+
+def latest_balances(db_path: Path):
+    """Returns the latest balance and transaction date for each account
+
+    Args:
+        db_path (Path): Path to db file
+
+    Returns:
+        tuple[list[tuple], list[str]]: data, columns
+            (AccountName, LatestBalance, LastTransactionDate)
+    """
+    query = """
+    WITH LatestTransaction AS (
+        SELECT 
+            AccountID,
+            MAX(Date) AS MaxDate
+        FROM Transactions
+        GROUP BY AccountID
+    ),
+    LatestTransactionID AS (
+        SELECT 
+            T.AccountID,
+            T.Balance,
+            T.TransactionID,
+            T.Date
+        FROM Transactions T
+        JOIN LatestTransaction LT 
+            ON T.AccountID = LT.AccountID 
+            AND T.Date = LT.MaxDate
+        WHERE T.TransactionID = (
+            SELECT MAX(TransactionID)
+            FROM Transactions T2
+            WHERE T2.AccountID = T.AccountID AND T2.Date = T.Date
+        )
+    )
+    SELECT 
+        A.AccountName AS AccountName,
+        T.Balance AS LatestBalance,
+        T.Date AS LastTransactionDate
+    FROM Accounts A
+    JOIN LatestTransactionID T ON A.AccountID = T.AccountID;
+    """
     return execute_sql_query(db_path, query)

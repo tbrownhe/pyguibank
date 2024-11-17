@@ -2,14 +2,17 @@ import sys
 import traceback
 from pathlib import Path
 
-from PyQt5.QtGui import QIcon
+import pandas as pd
+from PyQt5.QtCore import QAbstractTableModel, Qt
+from PyQt5.QtGui import QColor, QIcon
 from PyQt5.QtWidgets import (
     QApplication,
     QDialog,
     QFileDialog,
+    QGridLayout,
     QMainWindow,
     QMessageBox,
-    QPushButton,
+    QTableView,
     QVBoxLayout,
     QWidget,
 )
@@ -18,7 +21,63 @@ from core import plot, reports, statements
 from core.categorize import categorize_new_transactions, train_classifier
 from core.db import create_new_db
 from core.dialog import AddAccount, CompletenessDialog, InsertTransaction
+from core.query import latest_balances, optimize_db
 from core.utils import open_file_in_os, read_config
+
+
+class PandasModel(QAbstractTableModel):
+    def __init__(self, data):
+        super().__init__()
+        self._data = data
+
+    def rowCount(self, parent=None):
+        return self._data.shape[0]
+
+    def columnCount(self, parent=None):
+        return self._data.shape[1]
+
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid():
+            return None
+
+        value = self._data.iloc[index.row(), index.column()]
+
+        if role == Qt.DisplayRole:
+            return str(value)
+        elif role == Qt.TextAlignmentRole:
+            return Qt.AlignCenter  # Center-align text in cells
+        elif role == Qt.BackgroundRole:
+            # Apply background color based on positive/negative value
+            try:
+                numeric_value = float(value)
+                if numeric_value > 0:
+                    return QColor(140, 225, 140)  # Light green
+                elif numeric_value < 0:
+                    return QColor(225, 160, 160)  # Light red
+            except ValueError:
+                return None
+        return None
+
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
+        if role == Qt.DisplayRole:
+            if orientation == Qt.Horizontal:
+                return self._data.columns[section]
+            if orientation == Qt.Vertical:
+                return self._data.index[section]
+        return None
+
+    def sort(self, column, order):
+        """
+        Sort the model by the given column.
+        :param column: The column index to sort by.
+        :param order: Qt.AscendingOrder or Qt.DescendingOrder
+        """
+        column_name = self._data.columns[column]
+        ascending = order == Qt.AscendingOrder
+        self.layoutAboutToBeChanged.emit()
+        self._data.sort_values(by=column_name, ascending=ascending, inplace=True)
+        self._data.reset_index(drop=True, inplace=True)
+        self.layoutChanged.emit()
 
 
 class PyGuiBank(QMainWindow):
@@ -29,14 +88,9 @@ class PyGuiBank(QMainWindow):
 
         # Initialize the GUI window
         self.setWindowTitle("PyGuiBank")
-        self.setGeometry(100, 100, 640, 480)
+        self.resize(1000, 800)
 
-        # Create the main layout and central widget
-        central_widget = QWidget(self)
-        self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
-
-        # Create menu bar
+        # MENU BAR #######################
         menubar = self.menuBar()
 
         # File Menu
@@ -53,42 +107,49 @@ class PyGuiBank(QMainWindow):
         statements_menu.addAction("Pick File for Import", self.import_one_statement)
         statements_menu.addAction("Show Matrix", self.statement_matrix)
 
-        # Accounts Menu
+        # Reports Menu
+        reports_menu = menubar.addMenu("Reports")
+        reports_menu.addAction("Export Excel", self.make_reports)
+
+        # Transactions Menu
         transactions_menu = menubar.addMenu("Transactions")
         transactions_menu.addAction("Insert Manually", self.insert_transaction)
+        transactions_menu.addAction("Plot Balances", self.plot_balances)
+        transactions_menu.addAction("Plot Categories", self.plot_categories)
+
+        # Categorize Menu
+        categorize_menu = menubar.addMenu("Categorize")
+        categorize_menu.addAction(
+            "Categorize New Transactions", categorize_new_transactions
+        )
+        categorize_menu.addAction("Retrain Classifier Model", train_classifier)
 
         # Help Menu
         help_menu = menubar.addMenu("Help")
         help_menu.addAction("About", self.about)
 
-        self.plot_balances_button = QPushButton("Plot Balances", self)
-        self.plot_balances_button.clicked.connect(self.plot_balances)
-        layout.addWidget(self.plot_balances_button)
-
-        self.plot_categories_button = QPushButton("Plot Categories", self)
-        self.plot_categories_button.clicked.connect(self.plot_categories)
-        layout.addWidget(self.plot_categories_button)
-
-        self.make_reports_button = QPushButton("Make Reports", self)
-        self.make_reports_button.clicked.connect(self.make_reports)
-        layout.addWidget(self.make_reports_button)
-
-        self.button_categorize = QPushButton("Categorize New Transactions", self)
-        self.button_categorize.clicked.connect(categorize_new_transactions)
-        layout.addWidget(self.button_categorize)
-
-        self.button_train = QPushButton("Retrain Classifier Model", self)
-        layout.addWidget(self.button_train)
-        self.button_train.clicked.connect(train_classifier)
-
-        self.setCentralWidget(central_widget)
+        # INITIALIZE DATA ################
 
         # Read the configuration
         self.config = read_config(Path("") / "config.ini")
         self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
-
-        # Make sure a db file is ready to go
         self.ensure_db()
+
+        # CENTRAL WIDGET #################
+        # Create the main layout and central widget
+        central_widget = QWidget(self)
+        self.grid_layout = QGridLayout(central_widget)
+        self.setCentralWidget(central_widget)
+
+        # Create the table view
+        self.table_view = QTableView()
+        self.table_view.setSortingEnabled(True)
+        self.update_balances_table()
+
+        # Add the table to the grid layout
+        self.grid_layout.addWidget(self.table_view, 0, 0)
+
+        self.setCentralWidget(central_widget)
 
     def exception_hook(self, exc_type, exc_value, exc_traceback):
         """
@@ -108,14 +169,15 @@ class PyGuiBank(QMainWindow):
     def ensure_db(self):
         # Ensure db file exists
         if self.db_path.exists():
-            return
-        create_new_db(self.db_path)
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Information)
-        msg_box.setWindowTitle("New Database Created")
-        msg_box.setText(f"Initialized new database at {self.db_path}")
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
+            optimize_db(self.db_path)
+        else:
+            create_new_db(self.db_path)
+            msg_box = QMessageBox()
+            msg_box.setIcon(QMessageBox.Information)
+            msg_box.setWindowTitle("New Database Created")
+            msg_box.setText(f"Initialized new database at {self.db_path}")
+            msg_box.setStandardButtons(QMessageBox.Ok)
+            msg_box.exec_()
 
     def open_db(self):
         open_file_in_os(self.db_path)
@@ -187,6 +249,16 @@ class PyGuiBank(QMainWindow):
     def make_reports(self):
         report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
         reports.make_reports(self.db_path, report_dir)
+
+    def update_balances_table(self):
+        # Fetch data for the table
+        data, columns = latest_balances(self.db_path)
+        df_balances = pd.DataFrame(data, columns=columns)
+
+        # Update the table contents
+        table_model = PandasModel(df_balances)
+        self.table_view.setModel(table_model)
+        self.table_view.resizeColumnsToContents()
 
 
 if __name__ == "__main__":

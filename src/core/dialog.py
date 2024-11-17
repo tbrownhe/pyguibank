@@ -94,7 +94,7 @@ class AddAccount(QDialog):
         # Form layout for user inputs
         form_layout = QFormLayout()
 
-        self.nickname_edit = QLineEdit(self)
+        self.account_name_edit = QLineEdit(self)
 
         self.company_edit = QLineEdit(self)
         if company:
@@ -113,7 +113,9 @@ class AddAccount(QDialog):
             self.account_type_combo.setCurrentIndex(index)
 
         # Tool tips
-        self.nickname_edit.setPlaceholderText("Enter a UNIQUE nickname for the account")
+        self.account_name_edit.setPlaceholderText(
+            "Enter a UNIQUE Account Name for the account"
+        )
         self.company_edit.setToolTip("Company associated with this account")
         self.description_edit.setPlaceholderText(
             "Account description, e.g., Personal, Business, Student, etc"
@@ -121,10 +123,10 @@ class AddAccount(QDialog):
         self.account_type_combo.setToolTip("Choose the account type from the list")
 
         # Create form layout
+        form_layout.addRow("Account Name:", self.account_name_edit)
         form_layout.addRow("Company:", self.company_edit)
         form_layout.addRow("Description:", self.description_edit)
         form_layout.addRow("Account Type:", self.account_type_combo)
-        form_layout.addRow("Nickname:", self.nickname_edit)
 
         layout.addLayout(form_layout)
 
@@ -150,7 +152,7 @@ class AddAccount(QDialog):
         # Ensure required fields are filled
         if not all(
             [
-                self.nickname_edit.text(),
+                self.account_name_edit.text(),
                 self.company_edit.text(),
                 self.description_edit.text(),
             ]
@@ -171,12 +173,12 @@ class AddAccount(QDialog):
         account_type_id = data[0][0]
 
         # Insert new account into Accounts Table
-        columns = ["AccountTypeID", "Company", "Description", "NickName"]
+        columns = ["AccountTypeID", "Company", "Description", "AccountName"]
         row = (
             account_type_id,
             self.company_edit.text(),
             self.description_edit.text(),
-            self.nickname_edit.text(),
+            self.account_name_edit.text(),
         )
         try:
             db.insert_into_db(self.db_path, "Accounts", columns, [row])
@@ -324,8 +326,6 @@ class InsertTransaction(QDialog):
         self.setGeometry(100, 100, 400, 200)
         self.db_path = db_path
 
-        raise ValueError("test")
-
         # Main layout
         layout = QVBoxLayout(self)
 
@@ -389,11 +389,11 @@ class InsertTransaction(QDialog):
         """
         try:
             data, _ = db.execute_sql_query(
-                self.db_path, "SELECT AccountID, NickName FROM Accounts"
+                self.db_path, "SELECT AccountID, AccountName FROM Accounts"
             )
-            for account_id, nickname in data:
+            for account_id, account_name in data:
                 self.account_dropdown.addItem(
-                    f"{nickname} (ID: {account_id})", account_id
+                    f"{account_name} (ID: {account_id})", account_id
                 )
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load accounts:\n{str(e)}")

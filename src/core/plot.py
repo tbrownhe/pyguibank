@@ -39,7 +39,7 @@ def balances(db_path: Path) -> None:
 
     # Make a pivot table containing the EOD (last) balance for each day
     df_pivot = df.pivot_table(
-        index="Date", columns="NickName", values="Balance", aggfunc="last"
+        index="Date", columns="AccountName", values="Balance", aggfunc="last"
     )
 
     # Forward fill NaNs, this preserves previously found balances

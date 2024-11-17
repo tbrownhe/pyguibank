@@ -8,13 +8,13 @@ CREATE TABLE "AccountTypes" (
 
 CREATE TABLE "Accounts" (
 	"AccountID"	INTEGER UNIQUE,
+	"AccountName"	TEXT NOT NULL UNIQUE,
 	"AccountTypeID"	INTEGER,
 	"Company"	TEXT,
 	"Description"	TEXT,
-	"NickName"	TEXT UNIQUE,
 	PRIMARY KEY("AccountID" AUTOINCREMENT),
 	FOREIGN KEY("AccountTypeID") REFERENCES "AccountTypes"("AccountTypeID")
-);
+)
 
 CREATE TABLE "AccountNumbers" (
 	"AccountNumberID"	INTEGER UNIQUE,
@@ -90,6 +90,16 @@ CREATE TABLE "Shopping" (
 	FOREIGN KEY("CardID") REFERENCES "CardNumbers"("CardID"),
 	FOREIGN KEY("StatementID") REFERENCES "Statements"("StatementID")
 );
+
+CREATE INDEX "idx_transactions_accountid " ON "Transactions" (
+	"AccountID"
+);
+CREATE INDEX "idx_transactions_date" ON "Transactions" (
+	"Date"
+)
+CREATE INDEX "idx_transactions_transactionid" ON "Transactions" (
+	"TransactionID"
+)
 
 -- Prepopulate AccountTypes
 INSERT INTO "AccountTypes" ("AccountType", "AssetType")

@@ -39,7 +39,10 @@ def execute_sql_query(db_path: Path, query: str):
     with open_sqlite3(db_path) as cursor:
         cursor.execute(query)
         data = cursor.fetchall()
-        columns = [desc[0] for desc in cursor.description]
+        if cursor.description:
+            columns = [desc[0] for desc in cursor.description]
+        else:
+            columns = []
     return data, columns
 
 
