@@ -17,8 +17,7 @@ from PyQt5.QtWidgets import (
 from core import plot, reports, statements
 from core.categorize import categorize_new_transactions, train_classifier
 from core.db import create_new_db
-from core.dialog import AddAccount, InsertTransaction
-from core.missing import missing
+from core.dialog import AddAccount, CompletenessDialog, InsertTransaction
 from core.utils import open_file_in_os, read_config
 
 
@@ -81,6 +80,8 @@ class PyGuiBank(QMainWindow):
         self.button_train = QPushButton("Retrain Classifier Model", self)
         layout.addWidget(self.button_train)
         self.button_train.clicked.connect(train_classifier)
+
+        self.setCentralWidget(central_widget)
 
         # Read the configuration
         self.config = read_config(Path("") / "config.ini")
@@ -173,7 +174,9 @@ class PyGuiBank(QMainWindow):
         statements.import_one(self.config, fpath)
 
     def statement_matrix(self):
-        missing()
+        dialog = CompletenessDialog(self.db_path)
+        if dialog.exec_() == QDialog.Accepted:
+            print("Dialog Closed")
 
     def plot_balances(self):
         plot.balances(self.db_path)

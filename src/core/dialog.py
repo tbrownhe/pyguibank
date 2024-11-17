@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from PyQt5.QtCore import QDate, Qt
+import pandas as pd
+from PyQt5.QtCore import QAbstractTableModel, QDate, Qt
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -15,12 +17,14 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSizePolicy,
+    QTableView,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
 )
 
 from . import db, query
+from .missing import get_missing_coverage
 from .utils import hash_transactions, open_file_in_os
 
 
@@ -451,25 +455,90 @@ class InsertTransaction(QDialog):
         """
         Validate inputs and insert the transaction into the database.
         """
-        # try:
-        transaction = self.validate_input()
+        try:
+            transaction = self.validate_input()
 
-        if transaction is None:
-            return
+            if transaction is None:
+                return
 
-        # Insert transaction into the database
-        db.insert_into_db(
-            self.db_path,
-            "Transactions",
-            ["AccountID", "Date", "Amount", "Balance", "Description", "MD5"],
-            transaction,
-        )
+            # Insert transaction into the database
+            db.insert_into_db(
+                self.db_path,
+                "Transactions",
+                ["AccountID", "Date", "Amount", "Balance", "Description", "MD5"],
+                transaction,
+            )
 
-        QMessageBox.information(
-            self, "Success", "Transaction has been added successfully."
-        )
-        self.accept()
-        # except Exception as e:
-        #    QMessageBox.critical(
-        #        self, "Error", f"Failed to insert transaction:\n{str(e)}"
-        #    )
+            QMessageBox.information(
+                self, "Success", "Transaction has been added successfully."
+            )
+            self.accept()
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Error", f"Failed to insert transaction:\n{str(e)}"
+            )
+
+
+class PandasModel(QAbstractTableModel):
+    def __init__(self, data):
+        super().__init__()
+        self._data = data
+
+    def rowCount(self, parent=None):
+        return self._data.shape[0]
+
+    def columnCount(self, parent=None):
+        return self._data.shape[1]
+
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid():
+            return None
+
+        value = self._data.iloc[index.row(), index.column()]
+
+        if role == Qt.DisplayRole:
+            return str(value)
+        elif role == Qt.BackgroundRole:
+            if value == "True":
+                return QColor(140, 225, 140)  # Light green
+            elif value == "False":
+                return QColor(225, 160, 160)  # Light red
+        return None
+
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
+        if role == Qt.DisplayRole:
+            if orientation == Qt.Horizontal:
+                return self._data.columns[section]
+            if orientation == Qt.Vertical:
+                return self._data.index[section]
+        return None
+
+
+class CompletenessDialog(QDialog):
+    def __init__(self, db_path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Statement Completeness Grid")
+        self.resize(800, 600)
+
+        # Main layout
+        layout = QVBoxLayout(self)
+
+        # Fetch DataFrame from the function
+        self.df = get_missing_coverage(db_path).astype(str)
+
+        # Create a PandasModel and attach it to a QTableView
+        self.table_model = PandasModel(self.df)
+        self.table_view = QTableView()
+        self.table_view.setModel(self.table_model)
+        self.table_view.horizontalHeader().setStretchLastSection(True)
+        self.table_view.resizeColumnsToContents()
+
+        # Add table view to layout
+        layout.addWidget(self.table_view)
+
+        # Add a Close button
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(self.accept)
+        layout.addWidget(close_button)
+
+        self.setLayout(layout)

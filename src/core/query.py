@@ -25,6 +25,17 @@ def statement_types(db_path: Path, extension=""):
     return execute_sql_query(db_path, query)
 
 
+def statements(db_path: Path, where="") -> tuple[list[tuple], list[str]]:
+    """
+    Get the list of statement dates from the db.
+    """
+    sql_path = Path("") / "src" / "sql" / "statements.sql"
+    with sql_path.open("r") as f:
+        query = f.read()
+    query = query.replace("{where}", where)
+    return execute_sql_query(db_path, query)
+
+
 def account_id(db_path: Path, account_num: str) -> int:
     """
     Retrieves an AccountID based on an account_num string found in a statement.
