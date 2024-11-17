@@ -22,16 +22,6 @@ from core.missing import missing
 from core.utils import open_file_in_os, read_config
 
 
-# Ensure db file exists
-def ensure_db():
-    config = read_config(Path("") / "config.ini")
-    db_path = Path(config.get("DATABASE", "db_path")).resolve()
-    if not db_path.exists():
-        print("No database found!")
-        create_new_db(db_path)
-        print(f"Created new database {db_path}")
-
-
 class PyGuiBank(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -58,21 +48,19 @@ class PyGuiBank(QMainWindow):
         accounts_menu = menubar.addMenu("Accounts")
         accounts_menu.addAction("Show Accounts", self.show_accounts)
 
+        # Accounts Menu
+        statements_menu = menubar.addMenu("Statements")
+        statements_menu.addAction("Import All", self.import_all_statements)
+        statements_menu.addAction("Pick File for Import", self.import_one_statement)
+        statements_menu.addAction("Show Matrix", self.statement_matrix)
+
+        # Accounts Menu
+        transactions_menu = menubar.addMenu("Transactions")
+        transactions_menu.addAction("Insert Manually", self.insert_transaction)
+
         # Help Menu
         help_menu = menubar.addMenu("Help")
         help_menu.addAction("About", self.about)
-
-        self.import_statements_button = QPushButton("Import New Statements", self)
-        self.import_statements_button.clicked.connect(self.import_all_statements)
-        layout.addWidget(self.import_statements_button)
-
-        self.import_statements_button = QPushButton("Import One Statement", self)
-        self.import_statements_button.clicked.connect(self.import_one_statement)
-        layout.addWidget(self.import_statements_button)
-
-        self.statement_matrix_button = QPushButton("Show Statement Matrix", self)
-        self.statement_matrix_button.clicked.connect(missing)
-        layout.addWidget(self.statement_matrix_button)
 
         self.plot_balances_button = QPushButton("Plot Balances", self)
         self.plot_balances_button.clicked.connect(self.plot_balances)
@@ -94,9 +82,12 @@ class PyGuiBank(QMainWindow):
         layout.addWidget(self.button_train)
         self.button_train.clicked.connect(train_classifier)
 
+        # Read the configuration
         self.config = read_config(Path("") / "config.ini")
         self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
 
+        # Make sure a db file is ready to go
+        self.ensure_db()
 
     def exception_hook(self, exc_type, exc_value, exc_traceback):
         """
@@ -110,6 +101,18 @@ class PyGuiBank(QMainWindow):
         msg_box.setIcon(QMessageBox.Critical)
         msg_box.setWindowTitle("Unhandled Exception")
         msg_box.setText("An unexpected error occurred:\n" + tb)
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec_()
+
+    def ensure_db(self):
+        # Ensure db file exists
+        if self.db_path.exists():
+            return
+        create_new_db(self.db_path)
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.setWindowTitle("New Database Created")
+        msg_box.setText(f"Initialized new database at {self.db_path}")
         msg_box.setStandardButtons(QMessageBox.Ok)
         msg_box.exec_()
 
@@ -169,6 +172,9 @@ class PyGuiBank(QMainWindow):
         # Import statement
         statements.import_one(self.config, fpath)
 
+    def statement_matrix(self):
+        missing()
+
     def plot_balances(self):
         plot.balances(self.db_path)
 
@@ -181,9 +187,6 @@ class PyGuiBank(QMainWindow):
 
 
 if __name__ == "__main__":
-    # Make sure a db file exists
-    ensure_db()
-
     # Kick off the GUI
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon("pyguibank.png"))
