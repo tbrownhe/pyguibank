@@ -8,30 +8,12 @@ from matplotlib.ticker import MultipleLocator
 from . import query
 from .utils import read_config
 
-r"""
-def auto_depreciation(df_auto: pd.DataFrame) -> pd.DataFrame:
-    # Calulate Auto depreciated value
-    even_data["Auto Resale"] = 0
-    depreciation = -2998
-    row = np.argmin(even_data["AUTO"].values)
-    orig_value = -even_data["AUTO"].iloc[row]
-    AUTO = even_data["AUTO"]
-    AUTO = AUTO[row : len(even_data)].values
-    AUTO = np.round(orig_value * np.exp(np.arange(0, len(AUTO), 1) / depreciation), 2)
-    AUTO = np.concatenate((np.zeros([row]), AUTO))
 
-    even_data["Auto Resale"] = AUTO
-
-    return
-"""
-
-
-def balances(db_path: Path) -> None:
+def get_balance_data(db_path: Path) -> None:
     """
     Gets all transactions, makes a pivot table, then plots the result
     to display balance over time.
     """
-
     # Get all the transactions
     data, columns = query.transactions(db_path)
     df = pd.DataFrame(data, columns=columns)
@@ -66,18 +48,20 @@ def balances(db_path: Path) -> None:
     df_pivot["Net Worth"] = df_pivot.sum(axis=1)
     df_pivot["Total Assets"] = df_pivot[asset_cols].sum(axis=1)
     df_pivot["Total Debts"] = df_pivot[debt_cols].sum(axis=1)
-    # asset_dict["Net Worth"] = "Asset"
-    # asset_dict["Total Assets"] = "Asset"
-    # asset_dict["Total Debts"] = "Debt"
+    debt_cols.append("Total Debts")
+
+    return df_pivot, debt_cols
+
+
+def plot_balance_history(db_path: Path):
+    df_pivot, debt_cols = get_balance_data(db_path)
 
     # Plot all balances on the same chart
     fig, ax1 = plt.subplots(figsize=(14, 8))
     ax2 = ax1.twinx()
-    for nick_name in df_pivot.columns.values:
-        linestyle = (
-            "dashed" if asset_dict.get(nick_name, "Asset") == "Debt" else "solid"
-        )
-        plt.plot(df_pivot.index, df_pivot[nick_name], linestyle=linestyle)
+    for account_name in df_pivot.columns.values:
+        linestyle = "dashed" if account_name in debt_cols else "solid"
+        plt.plot(df_pivot.index, df_pivot[account_name], linestyle=linestyle)
 
     # Set bottom right cursor info to contain full datetime string instead of YYYY
     ax1.fmt_xdata = lambda x: mdates.num2date(x).strftime(r"%Y-%m-%d")
@@ -97,7 +81,7 @@ def balances(db_path: Path) -> None:
     plt.show()
 
 
-def categories(db_path: Path) -> None:
+def get_category_data(db_path: Path) -> None:
     """
     Gets all transactions, makes a pivot table, then plots the result
     to display categozied expenses over time.
@@ -113,19 +97,19 @@ def categories(db_path: Path) -> None:
     df["Month"] = df["Date"].dt.to_period("M").astype(str)
 
     # Make pivot tables
-    df_pivot_detail = df.pivot_table(
-        index="Month", columns=["AssetType", "Category"], values="Amount", aggfunc="sum"
-    ).fillna(0)
     df_pivot = df.pivot_table(
         index="Month", columns="Category", values="Amount", aggfunc="sum"
     ).fillna(0)
 
-    with pd.ExcelWriter(path="pivot_tables.xlsx") as writer:
-        df_pivot.to_excel(writer, sheet_name="Category")
-        df_pivot_detail.to_excel(writer, "Category_Asset")
-
     df_pivot.index = df_pivot.index + "-15"
     df_pivot.index = pd.to_datetime(df_pivot.index)
+
+    return df_pivot
+
+
+def plot_category_spending(db_path: Path):
+    # Get data from db
+    df_pivot = get_category_data(db_path)
 
     plt.figure(figsize=(14, 8))
     for category in df_pivot.columns.values:

@@ -2,27 +2,43 @@ import sys
 import traceback
 from pathlib import Path
 
+import matplotlib.dates as mdates
 import pandas as pd
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.figure import Figure
 from PyQt5.QtCore import QAbstractTableModel, Qt
 from PyQt5.QtGui import QColor, QIcon
 from PyQt5.QtWidgets import (
     QApplication,
+    QCheckBox,
     QDialog,
     QFileDialog,
     QGridLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QTableView,
-    QVBoxLayout,
     QWidget,
 )
 
-from core import plot, reports, statements
+from core import plot, query, reports, statements
 from core.categorize import categorize_new_transactions, train_classifier
 from core.db import create_new_db
 from core.dialog import AddAccount, CompletenessDialog, InsertTransaction
-from core.query import latest_balances, optimize_db
 from core.utils import open_file_in_os, read_config
+
+
+class MatplotlibCanvas(FigureCanvas):
+    def __init__(self, parent=None, width=5, height=4, dpi=100):
+        self.fig = Figure(figsize=(width, height), dpi=dpi)
+        self.axes = self.fig.add_subplot(111)
+        super().__init__(self.fig)
+        self.setParent(parent)
 
 
 class PandasModel(QAbstractTableModel):
@@ -141,13 +157,84 @@ class PyGuiBank(QMainWindow):
         self.grid_layout = QGridLayout(central_widget)
         self.setCentralWidget(central_widget)
 
-        # Create the table view
+        # Create the latest balances table view
         self.table_view = QTableView()
         self.table_view.setSortingEnabled(True)
+        self.grid_layout.addWidget(self.table_view, 0, 0, 4, 1)
         self.update_balances_table()
 
-        # Add the table to the grid layout
-        self.grid_layout.addWidget(self.table_view, 0, 0)
+        # Create the sub-grid for balance filtering controls
+        balance_controls_layout = QGridLayout()
+
+        # Add account name selection
+        balance_account_label = QLabel("Select Account(s):")
+        self.balance_account_list = QListWidget()
+        balance_controls_layout.addWidget(balance_account_label, 0, 0, 1, 1)
+
+        # Add "Select All" checkbox
+        select_all_checkbox = QCheckBox("Select All")
+        select_all_checkbox.setCheckState(Qt.Checked)
+        balance_controls_layout.addWidget(select_all_checkbox, 1, 0, 1, 1)
+
+        # Add checkable accounts list for plot filtering
+        account_names = [
+            "Net Worth",
+            "Total Assets",
+            "Total Debts",
+        ] + query.account_names(self.db_path)
+        for account in account_names:
+            item = QListWidgetItem(account)
+            item.setCheckState(Qt.Checked)
+            self.balance_account_list.addItem(item)
+
+        balance_controls_layout.addWidget(self.balance_account_list, 2, 0, 1, 1)
+
+        # Connect "Select All" checkbox to toggle function
+        def toggle_select_all(state):
+            for index in range(self.balance_account_list.count()):
+                item = self.balance_account_list.item(index)
+                item.setCheckState(Qt.Checked if state == Qt.Checked else Qt.Unchecked)
+
+        select_all_checkbox.stateChanged.connect(toggle_select_all)
+
+        # Add years of balance history selection
+        balance_years_label = QLabel("Years of History:")
+        self.balance_years_input = QLineEdit("10")
+        balance_controls_layout.addWidget(balance_years_label, 3, 0, 1, 1)
+        balance_controls_layout.addWidget(self.balance_years_input, 4, 0, 1, 1)
+
+        # Add filter button
+        balance_filter_button = QPushButton("Update Balance Plot")
+        balance_filter_button.clicked.connect(self.update_balance_history_chart)
+        balance_controls_layout.addWidget(balance_filter_button, 5, 0, 1, 1)
+
+        # Place the QGridLayout in a widget so its max size can be set
+        balance_controls_widget = QWidget()
+        balance_controls_widget.setLayout(balance_controls_layout)
+        balance_controls_widget.adjustSize()
+        max_width = int(0.7 * balance_controls_widget.sizeHint().width())
+        balance_controls_widget.setMaximumWidth(max_width)
+
+        # Add balance controls layout to the grid
+        self.grid_layout.addWidget(
+            balance_controls_widget, 0, 1, 2, 1, alignment=Qt.AlignTop
+        )
+
+        # Add balance history chart
+        balance_canvas = MatplotlibCanvas(self, width=7, height=5)
+        self.balance_ax = balance_canvas.axes
+        self.grid_layout.addWidget(balance_canvas, 1, 2, 1, 1)
+        balance_toolbar = NavigationToolbar(balance_canvas, self)
+        self.grid_layout.addWidget(balance_toolbar, 0, 2, 1, 1)
+        self.update_balance_history_chart()
+
+        # Add category spending chart
+        category_canvas = MatplotlibCanvas(self, width=7, height=5)
+        self.category_ax = category_canvas.axes
+        self.grid_layout.addWidget(category_canvas, 3, 2, 1, 1)
+        category_toolbar = NavigationToolbar(category_canvas, self)
+        self.grid_layout.addWidget(category_toolbar, 2, 2, 1, 1)
+        self.update_category_spending_chart()
 
         self.setCentralWidget(central_widget)
 
@@ -155,10 +242,8 @@ class PyGuiBank(QMainWindow):
         """
         Handle uncaught exceptions by displaying an error dialog.
         """
-        # Format the traceback
-        tb = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
-
         # Show the error in a message box
+        tb = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Critical)
         msg_box.setWindowTitle("Unhandled Exception")
@@ -169,7 +254,7 @@ class PyGuiBank(QMainWindow):
     def ensure_db(self):
         # Ensure db file exists
         if self.db_path.exists():
-            optimize_db(self.db_path)
+            query.optimize_db(self.db_path)
         else:
             create_new_db(self.db_path)
             msg_box = QMessageBox()
@@ -211,6 +296,7 @@ class PyGuiBank(QMainWindow):
         msg_box.exec_()
 
     def import_one_statement(self):
+        # Show file selection dialog
         default_folder = self.config.get("IMPORT", "import_dir")
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
@@ -223,10 +309,11 @@ class PyGuiBank(QMainWindow):
         if not fpath:
             return
         fpath = Path(fpath).resolve()
-        if fpath.parents[0] == Path(self.config.get("IMPORT", "success_dir")).resolve():
+        success_dir = Path(self.config.get("IMPORT", "success_dir")).resolve()
+        if fpath.parents[0] == success_dir:
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Warning)
-            msg_box.setText(f"Cannot import statements from the SUCCESS folder")
+            msg_box.setText(f"Cannot import statements from the SUCCESS folder.")
             msg_box.setWindowTitle("Protected Folder")
             msg_box.setStandardButtons(QMessageBox.Ok)
             msg_box.exec_()
@@ -241,10 +328,10 @@ class PyGuiBank(QMainWindow):
             print("Dialog Closed")
 
     def plot_balances(self):
-        plot.balances(self.db_path)
+        plot.plot_balance_history(self.db_path)
 
     def plot_categories(self):
-        plot.categories(self.db_path)
+        plot.plot_category_spending(self.db_path)
 
     def make_reports(self):
         report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
@@ -252,13 +339,97 @@ class PyGuiBank(QMainWindow):
 
     def update_balances_table(self):
         # Fetch data for the table
-        data, columns = latest_balances(self.db_path)
+        data, columns = query.latest_balances(self.db_path)
         df_balances = pd.DataFrame(data, columns=columns)
 
         # Update the table contents
         table_model = PandasModel(df_balances)
         self.table_view.setModel(table_model)
         self.table_view.resizeColumnsToContents()
+
+        # Fix the table width
+        total_width = sum(
+            self.table_view.columnWidth(i)
+            for i in range(self.table_view.model().columnCount())
+        )
+        vertical_scrollbar_width = (
+            self.table_view.verticalScrollBar().sizeHint().width()
+        )
+        table_width = total_width + vertical_scrollbar_width + 30
+        self.table_view.setFixedWidth(table_width)
+
+    def get_selected_accounts(self):
+        selected_accounts = []
+        for index in range(self.balance_account_list.count()):
+            item = self.balance_account_list.item(index)
+            if item.checkState() == Qt.Checked:
+                selected_accounts.append(item.text())
+        return selected_accounts
+
+    def update_balance_history_chart(self):
+        # Get
+        try:
+            limit_years = float(self.balance_years_input.text())
+        except ValueError:
+            self.balance_years_input.setText("10")
+            limit_years = 10
+        selected_accounts = self.get_selected_accounts()
+
+        # Clear the current contents of the plot
+        self.balance_ax.cla()
+
+        # Plot all balances on the same chart
+        df, debt_cols = plot.get_balance_data(self.db_path)
+        limit_days = int(limit_years * 365)
+        df = df.iloc[-limit_days:]
+
+        filtered_accounts = [
+            acct for acct in df.columns.values if acct in selected_accounts
+        ]
+        for account_name in filtered_accounts:
+            linestyle = "dashed" if account_name in debt_cols else "solid"
+            self.balance_ax.plot(df.index, df[account_name], linestyle=linestyle)
+
+        # Apply plot customizations
+        self.balance_ax.set_title("Balance History")
+        self.balance_ax.set_xlabel("Date")
+        self.balance_ax.set_ylabel("Balance ($)")
+        self.balance_ax.grid(True)
+        self.balance_ax.legend(filtered_accounts, loc="upper left", fontsize="xx-small")
+
+        # Show mouse hover coordinate
+        self.balance_ax.fmt_xdata = lambda x: mdates.num2date(x).strftime(r"%Y-%m-%d")
+
+        # Redraw the canvas to reflect updates
+        self.balance_ax.figure.canvas.draw()
+
+    def update_category_spending_chart(self):
+        # Clear the current contents of the plot
+        self.category_ax.cla()
+
+        # Plot spending by category
+        df = plot.get_category_data(self.db_path)
+        for category in df.columns.values:
+            self.category_ax.plot(df.index, df[category])
+
+        # Customize plot
+        self.category_ax.set_title("Spending by Category")
+        self.category_ax.set_xlabel("Date")
+        self.category_ax.set_ylabel("Amount ($)")
+        self.category_ax.grid(True)
+        self.category_ax.legend(
+            df.columns.values, loc="upper left", fontsize="xx-small"
+        )
+
+        # Show mouse hover coordinate
+        self.category_ax.fmt_xdata = lambda x: mdates.num2date(x).strftime(r"%Y-%m-%d")
+
+        # Rotate x-axis labels for better readability
+        # for label in self.category_ax.get_xticklabels():
+        #    label.set_rotation(45)
+
+        # Redraw the canvas to reflect updates
+        self.category_ax.figure.canvas.draw()
 
 
 if __name__ == "__main__":

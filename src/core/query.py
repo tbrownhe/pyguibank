@@ -66,6 +66,18 @@ def account_name(db_path: Path, account_id: int) -> str:
         return data[0][0]
 
 
+def account_names(db_path: Path) -> list[str]:
+    """
+    Retrieves an Account AccountName based on an account string found in a statement.
+    """
+    query = f"SELECT AccountName FROM Accounts"
+    data, _ = execute_sql_query(db_path, query)
+    if len(data) == 0:
+        return []
+    else:
+        return list(row[0] for row in data)
+
+
 def accounts(db_path: Path) -> tuple[list[tuple], list[str]]:
     query = (
         "SELECT AccountID, AccountName, Company, Description, AccountType"
@@ -159,8 +171,8 @@ def latest_balances(db_path: Path):
     )
     SELECT 
         A.AccountName AS AccountName,
-        T.Balance AS LatestBalance,
-        T.Date AS LastTransactionDate
+        T.Date AS LatestDate,
+        T.Balance AS LatestBalance
     FROM Accounts A
     JOIN LatestTransactionID T ON A.AccountID = T.AccountID;
     """
