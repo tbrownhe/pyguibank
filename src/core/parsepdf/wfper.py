@@ -116,7 +116,7 @@ def column_slices(header: str) -> dict[str, slice]:
         "Number": {"just": "L", "buffer_left": -1, "buffer_right": 2},
         "Description": {"just": "L", "buffer_left": 0, "buffer_right": 0},
         "Additions": {"just": "L", "buffer_left": -1, "buffer_right": 0},
-        "Subtractions": {"just": "R", "buffer_left": 0, "buffer_right": 1},
+        "Subtractions": {"just": "R", "buffer_left": 0, "buffer_right": 3},
         "balance": {"just": "R", "buffer_left": 0, "buffer_right": 1},
     }
 
