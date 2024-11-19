@@ -116,8 +116,8 @@ def column_slices(header: str) -> dict[str, slice]:
         "Number": {"just": "L", "buffer_left": -1, "buffer_right": 2},
         "Description": {"just": "L", "buffer_left": 0, "buffer_right": 0},
         "Credits": {"just": "L", "buffer_left": -4, "buffer_right": 1},
-        "Debits": {"just": "L", "buffer_left": -2, "buffer_right": 2},
-        "balance": {"just": "L", "buffer_left": -2, "buffer_right": 2},
+        "Debits": {"just": "L", "buffer_left": -4, "buffer_right": 3},
+        "balance": {"just": "L", "buffer_left": -3, "buffer_right": 3},
     }
 
     # Deal with sometimes-vanishing check number column

@@ -119,7 +119,7 @@ VALUES
 	('Oregon Community Credit Union', '3', 'OCCU', '.pdf', 'www.myoccu.org&&card services', 'occucc'),
 	('Oregon Community Credit Union', '6', 'Auto', '.csv', '254779', 'occuauto'),
 	('Wells Fargo', '1', 'Personal', '.pdf', 'wells fargo everyday checking', 'wfper'),
-	('Wells Fargo', '2', 'Personal', '.pdf', 'wells fargo&&way2save&&savings', 'wfper'),
+	('Wells Fargo', '2', 'Personal', '.pdf', 'wells fargo way2save savings', 'wfper'),
 	('Wells Fargo', '1', 'Business', '.pdf', 'wells fargo&&initiate business checking', 'wfbus'),
 	('Wells Fargo', '2', 'Business', '.pdf', 'wells fargo&&business market rate savings', 'wfbus'),
 	('Wells Fargo', '6', 'Personal', '.pdf', 'wells fargo&&personal loan statement', 'wfploan'),
