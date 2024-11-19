@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
+from loguru import logger
 from core.parse import parse, read_pdf
 from core.utils import read_config
 
@@ -84,6 +84,7 @@ class TestImportApp(QMainWindow):
             self.output_display.append("\n".join(lines))
 
         except Exception as e:
+            logger.exception("Import failed:")
             # Display any errors in the output display
             self.output_display.append(f"Error: {str(e)}")
 
@@ -113,6 +114,7 @@ class TestImportApp(QMainWindow):
                 )
 
         except Exception as e:
+            logger.exception("Import failed:")
             # Display any errors in the output display
             self.output_display.append(f"Error: {str(e)}")
 

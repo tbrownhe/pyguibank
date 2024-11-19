@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -24,7 +25,7 @@ from PyQt5.QtWidgets import (
 )
 
 from . import db, query
-from .missing import get_missing_coverage
+from .query import statements
 from .utils import hash_transactions, open_file_in_os
 
 
@@ -479,6 +480,49 @@ class InsertTransaction(QDialog):
             )
 
 
+def get_missing_coverage(db_path: Path):
+    """
+    Returns a DataFrame showing coverage for the first of the month for each account.
+    """
+    data, columns = statements(
+        db_path, where="WHERE StartDate >= DATE('now', '-15 Months')"
+    )
+    df = pd.DataFrame(data, columns=columns)
+    df["StartDate"] = pd.to_datetime(df["StartDate"])
+    df["EndDate"] = pd.to_datetime(df["EndDate"])
+
+    start_date = df["StartDate"].min() - timedelta(weeks=4)
+    end_date = df["EndDate"].max() + timedelta(weeks=4)
+    date_range = pd.date_range(start_date, end_date, freq="D")
+    nick_names = df["AccountName"].unique()
+    df_missing = pd.DataFrame("Missing", index=date_range, columns=nick_names)
+
+    # Set all days that have statement coverage to True
+    for i in range(len(df)):
+        account = df["AccountName"].iloc[i]
+        start_date = df["StartDate"].iloc[i]
+        end_date = df["EndDate"].iloc[i]
+        df_missing.loc[start_date:end_date, account] = "OK"
+
+    # Stack the table so coverage is all in a single column
+    df_stacked = (
+        df_missing.stack()
+        .reset_index()
+        .rename(columns={"level_0": "Date", "level_1": "AccountName", 0: "Coverage"})
+    )
+
+    # Add a month column
+    df_stacked["Month"] = df_stacked["Date"].dt.strftime(r"%Y-%m-01")
+
+    # Make a pivot table showing coverage for the first of the month
+    df_pivot = df_stacked.pivot_table(
+        values="Coverage", index="Month", columns="AccountName", aggfunc="first"
+    )
+
+    # Return the last 13 months as a transposed DataFrame
+    return df_pivot.tail(13).T
+
+
 class PandasModel(QAbstractTableModel):
     def __init__(self, data):
         super().__init__()
@@ -499,9 +543,9 @@ class PandasModel(QAbstractTableModel):
         if role == Qt.DisplayRole:
             return str(value)
         elif role == Qt.BackgroundRole:
-            if value == "True":
+            if value == "OK":
                 return QColor(140, 225, 140)  # Light green
-            elif value == "False":
+            elif value == "Missing":
                 return QColor(225, 160, 160)  # Light red
         elif role == Qt.TextAlignmentRole:
             return Qt.AlignCenter  # Center-align the text

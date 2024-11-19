@@ -122,7 +122,7 @@ class PyGuiBank(QMainWindow):
         statements_menu = menubar.addMenu("Statements")
         statements_menu.addAction("Import All", self.import_all_statements)
         statements_menu.addAction("Pick File for Import", self.import_one_statement)
-        statements_menu.addAction("Show Matrix", self.statement_matrix)
+        statements_menu.addAction("Completeness Grid", self.statement_matrix)
 
         # Reports Menu
         reports_menu = menubar.addMenu("Reports")
@@ -347,8 +347,8 @@ class PyGuiBank(QMainWindow):
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Information)
         msg_box.setText(
-            f"Successfully imported {success} of {total} files in {import_dir}.\n"
-            f" Import failed for {fail} files, and {remain} remain to be imported."
+            f"Successfully imported {success} of {total} files in {import_dir}."
+            f"\nImport failed for {fail} files, and {remain} remain to be imported."
         )
         msg_box.setWindowTitle("Import Complete")
         msg_box.setStandardButtons(QMessageBox.Ok)
