@@ -14,7 +14,7 @@ CREATE TABLE "Accounts" (
 	"Description"	TEXT,
 	PRIMARY KEY("AccountID" AUTOINCREMENT),
 	FOREIGN KEY("AccountTypeID") REFERENCES "AccountTypes"("AccountTypeID")
-)
+);
 
 CREATE TABLE "AccountNumbers" (
 	"AccountNumberID"	INTEGER UNIQUE,
@@ -96,10 +96,10 @@ CREATE INDEX "idx_transactions_accountid " ON "Transactions" (
 );
 CREATE INDEX "idx_transactions_date" ON "Transactions" (
 	"Date"
-)
+);
 CREATE INDEX "idx_transactions_transactionid" ON "Transactions" (
 	"TransactionID"
-)
+);
 
 -- Prepopulate AccountTypes
 INSERT INTO "AccountTypes" ("AccountType", "AssetType")
