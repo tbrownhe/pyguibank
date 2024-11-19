@@ -87,6 +87,15 @@ def accounts(db_path: Path) -> tuple[list[tuple], list[str]]:
     return execute_sql_query(db_path, query)
 
 
+def distinct_categories(db_path: Path) -> list[str]:
+    query = "SELECT DISTINCT Category FROM Transactions ORDER BY Category ASC"
+    data, _ = execute_sql_query(db_path, query)
+    if len(data) == 0:
+        return []
+    else:
+        return [row[0] for row in data]
+
+
 def transactions(db_path: Path, where="") -> tuple[list[tuple], list[str]]:
     """
     Returns all transactions as pd.DataFrame

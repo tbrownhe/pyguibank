@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import (
     QDialog,
     QFileDialog,
     QGridLayout,
+    QGroupBox,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -151,32 +152,34 @@ class PyGuiBank(QMainWindow):
         self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
         self.ensure_db()
 
-        # CENTRAL WIDGET #################
+        ##################
+        # CENTRAL WIDGET #
+        ##################
         # Create the main layout and central widget
         central_widget = QWidget(self)
         self.grid_layout = QGridLayout(central_widget)
         self.setCentralWidget(central_widget)
 
-        # Create the latest balances table view
+        ### Create the latest balances table view
         self.table_view = QTableView()
         self.table_view.setSortingEnabled(True)
         self.grid_layout.addWidget(self.table_view, 0, 0, 4, 1)
         self.update_balances_table()
 
-        # Create the sub-grid for balance filtering controls
+        ### Create balance history control group
         balance_controls_layout = QGridLayout()
 
         # Add account name selection
-        balance_account_label = QLabel("Select Account(s):")
-        self.balance_account_list = QListWidget()
+        balance_account_label = QLabel("Select Accounts:")
         balance_controls_layout.addWidget(balance_account_label, 0, 0, 1, 1)
 
         # Add "Select All" checkbox
-        select_all_checkbox = QCheckBox("Select All")
-        select_all_checkbox.setCheckState(Qt.Checked)
-        balance_controls_layout.addWidget(select_all_checkbox, 1, 0, 1, 1)
+        select_all_accounts_checkbox = QCheckBox("Select All")
+        select_all_accounts_checkbox.setCheckState(Qt.Checked)
+        balance_controls_layout.addWidget(select_all_accounts_checkbox, 1, 0, 1, 1)
 
         # Add checkable accounts list for plot filtering
+        self.account_select_list = QListWidget()
         account_names = [
             "Net Worth",
             "Total Assets",
@@ -185,42 +188,91 @@ class PyGuiBank(QMainWindow):
         for account in account_names:
             item = QListWidgetItem(account)
             item.setCheckState(Qt.Checked)
-            self.balance_account_list.addItem(item)
+            self.account_select_list.addItem(item)
 
-        balance_controls_layout.addWidget(self.balance_account_list, 2, 0, 1, 1)
+        balance_controls_layout.addWidget(self.account_select_list, 2, 0, 1, 1)
 
         # Connect "Select All" checkbox to toggle function
-        def toggle_select_all(state):
-            for index in range(self.balance_account_list.count()):
-                item = self.balance_account_list.item(index)
+        def toggle_select_all_accounts(state):
+            for index in range(self.account_select_list.count()):
+                item = self.account_select_list.item(index)
                 item.setCheckState(Qt.Checked if state == Qt.Checked else Qt.Unchecked)
 
-        select_all_checkbox.stateChanged.connect(toggle_select_all)
+        select_all_accounts_checkbox.stateChanged.connect(toggle_select_all_accounts)
 
         # Add years of balance history selection
         balance_years_label = QLabel("Years of History:")
-        self.balance_years_input = QLineEdit("10")
         balance_controls_layout.addWidget(balance_years_label, 3, 0, 1, 1)
+        self.balance_years_input = QLineEdit("10")
         balance_controls_layout.addWidget(self.balance_years_input, 4, 0, 1, 1)
 
-        # Add filter button
+        # Add Update Balance Plot button
         balance_filter_button = QPushButton("Update Balance Plot")
         balance_filter_button.clicked.connect(self.update_balance_history_chart)
         balance_controls_layout.addWidget(balance_filter_button, 5, 0, 1, 1)
 
-        # Place the QGridLayout in a widget so its max size can be set
-        balance_controls_widget = QWidget()
-        balance_controls_widget.setLayout(balance_controls_layout)
-        balance_controls_widget.adjustSize()
-        max_width = int(0.7 * balance_controls_widget.sizeHint().width())
-        balance_controls_widget.setMaximumWidth(max_width)
-
-        # Add balance controls layout to the grid
+        # Place the QGridLayout in a GroupBox so its max size can be set
+        balance_controls_group = QGroupBox("Balance History Controls")
+        balance_controls_group.setLayout(balance_controls_layout)
+        balance_controls_group.adjustSize()
+        max_width = int(0.7 * balance_controls_group.sizeHint().width())
+        balance_controls_group.setMaximumWidth(max_width)
         self.grid_layout.addWidget(
-            balance_controls_widget, 0, 1, 2, 1, alignment=Qt.AlignTop
+            balance_controls_group, 0, 1, 2, 1, alignment=Qt.AlignTop
         )
 
-        # Add balance history chart
+        ### Create Category Spending control group
+        category_controls_layout = QGridLayout()
+
+        # Add category selection
+        select_category_label = QLabel("Select Categories:")
+        category_controls_layout.addWidget(select_category_label, 0, 0, 1, 1)
+
+        # Add "Select All" checkbox
+        select_all_category_checkbox = QCheckBox("Select All")
+        select_all_category_checkbox.setCheckState(Qt.Checked)
+        category_controls_layout.addWidget(select_all_category_checkbox, 1, 0, 1, 1)
+
+        # Add checkable accounts list for plot filtering
+        self.category_select_list = QListWidget()
+
+        for category in query.distinct_categories(self.db_path):
+            item = QListWidgetItem(category)
+            item.setCheckState(Qt.Checked)
+            self.category_select_list.addItem(item)
+
+        category_controls_layout.addWidget(self.category_select_list, 2, 0, 1, 1)
+
+        # Connect "Select All" checkbox to toggle function
+        def toggle_select_all_categories(state):
+            for index in range(self.category_select_list.count()):
+                item = self.category_select_list.item(index)
+                item.setCheckState(Qt.Checked if state == Qt.Checked else Qt.Unchecked)
+
+        select_all_category_checkbox.stateChanged.connect(toggle_select_all_categories)
+
+        # Add years of balance history selection
+        category_years_label = QLabel("Years of History:")
+        category_controls_layout.addWidget(category_years_label, 3, 0, 1, 1)
+        self.category_years_input = QLineEdit("10")
+        category_controls_layout.addWidget(self.category_years_input, 4, 0, 1, 1)
+
+        # Add Update Balance Plot button
+        category_filter_button = QPushButton("Update Category Plot")
+        category_filter_button.clicked.connect(self.update_category_spending_chart)
+        category_controls_layout.addWidget(category_filter_button, 5, 0, 1, 1)
+
+        # Place the QGridLayout in a GroupBox so its max size can be set
+        category_controls_group = QGroupBox("Category Spending Controls")
+        category_controls_group.setLayout(category_controls_layout)
+        category_controls_group.adjustSize()
+        max_width = int(0.7 * category_controls_group.sizeHint().width())
+        category_controls_group.setMaximumWidth(max_width)
+        self.grid_layout.addWidget(
+            category_controls_group, 2, 1, 2, 1, alignment=Qt.AlignTop
+        )
+
+        ### Add balance history chart
         balance_canvas = MatplotlibCanvas(self, width=7, height=5)
         self.balance_ax = balance_canvas.axes
         self.grid_layout.addWidget(balance_canvas, 1, 2, 1, 1)
@@ -228,7 +280,7 @@ class PyGuiBank(QMainWindow):
         self.grid_layout.addWidget(balance_toolbar, 0, 2, 1, 1)
         self.update_balance_history_chart()
 
-        # Add category spending chart
+        ### Add category spending chart
         category_canvas = MatplotlibCanvas(self, width=7, height=5)
         self.category_ax = category_canvas.axes
         self.grid_layout.addWidget(category_canvas, 3, 2, 1, 1)
@@ -358,31 +410,34 @@ class PyGuiBank(QMainWindow):
         table_width = total_width + vertical_scrollbar_width + 30
         self.table_view.setFixedWidth(table_width)
 
-    def get_selected_accounts(self):
-        selected_accounts = []
-        for index in range(self.balance_account_list.count()):
-            item = self.balance_account_list.item(index)
+    def get_checked_items(self, list_widget: QListWidget):
+        selected_items = []
+        for index in range(list_widget.count()):
+            item = list_widget.item(index)
             if item.checkState() == Qt.Checked:
-                selected_accounts.append(item.text())
-        return selected_accounts
+                selected_items.append(item.text())
+        return selected_items
 
     def update_balance_history_chart(self):
-        # Get
+        # Get filter prefs
         try:
             limit_years = float(self.balance_years_input.text())
         except ValueError:
             self.balance_years_input.setText("10")
             limit_years = 10
-        selected_accounts = self.get_selected_accounts()
+        selected_accounts = self.get_checked_items(self.account_select_list)
 
         # Clear the current contents of the plot
         self.balance_ax.cla()
 
         # Plot all balances on the same chart
         df, debt_cols = plot.get_balance_data(self.db_path)
+
+        # Truncate the data to the specified year range
         limit_days = int(limit_years * 365)
         df = df.iloc[-limit_days:]
 
+        # Plot only account data where the account is in the checklist
         filtered_accounts = [
             acct for acct in df.columns.values if acct in selected_accounts
         ]
@@ -404,12 +459,27 @@ class PyGuiBank(QMainWindow):
         self.balance_ax.figure.canvas.draw()
 
     def update_category_spending_chart(self):
+        # Get filter prefs
+        try:
+            limit_years = float(self.category_years_input.text())
+        except ValueError:
+            self.category_years_input.setText("10")
+            limit_years = 10
+        selected_cats = self.get_checked_items(self.category_select_list)
+
         # Clear the current contents of the plot
         self.category_ax.cla()
 
-        # Plot spending by category
+        # Get the category spending data by month
         df = plot.get_category_data(self.db_path)
-        for category in df.columns.values:
+
+        # Truncate data to year range
+        limit_months = int(12 * limit_years)
+        df = df.iloc[-limit_months:]
+
+        # Plot only the selected categories
+        filtered_cats = [cat for cat in df.columns.values if cat in selected_cats]
+        for category in filtered_cats:
             self.category_ax.plot(df.index, df[category])
 
         # Customize plot
@@ -417,9 +487,7 @@ class PyGuiBank(QMainWindow):
         self.category_ax.set_xlabel("Date")
         self.category_ax.set_ylabel("Amount ($)")
         self.category_ax.grid(True)
-        self.category_ax.legend(
-            df.columns.values, loc="upper left", fontsize="xx-small"
-        )
+        self.category_ax.legend(filtered_cats, loc="upper left", fontsize="xx-small")
 
         # Show mouse hover coordinate
         self.category_ax.fmt_xdata = lambda x: mdates.num2date(x).strftime(r"%Y-%m-%d")

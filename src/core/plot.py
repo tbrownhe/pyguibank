@@ -87,9 +87,7 @@ def get_category_data(db_path: Path) -> None:
     to display categozied expenses over time.
     """
     # Get all the transactions
-    data, columns = query.transactions(
-        db_path, where="WHERE Date >= DATE('now', '-4 year')"
-    )
+    data, columns = query.transactions(db_path)
     df = pd.DataFrame(data, columns=columns)
 
     # Create month column for pivot tables
@@ -101,7 +99,7 @@ def get_category_data(db_path: Path) -> None:
         index="Month", columns="Category", values="Amount", aggfunc="sum"
     ).fillna(0)
 
-    df_pivot.index = df_pivot.index + "-15"
+    # df_pivot.index = df_pivot.index + "-15"
     df_pivot.index = pd.to_datetime(df_pivot.index)
 
     return df_pivot
