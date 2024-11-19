@@ -5,7 +5,8 @@ from datetime import datetime
 from pathlib import Path
 
 from loguru import logger
-from PyQt5.QtWidgets import QDialog, QMessageBox
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QDialog, QMessageBox, QProgressDialog
 
 from . import query
 from .db import insert_into_db
@@ -93,7 +94,7 @@ def get_account_info(
         except KeyError:
             account_id = prompt_account_num(db_path, fpath, STID, account_num)
         account_ids[account_num] = account_id
-    nick_name = query.account_nickname(db_path, account_ids[account_nums[0]])
+    nick_name = query.account_name(db_path, account_ids[account_nums[0]])
     return account_ids, nick_name
 
 
@@ -114,10 +115,10 @@ def move_to_archive(fpath: Path, archive_dir: Path, dname: str) -> None:
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Warning)
             msg_box.setText(
-                f"The statement {fpath.name} could not be moved to archive."
+                f"The statement {fpath.name} could not be moved."
                 " If it's open in another program, please close it and click OK"
             )
-            msg_box.setWindowTitle("Unable to move file to archive")
+            msg_box.setWindowTitle("Unable to Move File")
             msg_box.setStandardButtons(QMessageBox.Ok)
             msg_box.exec_()
 
@@ -194,7 +195,7 @@ def import_one(config: ConfigParser, fpath: Path):
         transactions = [(account_id,) + row for row in transactions]
 
         # Hash each transaction
-        transactions = hash_transactions(account_id, transactions)
+        transactions = hash_transactions(transactions)
 
         # Prepend the StatementID to each transaction row
         transactions = [(statement_id,) + row for row in transactions]
@@ -211,7 +212,7 @@ def import_one(config: ConfigParser, fpath: Path):
     move_to_archive(fpath, Path(config.get("IMPORT", "success_dir")), new_fname)
 
 
-def import_all(config: ConfigParser) -> None:
+def import_all(config: ConfigParser, parent=None) -> None:
     """
     Finds all statements in the import_dir and imports all of them.
     """
@@ -222,19 +223,45 @@ def import_all(config: ConfigParser) -> None:
     for ext in extensions:
         fpaths.extend(input_dir.glob("*." + ext))
 
-    # Read all the files and store as individual .csv files in the csv directory.
-    for fpath in sorted(fpaths):
+    # Create progress dialog
+    progress = QProgressDialog(
+        "Importing statements...", "Cancel", 0, len(fpaths), parent
+    )
+    progress.setWindowTitle("Import Progress")
+    progress.setWindowModality(Qt.WindowModal)
+    progress.setValue(0)
+
+    # Import all files
+    success = 0
+    fail = 0
+    for idx, fpath in enumerate(fpaths):
+        if progress.wasCanceled():
+            QMessageBox.information(
+                parent, "Import Canceled", "The import was canceled."
+            )
+            break
+
         try:
             import_one(config, fpath)
+            success += 1
         except Exception:
+            fail += 1
             logger.exception("Import failed: ")
             if config.getboolean("IMPORT", "hard_fail"):
                 raise
             else:
                 failed_dir = Path(config.get("IMPORT", "fail_dir")).resolve()
                 dpath = failed_dir / fpath.name
-                fpath.rename(dpath)
-                logger.info("Failed statement moved to {d}", d=dpath)
+                try:
+                    shutil.move(fpath, dpath)
+                    logger.info("Failed statement moved to {d}", d=dpath)
+                except PermissionError:
+                    logger.exception("Move to FAIL folder failed: ")
+
+        # Update progress dialog
+        progress.setValue(idx + 1)
+
+    return len(fpaths), success, fail
 
 
 if __name__ == "__main__":

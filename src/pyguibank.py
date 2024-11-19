@@ -338,14 +338,25 @@ class PyGuiBank(QMainWindow):
             print("New transaction was added")
 
     def import_all_statements(self):
-        statements.import_all(self.config)
+        # Import everything
+        total, success, fail = statements.import_all(self.config, parent=self)
+        remain = total - success - fail
+
+        # Show result to user
         import_dir = Path(self.config.get("IMPORT", "import_dir")).resolve()
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Information)
-        msg_box.setText(f"Imported all files in {import_dir}")
+        msg_box.setText(
+            f"Successfully imported {success} of {total} files in {import_dir}.\n"
+            f" Import failed for {fail} files, and {remain} remain to be imported."
+        )
         msg_box.setWindowTitle("Import Complete")
         msg_box.setStandardButtons(QMessageBox.Ok)
         msg_box.exec_()
+
+        # Update Plots
+        self.update_balance_history_chart()
+        self.update_category_spending_chart()
 
     def import_one_statement(self):
         # Show file selection dialog
@@ -373,6 +384,10 @@ class PyGuiBank(QMainWindow):
 
         # Import statement
         statements.import_one(self.config, fpath)
+
+        # Update Plots
+        self.update_balance_history_chart()
+        self.update_category_spending_chart()
 
     def statement_matrix(self):
         dialog = CompletenessDialog(self.db_path)
