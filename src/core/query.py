@@ -66,6 +66,19 @@ def account_name(db_path: Path, account_id: int) -> str:
         return data[0][0]
 
 
+def account_type_id(db_path, account_type):
+    query = (
+        "SELECT AccountTypeID"
+        " FROM AccountTypes"
+        f" WHERE AccountType = '{account_type}'"
+    )
+    data, _ = execute_sql_query(db_path, query)
+    if len(data) == 0:
+        raise KeyError(f"{account_type} not found in AccountTypes.AccountType")
+    else:
+        return data[0][0]
+
+
 def account_names(db_path: Path) -> list[str]:
     """
     Retrieves an Account AccountName based on an account string found in a statement.

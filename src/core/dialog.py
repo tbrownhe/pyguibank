@@ -28,7 +28,6 @@ from PyQt5.QtWidgets import (
 )
 
 from . import db, query
-from .query import statements
 from .utils import hash_transactions, open_file_in_os, read_config
 
 
@@ -211,6 +210,7 @@ class AddAccount(QDialog):
     def __init__(self, db_path: Path, company="", description="", account_type=""):
         super().__init__()
         self.setWindowTitle("Accounts")
+        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
         screen_height = QApplication.primaryScreen().availableGeometry().height()
         self.setMinimumHeight(int(screen_height * 0.6))
@@ -311,13 +311,7 @@ class AddAccount(QDialog):
 
         # Grab the AccountTypeID
         account_type = self.account_type_combo.currentText()
-        query = (
-            "SELECT AccountTypeID"
-            " FROM AccountTypes"
-            f" WHERE AccountType = '{account_type}'"
-        )
-        data, _ = query.execute_sql_query(self.db_path, query)
-        account_type_id = data[0][0]
+        account_type_id = query.account_type_id(self.db_path, account_type)
 
         # Insert new account into Accounts Table
         columns = ["AccountTypeID", "Company", "Description", "AccountName"]
@@ -344,6 +338,7 @@ class AssignAccountNumber(QDialog):
     ):
         super().__init__(parent)
         self.setWindowTitle("New Account Number Found")
+        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
         screen_height = QApplication.primaryScreen().availableGeometry().height()
         max_height = int(screen_height * 0.8)
@@ -630,7 +625,7 @@ def get_missing_coverage(db_path: Path):
     """
     Returns a DataFrame showing coverage for the first of the month for each account.
     """
-    data, columns = statements(
+    data, columns = query.statements(
         db_path, where="WHERE StartDate >= DATE('now', '-15 Months')"
     )
     df = pd.DataFrame(data, columns=columns)
