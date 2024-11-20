@@ -7,10 +7,13 @@ from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCheckBox,
     QComboBox,
     QDateEdit,
     QDialog,
+    QFileDialog,
     QFormLayout,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -26,7 +29,150 @@ from PyQt5.QtWidgets import (
 
 from . import db, query
 from .query import statements
-from .utils import hash_transactions, open_file_in_os
+from .utils import hash_transactions, open_file_in_os, read_config
+
+
+class PreferencesDialog(QDialog):
+    def __init__(self, config_path: Path, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Preferences")
+        self.resize(500, 400)
+
+        self.config = read_config(config_path)
+
+        # Main layout
+        main_layout = QVBoxLayout(self)
+
+        # Create grid layout for form fields
+        grid_layout = QGridLayout()
+        main_layout.addLayout(grid_layout)
+
+        # DATABASE section
+        grid_layout.addWidget(QLabel("Database Path:"), 0, 0)
+        self.db_path_edit = QLineEdit(self.config.get("DATABASE", "db_path"))
+        grid_layout.addWidget(self.db_path_edit, 0, 1)
+        db_path_button = QPushButton("Select...")
+        db_path_button.clicked.connect(self.select_db_path)
+        grid_layout.addWidget(db_path_button, 0, 2)
+
+        # IMPORT section
+        grid_layout.addWidget(QLabel("Import Extensions:"), 1, 0)
+        self.extensions_edit = QLineEdit(self.config.get("IMPORT", "extensions"))
+        grid_layout.addWidget(self.extensions_edit, 1, 1)
+
+        grid_layout.addWidget(QLabel("Import Directory:"), 2, 0)
+        self.import_dir_edit = QLineEdit(self.config.get("IMPORT", "import_dir"))
+        grid_layout.addWidget(self.import_dir_edit, 2, 1)
+        import_dir_button = QPushButton("Select...")
+        import_dir_button.clicked.connect(
+            lambda: self.select_folder(self.import_dir_edit)
+        )
+        grid_layout.addWidget(import_dir_button, 2, 2)
+
+        grid_layout.addWidget(QLabel("Success Directory:"), 3, 0)
+        self.success_dir_edit = QLineEdit(self.config.get("IMPORT", "success_dir"))
+        grid_layout.addWidget(self.success_dir_edit, 3, 1)
+        success_dir_button = QPushButton("Select...")
+        success_dir_button.clicked.connect(
+            lambda: self.select_folder(self.success_dir_edit)
+        )
+        grid_layout.addWidget(success_dir_button, 3, 2)
+
+        grid_layout.addWidget(QLabel("Fail Directory:"), 4, 0)
+        self.fail_dir_edit = QLineEdit(self.config.get("IMPORT", "fail_dir"))
+        grid_layout.addWidget(self.fail_dir_edit, 4, 1)
+        fail_dir_button = QPushButton("Select...")
+        fail_dir_button.clicked.connect(lambda: self.select_folder(self.fail_dir_edit))
+        grid_layout.addWidget(fail_dir_button, 4, 2)
+
+        grid_layout.addWidget(QLabel("Duplicate Directory:"), 5, 0)
+        self.duplicate_dir_edit = QLineEdit(self.config.get("IMPORT", "duplicate_dir"))
+        grid_layout.addWidget(self.duplicate_dir_edit, 5, 1)
+        duplicate_dir_button = QPushButton("Select...")
+        duplicate_dir_button.clicked.connect(
+            lambda: self.select_folder(self.duplicate_dir_edit)
+        )
+        grid_layout.addWidget(duplicate_dir_button, 5, 2)
+
+        grid_layout.addWidget(QLabel("Hard Fail:"), 6, 0)
+        self.hard_fail_checkbox = QCheckBox()
+        self.hard_fail_checkbox.setChecked(
+            self.config.getboolean("IMPORT", "hard_fail")
+        )
+        grid_layout.addWidget(self.hard_fail_checkbox, 6, 1)
+
+        # REPORTS section
+        grid_layout.addWidget(QLabel("Report Directory:"), 7, 0)
+        self.report_dir_edit = QLineEdit(self.config.get("REPORTS", "report_dir"))
+        grid_layout.addWidget(self.report_dir_edit, 7, 1)
+        report_dir_button = QPushButton("Select...")
+        report_dir_button.clicked.connect(
+            lambda: self.select_folder(self.report_dir_edit)
+        )
+        grid_layout.addWidget(report_dir_button, 7, 2)
+
+        # Buttons
+        button_layout = QVBoxLayout()
+        main_layout.addLayout(button_layout)
+
+        save_button = QPushButton("Save")
+        save_button.clicked.connect(self.save_preferences)
+        button_layout.addWidget(save_button)
+
+        cancel_button = QPushButton("Cancel")
+        cancel_button.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_button)
+
+    def select_db_path(self):
+        """Select a database file."""
+        try:
+            default_path = str(Path(self.db_path_edit.text()).resolve())
+        except:
+            default_path = ""
+        fpath, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Database File",
+            default_path,
+            "Database Files (*.db);;All Files (*)",
+        )
+        if fpath:
+            fpath = Path(fpath).resolve()
+            if fpath.parents[0] == Path("").resolve():
+                self.db_path_edit.setText(fpath.name)
+            else:
+                self.db_path_edit.setText(str(fpath))
+
+    def select_folder(self, line_edit):
+        """Select a folder and set its path in the specified QLineEdit."""
+        try:
+            default_path = str(Path(line_edit.text()).resolve())
+        except:
+            default_path = ""
+        folder_path = QFileDialog.getExistingDirectory(
+            self, "Select Folder", default_path
+        )
+        if folder_path:
+            folder_path = Path(folder_path).resolve()
+            line_edit.setText(str(folder_path))
+
+    def save_preferences(self):
+        """Save the preferences to the configuration file."""
+        self.config.set("DATABASE", "db_path", self.db_path_edit.text())
+        self.config.set("IMPORT", "extensions", self.extensions_edit.text())
+        self.config.set("IMPORT", "import_dir", self.import_dir_edit.text())
+        self.config.set("IMPORT", "success_dir", self.success_dir_edit.text())
+        self.config.set("IMPORT", "fail_dir", self.fail_dir_edit.text())
+        self.config.set("IMPORT", "duplicate_dir", self.duplicate_dir_edit.text())
+        self.config.set("IMPORT", "hard_fail", str(self.hard_fail_checkbox.isChecked()))
+        self.config.set("REPORTS", "report_dir", self.report_dir_edit.text())
+
+        with open("config.ini", "w") as configfile:
+            self.config.write(configfile)
+
+        QMessageBox.information(
+            self, "Preferences Saved", "Preferences have been saved successfully."
+        )
+        self.accept()
 
 
 def update_accounts_table(

@@ -28,9 +28,14 @@ from PyQt5.QtWidgets import (
 )
 
 from core import plot, query, reports, statements
-from core.categorize import categorize_new_transactions, train_classifier
+from core.categorize import categorize_new, train_classifier
 from core.db import create_new_db
-from core.dialog import AddAccount, CompletenessDialog, InsertTransaction
+from core.dialog import (
+    AddAccount,
+    CompletenessDialog,
+    InsertTransaction,
+    PreferencesDialog,
+)
 from core.utils import open_file_in_os, read_config
 
 
@@ -113,6 +118,7 @@ class PyGuiBank(QMainWindow):
         # File Menu
         file_menu = menubar.addMenu("File")
         file_menu.addAction("Open Database", self.open_db)
+        file_menu.addAction("Preferences", self.preferences)
 
         # Accounts Menu
         accounts_menu = menubar.addMenu("Accounts")
@@ -136,9 +142,7 @@ class PyGuiBank(QMainWindow):
 
         # Categorize Menu
         categorize_menu = menubar.addMenu("Categorize")
-        categorize_menu.addAction(
-            "Categorize New Transactions", categorize_new_transactions
-        )
+        categorize_menu.addAction("Categorize New Transactions", self.categorize_new)
         categorize_menu.addAction("Retrain Classifier Model", train_classifier)
 
         # Help Menu
@@ -148,7 +152,8 @@ class PyGuiBank(QMainWindow):
         # INITIALIZE DATA ################
 
         # Read the configuration
-        self.config = read_config(Path("") / "config.ini")
+        self.config_path = Path("") / "config.ini"
+        self.config = read_config(self.config_path)
         self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
         self.ensure_db()
 
@@ -316,8 +321,17 @@ class PyGuiBank(QMainWindow):
             msg_box.setStandardButtons(QMessageBox.Ok)
             msg_box.exec_()
 
+    #########################
+    ### MENUBAR FUNCTIONS ###
+    #########################
     def open_db(self):
         open_file_in_os(self.db_path)
+
+    def preferences(self):
+        dialog = PreferencesDialog(self.config_path)
+        if dialog.exec_() == QDialog.Accepted:
+            self.config = read_config(self.config_path)
+            print("Updated preferences")
 
     def about(self):
         msg_box = QMessageBox()
@@ -404,6 +418,12 @@ class PyGuiBank(QMainWindow):
         report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
         reports.make_reports(self.db_path, report_dir)
 
+    def categorize_new(self):
+        nrows = categorize_new(self.db_path)
+
+    ################################
+    ### CENTRAL WIDGET FUNCTIONS ###
+    ################################
     def update_balances_table(self):
         # Fetch data for the table
         data, columns = query.latest_balances(self.db_path)
