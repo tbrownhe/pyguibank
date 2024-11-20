@@ -112,6 +112,12 @@ class PyGuiBank(QMainWindow):
         self.setWindowTitle("PyGuiBank")
         self.resize(1000, 800)
 
+        # Maximize to primary screen
+        screen = QApplication.primaryScreen()
+        geometry = screen.availableGeometry()
+        self.setGeometry(geometry)
+        self.showMaximized()
+
         # MENU BAR #######################
         menubar = self.menuBar()
 
@@ -331,6 +337,7 @@ class PyGuiBank(QMainWindow):
         dialog = PreferencesDialog(self.config_path)
         if dialog.exec_() == QDialog.Accepted:
             self.config = read_config(self.config_path)
+            self.db_path = Path(self.config.get("DATABASE", "db_path"))
             print("Updated preferences")
 
     def about(self):
@@ -419,7 +426,8 @@ class PyGuiBank(QMainWindow):
         reports.make_reports(self.db_path, report_dir)
 
     def categorize_new(self):
-        nrows = categorize_new(self.db_path)
+        model_path = Path(self.config.get("CATEGORIZE", "model_path")).resolve()
+        nrows = categorize_new(self.db_path, model_path)
 
     ################################
     ### CENTRAL WIDGET FUNCTIONS ###

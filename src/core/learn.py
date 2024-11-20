@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+from pathlib import Path
+
 import joblib
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -16,14 +17,16 @@ https://github.com/drojasug/ClassifyingExpensesSciKitLearn/blob/master/MyBudget.
 """
 
 
-def save_model(vectorizer: CountVectorizer, classifier: LinearSVC) -> None:
-    logger.info("Saving machine learning model to disk")
-    joblib.dump((vectorizer, classifier), "classifier.mdl")
+def save_model(
+    model_path: Path, vectorizer: CountVectorizer, classifier: LinearSVC
+) -> None:
+    logger.info("Freezing machine learning model")
+    joblib.dump((vectorizer, classifier), model_path)
 
 
-def load_model() -> tuple[CountVectorizer, LinearSVC]:
-    logger.info("Loading machine learning model from disk")
-    vectorizer, classifier = joblib.load("classifier.mdl")
+def load_model(model_path: Path) -> tuple[CountVectorizer, LinearSVC]:
+    logger.info("Loading machine learning model")
+    vectorizer, classifier = joblib.load(model_path)
     return vectorizer, classifier
 
 
@@ -33,7 +36,7 @@ def standard_in_out(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     equally to all dependent functions.
     """
     # Concatenate account nickname and description to allow account differentiation.
-    X = df[["NickName", "Description"]].apply(
+    X = df[["AccountName", "Description"]].apply(
         lambda row: " ".join(row.values.astype(str)), axis=1
     )
     Y = df["Category"]
@@ -98,14 +101,14 @@ def plot_confusion_matrix(y_test, y_pred, category_list) -> None:
     plt.show()
 
 
-def predict(df: pd.DataFrame) -> pd.DataFrame:
+def predict(model_path: Path, df: pd.DataFrame) -> pd.DataFrame:
     """
     Use trained model to predict category of transactions.
     """
     logger.info("Classifying uncategorized transactions")
 
     # Load the pre-trained model components
-    vectorizer, classifier = load_model()
+    vectorizer, classifier = load_model(model_path)
 
     # Get the standardized input for the learning model
     X, _ = standard_in_out(df)

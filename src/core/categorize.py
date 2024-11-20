@@ -44,8 +44,8 @@ def update_db_categories(df: pd.DataFrame, verified=False) -> None:
     update_cols = ["Category", "Verified"]
     value = 1 if verified else 0
     update_list = list(zip(df["Category"], itertools.repeat(value)))
-    where_cols = ["TranID"]
-    where_list = list(zip(df["TranID"]))
+    where_cols = ["TransactionID"]
+    where_list = list(zip(df["TransactionID"]))
     update_db_where(
         db_path, "Transactions", update_cols, update_list, where_cols, where_list
     )
@@ -118,22 +118,24 @@ def train_classifier() -> None:
                 continue
 
 
-def categorize_new_transactions() -> None:
+def categorize_new(db_path: Path, model_path: Path) -> int:
     """
     Uses the trained classifiation model to categorize any transactions that have
     Category='Uncategorized' or blank.
     """
     # Pull all uncategorized transactions
-    df = transactions(where="Category='Uncategorized' OR Category=''")
+    where = "WHERE Transactions.Category='Uncategorized' OR Transactions.Category=''"
+    data, columns = transactions(db_path, where=where)
+    df = pd.DataFrame(data, columns=columns)
     if len(df) == 0:
         print("No new transactions to categorize!")
         return
 
     # Categorize the transactions
-    df = predict(df)
+    df = predict(model_path, df)
 
     # Update the database with the new categories.
-    # Set the Verified flag to 0 to prevent training the model on these results.
+    # Set the Verified flag to False to prevent training the model on these results.
     update_db_categories(df, verified=False)
 
 
