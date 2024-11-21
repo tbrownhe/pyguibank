@@ -552,10 +552,10 @@ class InsertTransaction(QDialog):
                 self.latest_date_value.setText(f"{latest_date}")
             else:
                 # If no transactions found, assume balance is zero
-                self.latest_balance_value.setText("$0.00")
+                self.latest_balance_value.setText("0.00")
         else:
             # Clear balance display if no account is selected
-            self.latest_balance_value.setText("$0.00")
+            self.latest_balance_value.setText("0.00")
 
     def validate_input(self):
         # Get inputs

@@ -8,16 +8,17 @@ def optimize_db(db_path: Path):
     _, _ = execute_sql_query(db_path, "ANALYZE")
 
 
-def statement_id(db_path: Path, md5hash: str) -> int:
+def statement_info(db_path: Path, md5hash: str) -> tuple[int, str]:
     """
     Retrieves a StatementID based on the md5hash.
     """
-    query = f"SELECT StatementID FROM Statements WHERE MD5 = '{md5hash}'"
+    query = f"SELECT StatementID, Filename FROM Statements WHERE MD5 = '{md5hash}'"
     data, _ = execute_sql_query(db_path, query)
     if len(data) == 0:
-        return -1
+        return -1, ""
     elif len(data) == 1:
-        return data[0][0]
+        statement_id, fname = data[0]
+        return statement_id, fname
     else:
         raise KeyError(f"{md5hash} is not unique in Statements.MD5.")
 

@@ -18,7 +18,13 @@ from .utils import hash_file, hash_transactions, read_config, standardize_fname
 def statement_already_imported(db_path: Path, fpath: Path) -> bool:
     # Check if the file has already been saved to the db
     md5hash = hash_file(fpath)
-    imported = query.statement_id(db_path, md5hash) != -1
+    statement_id, statement_fname = query.statement_info(db_path, md5hash)
+    imported = statement_id != -1
+    if imported:
+        logger.info(
+            f"Previously imported {statement_fname} (StatementID: {statement_id})"
+            f" has identical hash {md5hash}"
+        )
     return imported
 
 
@@ -62,7 +68,7 @@ def insert_statement_metadata(
     insert_into_db(db_path, "Statements", columns, [metadata])
 
     # Get the new StatementID
-    statement_id = query.statement_id(db_path, md5hash)
+    statement_id, _ = query.statement_info(db_path, md5hash)
 
     return new_fname, statement_id
 
@@ -171,7 +177,7 @@ def import_one(config: ConfigParser, fpath: Path):
         dpath = duplicate_dir / fpath.name
         shutil.move(fpath, dpath)
         logger.info("Duplicate statement moved to {d}", d=dpath)
-        return
+        return 0, 1
 
     # Get all the transactions in this file.
     STID, date_range, data = parse(db_path, fpath)
@@ -210,6 +216,7 @@ def import_one(config: ConfigParser, fpath: Path):
 
     # Archive the file
     move_to_archive(fpath, Path(config.get("IMPORT", "success_dir")), new_fname)
+    return 1, 0
 
 
 def import_all(config: ConfigParser, parent=None) -> None:
@@ -233,6 +240,7 @@ def import_all(config: ConfigParser, parent=None) -> None:
 
     # Import all files
     success = 0
+    duplicate = 0
     fail = 0
     for idx, fpath in enumerate(fpaths):
         if progress.wasCanceled():
@@ -240,10 +248,10 @@ def import_all(config: ConfigParser, parent=None) -> None:
                 parent, "Import Canceled", "The import was canceled."
             )
             break
-
         try:
-            import_one(config, fpath)
-            success += 1
+            suc, dup = import_one(config, fpath)
+            success += suc
+            duplicate += dup
         except Exception:
             fail += 1
             logger.exception("Import failed: ")
@@ -261,7 +269,7 @@ def import_all(config: ConfigParser, parent=None) -> None:
         # Update progress dialog
         progress.setValue(idx + 1)
 
-    return len(fpaths), success, fail
+    return len(fpaths), success, duplicate, fail
 
 
 if __name__ == "__main__":

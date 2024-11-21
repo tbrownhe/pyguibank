@@ -360,8 +360,10 @@ class PyGuiBank(QMainWindow):
 
     def import_all_statements(self):
         # Import everything
-        total, success, fail = statements.import_all(self.config, parent=self)
-        remain = total - success - fail
+        total, success, duplicate, fail = statements.import_all(
+            self.config, parent=self
+        )
+        remain = total - success - duplicate - fail
 
         # Show result to user
         import_dir = Path(self.config.get("IMPORT", "import_dir")).resolve()
@@ -369,7 +371,9 @@ class PyGuiBank(QMainWindow):
         msg_box.setIcon(QMessageBox.Information)
         msg_box.setText(
             f"Successfully imported {success} of {total} files in {import_dir}."
-            f"\nImport failed for {fail} files, and {remain} remain to be imported."
+            f"\n{duplicate} duplicate files were found,"
+            f"\n{fail} files failed to import,"
+            f"\nand {remain} files remain to be imported."
         )
         msg_box.setWindowTitle("Import Complete")
         msg_box.setStandardButtons(QMessageBox.Ok)
