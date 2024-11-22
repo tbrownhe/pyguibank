@@ -1,12 +1,11 @@
-# -*- coding: utf-8 -*-
 import itertools
 from pathlib import Path
 
 import pandas as pd
 from loguru import logger
 
-from .db import execute_sql_file, execute_sql_query, update_db_where
-from .learn import predict, train
+from .db import update_db_where
+from .learn import predict
 from .query import transactions
 
 """
@@ -84,34 +83,6 @@ def update_db_from_csv(fpath: Path) -> None:
             case "y":
                 # Update categories and set Verified=1 since these were reviewed.
                 update_db_categories(df, verified=True)
-            case "n":
-                return
-            case _:
-                continue
-
-
-def train_classifier() -> None:
-    """
-    Pulls all transaction data with verified categorization
-    and uses it to train the ML model.
-    """
-    # Pull all category verified transactions
-    df = transactions(where="Verified=1")
-    if len(df) == 0:
-        raise ValueError(
-            "No verified transactions available to train classifier model."
-        )
-
-    # Train with a fraction of the data and test the classification accuracy.
-    train(df, test=True)
-
-    # Train with entire data set and save the model.
-    print("The classification model will be retrained with the entire dataset.")
-    while True:
-        match input("Are you sure? y/n: ").lower():
-            case "y":
-                train(df, test=False)
-                return
             case "n":
                 return
             case _:

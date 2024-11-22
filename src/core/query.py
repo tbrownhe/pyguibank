@@ -121,6 +121,23 @@ def transactions(db_path: Path, where="") -> tuple[list[tuple], list[str]]:
     return execute_sql_query(db_path, query)
 
 
+def training_set(db_path: Path, where=""):
+    query = f"""
+    SELECT
+        Accounts.Company,
+        AccountTypes.AccountType,
+        Transactions.Description,
+		Transactions.Amount,
+        Transactions.Category
+    FROM Transactions
+    JOIN Accounts ON Transactions.AccountID = Accounts.AccountID
+    JOIN AccountTypes ON Accounts.AccountTypeID = AccountTypes.AccountTypeID
+	{where}
+    ORDER BY Transactions.Date ASC, Transactions.TransactionID ASC
+    """
+    return execute_sql_query(db_path, query)
+
+
 def shopping(db_path: Path, where="") -> tuple[list[tuple], list[str]]:
     """
     Returns all transactions as pd.DataFrame

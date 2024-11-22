@@ -27,8 +27,8 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from core import plot, query, reports, statements, learn
-from core.categorize import categorize_new, train_classifier
+from core import learn, plot, query, reports, statements
+from core.categorize import categorize_new
 from core.db import create_new_db
 from core.dialog import (
     AddAccount,
@@ -149,8 +149,13 @@ class PyGuiBank(QMainWindow):
         # Categorize Menu
         categorize_menu = menubar.addMenu("Categorize")
         categorize_menu.addAction("Categorize New Transactions", self.categorize_new)
-        categorize_menu.addAction("Test Training Set", self.test_training)
-        categorize_menu.addAction("Retrain Classifier Model", train_classifier)
+        categorize_menu.addAction(
+            "Train Pipeline for Testing", self.train_pipeline_test
+        )
+        categorize_menu.addAction(
+            "Train Pipeline for Deployment", self.train_pipeline_save
+        )
+        # categorize_menu.addAction("Retrain Classifier Model", train_classifier)
 
         # Help Menu
         help_menu = menubar.addMenu("Help")
@@ -430,15 +435,62 @@ class PyGuiBank(QMainWindow):
         report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
         reports.make_reports(self.db_path, report_dir)
 
-    def test_training(self):
-        data, columns = query.transactions(self.db_path, where="WHERE Verified=1")
+    def train_pipeline_test(self):
+        data, columns = query.training_set(self.db_path, where="WHERE Verified=1")
+        if len(data) == 0:
+            print("No verified transactions to train with!")
+            return
+        df = pd.DataFrame(data, columns=columns)
+        learn.train_pipeline_test(df, amount=False)
+
+    def train_pipeline_save(self):
+        # Get old model path
+        model_path = self.config.get("CATEGORIZE", "model_path")
+        try:
+            model_path = Path(model_path).resolve()
+        except:
+            model_path = Path("") / "pipeline.mdl"
+
+        # Prompt user for new save location
+        options = QFileDialog.Options()
+        save_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Select Save Location",
+            str(model_path),
+            "MDL Files (*.mdl);;All Files (*);;",
+            options=options,
+        )
+        if save_path == "":
+            return
+        model_path = Path(save_path).resolve()
+
+        # Retrieve verified transactions
+        data, columns = query.training_set(self.db_path, where="WHERE Verified=1")
+        if len(data) == 0:
+            print("No verified transactions to train with!")
+            return
+        df = pd.DataFrame(data, columns=columns)
+
+        # Train and save pipeline
+        learn.train_pipeline_save(df, model_path, amount=False)
+
+        # Save new pipeline path to config
+        if Path("").resolve() == model_path.parents[0]:
+            model_path = model_path.name
+        else:
+            model_path = str(model_path)
+        self.config.set("CATEGORIZE", "model_path", str(model_path))
+        with open("config.ini", "w") as configfile:
+            self.config.write(configfile)
+
+    def categorize_new(self):
+        data, columns = query.training_set(
+            self.db_path, where="WHERE Category='Uncategorized'"
+        )
         if len(data) == 0:
             print("No new transactions to categorize!")
             return
-        df = pd.DataFrame(data, columns=columns)
-        learn.train(df, test=True)
 
-    def categorize_new(self):
         model_path = Path(self.config.get("CATEGORIZE", "model_path")).resolve()
         nrows = categorize_new(self.db_path, model_path)
 
