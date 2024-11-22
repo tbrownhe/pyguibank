@@ -27,7 +27,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from core import plot, query, reports, statements
+from core import plot, query, reports, statements, learn
 from core.categorize import categorize_new, train_classifier
 from core.db import create_new_db
 from core.dialog import (
@@ -149,6 +149,7 @@ class PyGuiBank(QMainWindow):
         # Categorize Menu
         categorize_menu = menubar.addMenu("Categorize")
         categorize_menu.addAction("Categorize New Transactions", self.categorize_new)
+        categorize_menu.addAction("Test Training Set", self.test_training)
         categorize_menu.addAction("Retrain Classifier Model", train_classifier)
 
         # Help Menu
@@ -428,6 +429,14 @@ class PyGuiBank(QMainWindow):
     def make_reports(self):
         report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
         reports.make_reports(self.db_path, report_dir)
+
+    def test_training(self):
+        data, columns = query.transactions(self.db_path, where="WHERE Verified=1")
+        if len(data) == 0:
+            print("No new transactions to categorize!")
+            return
+        df = pd.DataFrame(data, columns=columns)
+        learn.train(df, test=True)
 
     def categorize_new(self):
         model_path = Path(self.config.get("CATEGORIZE", "model_path")).resolve()

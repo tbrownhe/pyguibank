@@ -5,37 +5,27 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from loguru import logger
-from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
-from sklearn.metrics import confusion_matrix
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
-from sklearn.svm import LinearSVC
-
-"""
-Most of this was lifted from these:
-https://towardsdatascience.com/multi-class-text-classification-with-scikit-learn-12f1e60e0a9f
-https://github.com/drojasug/ClassifyingExpensesSciKitLearn/blob/master/MyBudget.ipynb
-"""
+from sklearn.pipeline import Pipeline
 
 
-def save_model(
-    model_path: Path, vectorizer: CountVectorizer, classifier: LinearSVC
-) -> None:
-    logger.info("Freezing machine learning model")
-    joblib.dump((vectorizer, classifier), model_path)
+def save_model(model_path: Path, pipeline) -> None:
+    logger.info("Saving machine learning model")
+    joblib.dump(pipeline, model_path)
 
 
-def load_model(model_path: Path) -> tuple[CountVectorizer, LinearSVC]:
+def load_model(model_path: Path):
     logger.info("Loading machine learning model")
-    vectorizer, classifier = joblib.load(model_path)
-    return vectorizer, classifier
+    return joblib.load(model_path)
 
 
 def standard_in_out(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     """
-    Ensures that any future tweaks of the classifier inputs and outputs apply
-    equally to all dependent functions.
+    Prepares input and output for the model.
     """
-    # Concatenate account nickname and description to allow account differentiation.
     X = df[["AccountName", "Description"]].apply(
         lambda row: " ".join(row.values.astype(str)), axis=1
     )
@@ -43,59 +33,61 @@ def standard_in_out(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     return X, Y
 
 
-def train(df: pd.DataFrame, model=LinearSVC(), test=False) -> None:
+def train(df: pd.DataFrame, model=None, test=False) -> None:
     """
-    Uses the categorized transactions in the DataFrame to train the chosen ML model.
+    Train a classification model to categorize transactions.
     """
-    logger.info("Training {m} model", m=str(model))
+    logger.info("Training classification model")
 
     # Define the inputs and outputs
-    # Input includes the account nickname to enable account differentiation.
     X, Y = standard_in_out(df)
 
     if test:
-        # Train the model on a large fraction of the transactions
         x_train, x_test, y_train, y_test = train_test_split(
             X, Y, test_size=0.3, random_state=0
         )
     else:
-        # Train the model on the entire available set
         x_train, x_test, y_train, y_test = X, [], Y, []
 
-    # Create and train the ML model using the training set
-    vectorizer = CountVectorizer()
-    x_train_counts = vectorizer.fit_transform(x_train)
-    tfidf = TfidfTransformer()
-    x_train_tfidf = tfidf.fit_transform(x_train_counts)
-    classifier = model.fit(x_train_tfidf, y_train)
+    # Create a pipeline for vectorization and classification
+    vectorizer = TfidfVectorizer()
+    classifier = model if model else LogisticRegression(max_iter=1000)
+    pipeline = Pipeline([("vectorizer", vectorizer), ("classifier", classifier)])
+    pipeline.fit(x_train, y_train)
 
     if test:
-        # Test the accuracy of the model
-        x_test_counts = vectorizer.transform(x_test)
-        y_pred = classifier.predict(x_test_counts)
-        score = classifier.score(x_test_counts, y_test)
-        logger.info("Classifier accuracy is {a}", a="{0:.1%}".format(score))
-        # plot confusion matrix is broken, not sure why
-        plot_confusion_matrix(y_test, y_pred, df["Category"].unique())
+        y_pred = pipeline.predict(x_test)
+        logger.info("Accuracy: {0:.1%}".format(accuracy_score(y_test, y_pred)))
+        plot_confusion_matrix(y_test, y_pred, sorted(df["Category"].unique()))
     else:
-        # Save the trained model to disk
-        save_model(vectorizer, classifier)
+        save_model("transaction_model.pkl", pipeline)
 
 
-def plot_confusion_matrix(y_test, y_pred, category_list) -> None:
+def plot_confusion_matrix(y_test, y_pred, categories, normalized=True) -> None:
     """
-    Generate a confusion matrix
+    Generate a confusion matrix.
     """
-    logger.info("Generating Confusion Matrix")
-    conf_mat = confusion_matrix(y_test, y_pred, labels=category_list)
-    fig, ax = plt.subplots(figsize=(6, 6))
-    sns.heatmap(
-        conf_mat,
-        annot=True,
-        fmt="d",
-        xticklabels=category_list,
-        yticklabels=category_list,
-    )
+    conf_mat = confusion_matrix(y_test, y_pred, labels=categories)
+    if normalized:
+        conf_mat_normalized = conf_mat.astype("float") / conf_mat.sum(
+            axis=1, keepdims=True
+        )
+        sns.heatmap(
+            conf_mat_normalized,
+            annot=True,
+            fmt=".2f",
+            xticklabels=categories,
+            yticklabels=categories,
+            cmap="Blues",
+        )
+    else:
+        sns.heatmap(
+            conf_mat,
+            annot=True,
+            fmt="d",
+            xticklabels=categories,
+            yticklabels=categories,
+        )
     plt.ylabel("Actual")
     plt.xlabel("Predicted")
     plt.show()
@@ -103,21 +95,21 @@ def plot_confusion_matrix(y_test, y_pred, category_list) -> None:
 
 def predict(model_path: Path, df: pd.DataFrame) -> pd.DataFrame:
     """
-    Use trained model to predict category of transactions.
+    Predict categories and confidence scores for new transactions.
     """
-    logger.info("Classifying uncategorized transactions")
-
-    # Load the pre-trained model components
-    vectorizer, classifier = load_model(model_path)
-
-    # Get the standardized input for the learning model
+    logger.info("Classifying transactions")
+    pipeline = load_model(model_path)
     X, _ = standard_in_out(df)
 
-    # Apply the trained model to new transactions
-    df["Category"] = classifier.predict(vectorizer.transform(X))
+    # Predict categories and confidence scores
+    probabilities = pipeline.named_steps["classifier"].predict_proba(
+        pipeline.named_steps["vectorizer"].transform(X)
+    )
+    df["Category"] = pipeline.predict(X)
+    df["Confidence"] = probabilities.max(axis=1)  # Maximum probability as confidence
 
     return df
 
 
 if __name__ == "__main__":
-    print("This module is not designed to be run as __main__")
+    db_path = Path("") / "pyguibank.db"
