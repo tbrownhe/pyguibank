@@ -445,7 +445,7 @@ class PyGuiBank(QMainWindow):
 
     def train_pipeline_save(self):
         # Get old model path
-        model_path = self.config.get("CATEGORIZE", "model_path")
+        model_path = self.config.get("CLASSIFIER", "model_path")
         try:
             model_path = Path(model_path).resolve()
         except:
@@ -479,7 +479,7 @@ class PyGuiBank(QMainWindow):
             model_path = model_path.name
         else:
             model_path = str(model_path)
-        self.config.set("CATEGORIZE", "model_path", str(model_path))
+        self.config.set("CLASSIFIER", "model_path", str(model_path))
         with open("config.ini", "w") as configfile:
             self.config.write(configfile)
 

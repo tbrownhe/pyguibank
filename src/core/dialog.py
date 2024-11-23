@@ -46,69 +46,87 @@ class PreferencesDialog(QDialog):
         grid_layout = QGridLayout()
         main_layout.addLayout(grid_layout)
 
+        row = 0
         # DATABASE section
-        grid_layout.addWidget(QLabel("Database Path:"), 0, 0)
+        grid_layout.addWidget(QLabel("Database Path:"), row, 0)
         self.db_path_edit = QLineEdit(self.config.get("DATABASE", "db_path"))
-        grid_layout.addWidget(self.db_path_edit, 0, 1)
+        grid_layout.addWidget(self.db_path_edit, row, 1)
         db_path_button = QPushButton("Select...")
         db_path_button.clicked.connect(self.select_db_path)
-        grid_layout.addWidget(db_path_button, 0, 2)
+        grid_layout.addWidget(db_path_button, row, 2)
+        row += 1
+
+        # CLASSIFIER section
+        grid_layout.addWidget(QLabel("Classifier Path:"), row, 0)
+        self.model_path_edit = QLineEdit(self.config.get("CLASSIFIER", "model_path"))
+        grid_layout.addWidget(self.model_path_edit, row, 1)
+        model_path_button = QPushButton("Select...")
+        model_path_button.clicked.connect(self.select_mdl_path)
+        grid_layout.addWidget(model_path_button, row, 2)
+        row += 1
 
         # IMPORT section
-        grid_layout.addWidget(QLabel("Import Extensions:"), 1, 0)
+        grid_layout.addWidget(QLabel("Import Extensions:"), row, 0)
         self.extensions_edit = QLineEdit(self.config.get("IMPORT", "extensions"))
-        grid_layout.addWidget(self.extensions_edit, 1, 1)
+        grid_layout.addWidget(self.extensions_edit, row, 1)
+        row += 1
 
-        grid_layout.addWidget(QLabel("Import Directory:"), 2, 0)
+        grid_layout.addWidget(QLabel("Import Directory:"), row, 0)
         self.import_dir_edit = QLineEdit(self.config.get("IMPORT", "import_dir"))
-        grid_layout.addWidget(self.import_dir_edit, 2, 1)
+        grid_layout.addWidget(self.import_dir_edit, row, 1)
         import_dir_button = QPushButton("Select...")
         import_dir_button.clicked.connect(
             lambda: self.select_folder(self.import_dir_edit)
         )
-        grid_layout.addWidget(import_dir_button, 2, 2)
+        grid_layout.addWidget(import_dir_button, row, 2)
+        row += 1
 
-        grid_layout.addWidget(QLabel("Success Directory:"), 3, 0)
+        grid_layout.addWidget(QLabel("Success Directory:"), row, 0)
         self.success_dir_edit = QLineEdit(self.config.get("IMPORT", "success_dir"))
-        grid_layout.addWidget(self.success_dir_edit, 3, 1)
+        grid_layout.addWidget(self.success_dir_edit, row, 1)
         success_dir_button = QPushButton("Select...")
         success_dir_button.clicked.connect(
             lambda: self.select_folder(self.success_dir_edit)
         )
-        grid_layout.addWidget(success_dir_button, 3, 2)
+        grid_layout.addWidget(success_dir_button, row, 2)
+        row += 1
 
-        grid_layout.addWidget(QLabel("Fail Directory:"), 4, 0)
+        grid_layout.addWidget(QLabel("Fail Directory:"), row, 0)
         self.fail_dir_edit = QLineEdit(self.config.get("IMPORT", "fail_dir"))
-        grid_layout.addWidget(self.fail_dir_edit, 4, 1)
+        grid_layout.addWidget(self.fail_dir_edit, row, 1)
         fail_dir_button = QPushButton("Select...")
         fail_dir_button.clicked.connect(lambda: self.select_folder(self.fail_dir_edit))
-        grid_layout.addWidget(fail_dir_button, 4, 2)
+        grid_layout.addWidget(fail_dir_button, row, 2)
+        row += 1
 
-        grid_layout.addWidget(QLabel("Duplicate Directory:"), 5, 0)
+        grid_layout.addWidget(QLabel("Duplicate Directory:"), row, 0)
         self.duplicate_dir_edit = QLineEdit(self.config.get("IMPORT", "duplicate_dir"))
-        grid_layout.addWidget(self.duplicate_dir_edit, 5, 1)
+        grid_layout.addWidget(self.duplicate_dir_edit, row, 1)
         duplicate_dir_button = QPushButton("Select...")
         duplicate_dir_button.clicked.connect(
             lambda: self.select_folder(self.duplicate_dir_edit)
         )
-        grid_layout.addWidget(duplicate_dir_button, 5, 2)
+        grid_layout.addWidget(duplicate_dir_button, row, 2)
+        row += 1
 
-        grid_layout.addWidget(QLabel("Hard Fail:"), 6, 0)
+        grid_layout.addWidget(QLabel("Hard Fail:"), row, 0)
         self.hard_fail_checkbox = QCheckBox()
         self.hard_fail_checkbox.setChecked(
             self.config.getboolean("IMPORT", "hard_fail")
         )
-        grid_layout.addWidget(self.hard_fail_checkbox, 6, 1)
+        grid_layout.addWidget(self.hard_fail_checkbox, row, 1)
+        row += 1
 
         # REPORTS section
-        grid_layout.addWidget(QLabel("Report Directory:"), 7, 0)
+        grid_layout.addWidget(QLabel("Report Directory:"), row, 0)
         self.report_dir_edit = QLineEdit(self.config.get("REPORTS", "report_dir"))
-        grid_layout.addWidget(self.report_dir_edit, 7, 1)
+        grid_layout.addWidget(self.report_dir_edit, row, 1)
         report_dir_button = QPushButton("Select...")
         report_dir_button.clicked.connect(
             lambda: self.select_folder(self.report_dir_edit)
         )
-        grid_layout.addWidget(report_dir_button, 7, 2)
+        grid_layout.addWidget(report_dir_button, row, 2)
+        row += 1
 
         # Buttons
         button_layout = QVBoxLayout()
@@ -123,23 +141,29 @@ class PreferencesDialog(QDialog):
         button_layout.addWidget(cancel_button)
 
     def select_db_path(self):
-        """Select a database file."""
+        self.select_path(self.db_path_edit, "Database Files (*.db)")
+
+    def select_mdl_path(self):
+        self.select_path(self.model_path_edit, "Model Files (*.mdl)")
+
+    def select_path(self, line_edit, ftype: str):
+        """Select a path"""
         try:
-            default_path = str(Path(self.db_path_edit.text()).resolve())
+            default_path = str(Path(line_edit.text()).resolve())
         except:
             default_path = ""
         fpath, _ = QFileDialog.getOpenFileName(
             self,
-            "Select Database File",
+            "Select File",
             default_path,
-            "Database Files (*.db);;All Files (*)",
+            f"{ftype};;All Files (*)",
         )
         if fpath:
             fpath = Path(fpath).resolve()
             if fpath.parents[0] == Path("").resolve():
-                self.db_path_edit.setText(fpath.name)
+                line_edit.setText(fpath.name)
             else:
-                self.db_path_edit.setText(str(fpath))
+                line_edit.setText(str(fpath))
 
     def select_folder(self, line_edit):
         """Select a folder and set its path in the specified QLineEdit."""
@@ -157,6 +181,7 @@ class PreferencesDialog(QDialog):
     def save_preferences(self):
         """Save the preferences to the configuration file."""
         self.config.set("DATABASE", "db_path", self.db_path_edit.text())
+        self.config.set("CLASSIFIER", "model_path", self.model_path_edit.text())
         self.config.set("IMPORT", "extensions", self.extensions_edit.text())
         self.config.set("IMPORT", "import_dir", self.import_dir_edit.text())
         self.config.set("IMPORT", "success_dir", self.success_dir_edit.text())
