@@ -161,12 +161,12 @@ class PyGuiBank(QMainWindow):
         help_menu = menubar.addMenu("Help")
         help_menu.addAction("About", self.about)
 
-        # INITIALIZE DATA ################
-
-        # Read the configuration
+        # INITIALIZE CONFIGURATION ################
         self.config_path = Path("") / "config.ini"
         self.config = read_config(self.config_path)
         self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
+
+        # Make sure a database exists and initialize an empty one if it doesn't
         self.ensure_db()
 
         ##################
@@ -181,7 +181,6 @@ class PyGuiBank(QMainWindow):
         self.table_view = QTableView()
         self.table_view.setSortingEnabled(True)
         self.grid_layout.addWidget(self.table_view, 0, 0, 4, 1)
-        self.update_balances_table()
 
         ### Create balance history control group
         balance_controls_layout = QGridLayout()
@@ -197,16 +196,6 @@ class PyGuiBank(QMainWindow):
 
         # Add checkable accounts list for plot filtering
         self.account_select_list = QListWidget()
-        account_names = [
-            "Net Worth",
-            "Total Assets",
-            "Total Debts",
-        ] + query.account_names(self.db_path)
-        for account in account_names:
-            item = QListWidgetItem(account)
-            item.setCheckState(Qt.Checked)
-            self.account_select_list.addItem(item)
-
         balance_controls_layout.addWidget(self.account_select_list, 2, 0, 1, 1)
 
         # Connect "Select All" checkbox to toggle function
@@ -252,12 +241,6 @@ class PyGuiBank(QMainWindow):
 
         # Add checkable accounts list for plot filtering
         self.category_select_list = QListWidget()
-
-        for category in query.distinct_categories(self.db_path):
-            item = QListWidgetItem(category)
-            item.setCheckState(Qt.Checked)
-            self.category_select_list.addItem(item)
-
         category_controls_layout.addWidget(self.category_select_list, 2, 0, 1, 1)
 
         # Connect "Select All" checkbox to toggle function
@@ -295,7 +278,6 @@ class PyGuiBank(QMainWindow):
         self.grid_layout.addWidget(balance_canvas, 1, 2, 1, 1)
         balance_toolbar = NavigationToolbar(balance_canvas, self)
         self.grid_layout.addWidget(balance_toolbar, 0, 2, 1, 1)
-        self.update_balance_history_chart()
 
         ### Add category spending chart
         category_canvas = MatplotlibCanvas(self, width=7, height=5)
@@ -303,13 +285,15 @@ class PyGuiBank(QMainWindow):
         self.grid_layout.addWidget(category_canvas, 3, 2, 1, 1)
         category_toolbar = NavigationToolbar(category_canvas, self)
         self.grid_layout.addWidget(category_toolbar, 2, 2, 1, 1)
-        self.update_category_spending_chart()
 
         self.setCentralWidget(central_widget)
 
+        # Initialize all tables, checklists, and graphs
+        self.update_main_gui()
+
     def exception_hook(self, exc_type, exc_value, exc_traceback):
         """
-        Handle uncaught exceptions by displaying an error dialog.
+        Handle uncaught exceptions by displaying an error dialog with traceback.
         """
         # Show the error in a message box
         tb = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
@@ -344,7 +328,6 @@ class PyGuiBank(QMainWindow):
         if dialog.exec_() == QDialog.Accepted:
             self.config = read_config(self.config_path)
             self.db_path = Path(self.config.get("DATABASE", "db_path"))
-            print("Updated preferences")
 
     def about(self):
         msg_box = QMessageBox()
@@ -357,18 +340,18 @@ class PyGuiBank(QMainWindow):
     def show_accounts(self):
         dialog = AddAccount(self.db_path)
         if dialog.exec_() == QDialog.Accepted:
-            print("New account was added")
+            # Update all GUI elements
+            self.update_main_gui()
 
     def insert_transaction(self):
         dialog = InsertTransaction(self.db_path)
         if dialog.exec_() == QDialog.Accepted:
-            print("New transaction was added")
+            # Update all GUI elements
+            self.update_main_gui()
 
     def import_all_statements(self):
         # Import everything
-        total, success, duplicate, fail = statements.import_all(
-            self.config, parent=self
-        )
+        total, success, duplicate, fail = statements.import_all(self.config)
         remain = total - success - duplicate - fail
 
         # Show result to user
@@ -378,16 +361,15 @@ class PyGuiBank(QMainWindow):
         msg_box.setText(
             f"Successfully imported {success} of {total} files in {import_dir}."
             f"\n{duplicate} duplicate files were found,"
-            f"\n{fail} files failed to import,"
-            f"\nand {remain} files remain to be imported."
+            f"\n{fail} files failed to import, and"
+            f"\n{remain} files remain to be imported."
         )
-        msg_box.setWindowTitle("Import Complete")
+        msg_box.setWindowTitle("Import Summary")
         msg_box.setStandardButtons(QMessageBox.Ok)
         msg_box.exec_()
 
-        # Update Plots
-        self.update_balance_history_chart()
-        self.update_category_spending_chart()
+        # Update all GUI elements
+        self.update_main_gui()
 
     def import_one_statement(self):
         # Show file selection dialog
@@ -416,14 +398,13 @@ class PyGuiBank(QMainWindow):
         # Import statement
         statements.import_one(self.config, fpath)
 
-        # Update Plots
-        self.update_balance_history_chart()
-        self.update_category_spending_chart()
+        # Update all GUI elements
+        self.update_main_gui()
 
     def statement_matrix(self):
         dialog = CompletenessDialog(self.db_path)
         if dialog.exec_() == QDialog.Accepted:
-            print("Dialog Closed")
+            pass
 
     def plot_balances(self):
         plot.plot_balance_history(self.db_path)
@@ -484,9 +465,9 @@ class PyGuiBank(QMainWindow):
             self.config.write(configfile)
 
     def categorize_new(self):
-        data, columns = query.training_set(
-            self.db_path, where="WHERE Category='Uncategorized'"
-        )
+        where = "WHERE Category='Uncategorized' OR Category='' OR Category IS NULL"
+        # where = "WHERE Verified != 1"
+        data, columns = query.training_set(self.db_path, where=where)
         if len(data) == 0:
             print("No new transactions to categorize!")
             return
@@ -494,9 +475,44 @@ class PyGuiBank(QMainWindow):
         model_path = Path(self.config.get("CATEGORIZE", "model_path")).resolve()
         nrows = categorize_new(self.db_path, model_path)
 
+        # Update all GUI elements
+        self.update_main_gui()
+
     ################################
     ### CENTRAL WIDGET FUNCTIONS ###
     ################################
+    def update_main_gui(self):
+        """Update all tables, checklists, and charts in the main GUI window"""
+        self.update_balances_table()
+        self.update_accounts_checklist()
+        self.update_category_checklist()
+        self.update_balance_history_chart()
+        self.update_category_spending_chart()
+
+    def update_accounts_checklist(self):
+        account_names = [
+            "Net Worth",
+            "Total Assets",
+            "Total Debts",
+        ] + query.account_names(self.db_path)
+        self.update_checklist(self.account_select_list, account_names)
+
+    def update_category_checklist(self):
+        category_names = query.distinct_categories(self.db_path)
+        self.update_checklist(self.category_select_list, category_names)
+
+    def update_checklist(self, list_widget, names):
+        count = list_widget.count()
+        checked = self.get_checked_items(list_widget)
+        list_widget.clear()
+        for name in names:
+            item = QListWidgetItem(name)
+            if count == 0 or name in checked:
+                item.setCheckState(Qt.Checked)
+            else:
+                item.setCheckState(Qt.Unchecked)
+            list_widget.addItem(item)
+
     def update_balances_table(self):
         # Fetch data for the table
         data, columns = query.latest_balances(self.db_path)
@@ -599,10 +615,6 @@ class PyGuiBank(QMainWindow):
 
         # Show mouse hover coordinate
         self.category_ax.fmt_xdata = lambda x: mdates.num2date(x).strftime(r"%Y-%m-%d")
-
-        # Rotate x-axis labels for better readability
-        # for label in self.category_ax.get_xticklabels():
-        #    label.set_rotation(45)
 
         # Redraw the canvas to reflect updates
         self.category_ax.figure.canvas.draw()
