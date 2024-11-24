@@ -72,17 +72,19 @@ def plot_confusion_matrix(y_test, y_pred, categories, normalized=True) -> None:
     """
     conf_mat = confusion_matrix(y_test, y_pred, labels=categories)
     if normalized:
-        conf_mat_normalized = conf_mat.astype("float") / conf_mat.sum(
-            axis=1, keepdims=True
+        conf_mat_normalized = (
+            100 * conf_mat.astype("float") / conf_mat.sum(axis=1, keepdims=True)
         )
         sns.heatmap(
             conf_mat_normalized,
             annot=True,
-            fmt=".2f",
+            fmt=".0f",
             xticklabels=categories,
             yticklabels=categories,
             cmap="Blues",
         )
+        for text in plt.gca().texts:
+            text.set_text(f"{text.get_text()}%")
     else:
         sns.heatmap(
             conf_mat,
@@ -93,6 +95,7 @@ def plot_confusion_matrix(y_test, y_pred, categories, normalized=True) -> None:
         )
     plt.ylabel("Actual")
     plt.xlabel("Predicted")
+    plt.tight_layout()
     plt.show()
 
 
