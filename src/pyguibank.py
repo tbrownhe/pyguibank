@@ -1,5 +1,6 @@
 import sys
 import traceback
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import matplotlib.dates as mdates
@@ -186,17 +187,21 @@ class PyGuiBank(QMainWindow):
         balance_controls_layout = QGridLayout()
 
         # Add account name selection
+        row = 0
         balance_account_label = QLabel("Select Accounts:")
-        balance_controls_layout.addWidget(balance_account_label, 0, 0, 1, 1)
+        balance_controls_layout.addWidget(balance_account_label, row, 0, 1, 2)
+        row += 1
 
         # Add "Select All" checkbox
         select_all_accounts_checkbox = QCheckBox("Select All")
         select_all_accounts_checkbox.setCheckState(Qt.Checked)
-        balance_controls_layout.addWidget(select_all_accounts_checkbox, 1, 0, 1, 1)
+        balance_controls_layout.addWidget(select_all_accounts_checkbox, row, 0, 1, 2)
+        row += 1
 
         # Add checkable accounts list for plot filtering
         self.account_select_list = QListWidget()
-        balance_controls_layout.addWidget(self.account_select_list, 2, 0, 1, 1)
+        balance_controls_layout.addWidget(self.account_select_list, row, 0, 1, 2)
+        row += 1
 
         # Connect "Select All" checkbox to toggle function
         def toggle_select_all_accounts(state):
@@ -206,16 +211,32 @@ class PyGuiBank(QMainWindow):
 
         select_all_accounts_checkbox.stateChanged.connect(toggle_select_all_accounts)
 
+        # Add days of smoothing selection
+        balance_smoothing_label = QLabel("Smoothing Days:")
+        balance_controls_layout.addWidget(balance_smoothing_label, row, 0, 1, 1)
+        self.balance_smoothing_input = QLineEdit("0")
+        self.balance_smoothing_input.setPlaceholderText("Enter number of days")
+        self.balance_smoothing_input.editingFinished.connect(
+            lambda: self.validate_int(self.balance_smoothing_input, 0)
+        )
+        balance_controls_layout.addWidget(self.balance_smoothing_input, row, 1, 1, 1)
+        row += 1
+
         # Add years of balance history selection
         balance_years_label = QLabel("Years of History:")
-        balance_controls_layout.addWidget(balance_years_label, 3, 0, 1, 1)
+        balance_controls_layout.addWidget(balance_years_label, row, 0, 1, 1)
         self.balance_years_input = QLineEdit("10")
-        balance_controls_layout.addWidget(self.balance_years_input, 4, 0, 1, 1)
+        self.balance_years_input.setPlaceholderText("Enter number of years")
+        self.balance_years_input.editingFinished.connect(
+            lambda: self.validate_float(self.balance_years_input, 10)
+        )
+        balance_controls_layout.addWidget(self.balance_years_input, row, 1, 1, 1)
+        row += 1
 
         # Add Update Balance Plot button
         balance_filter_button = QPushButton("Update Balance Plot")
         balance_filter_button.clicked.connect(self.update_balance_history_chart)
-        balance_controls_layout.addWidget(balance_filter_button, 5, 0, 1, 1)
+        balance_controls_layout.addWidget(balance_filter_button, row, 0, 1, 2)
 
         # Place the QGridLayout in a GroupBox so its max size can be set
         balance_controls_group = QGroupBox("Balance History Controls")
@@ -231,17 +252,21 @@ class PyGuiBank(QMainWindow):
         category_controls_layout = QGridLayout()
 
         # Add category selection
+        row = 0
         select_category_label = QLabel("Select Categories:")
-        category_controls_layout.addWidget(select_category_label, 0, 0, 1, 1)
+        category_controls_layout.addWidget(select_category_label, row, 0, 1, 2)
+        row += 1
 
         # Add "Select All" checkbox
         select_all_category_checkbox = QCheckBox("Select All")
         select_all_category_checkbox.setCheckState(Qt.Checked)
-        category_controls_layout.addWidget(select_all_category_checkbox, 1, 0, 1, 1)
+        category_controls_layout.addWidget(select_all_category_checkbox, row, 0, 1, 2)
+        row += 1
 
         # Add checkable accounts list for plot filtering
         self.category_select_list = QListWidget()
-        category_controls_layout.addWidget(self.category_select_list, 2, 0, 1, 1)
+        category_controls_layout.addWidget(self.category_select_list, row, 0, 1, 2)
+        row += 1
 
         # Connect "Select All" checkbox to toggle function
         def toggle_select_all_categories(state):
@@ -251,16 +276,32 @@ class PyGuiBank(QMainWindow):
 
         select_all_category_checkbox.stateChanged.connect(toggle_select_all_categories)
 
+        # Add days of smoothing selection
+        category_smoothing_label = QLabel("Smoothing Months:")
+        category_controls_layout.addWidget(category_smoothing_label, row, 0, 1, 1)
+        self.category_smoothing_input = QLineEdit("0")
+        self.category_smoothing_input.setPlaceholderText("Enter number of days")
+        self.category_smoothing_input.editingFinished.connect(
+            lambda: self.validate_int(self.category_smoothing_input, 0)
+        )
+        category_controls_layout.addWidget(self.category_smoothing_input, row, 1, 1, 1)
+        row += 1
+
         # Add years of balance history selection
         category_years_label = QLabel("Years of History:")
-        category_controls_layout.addWidget(category_years_label, 3, 0, 1, 1)
+        category_controls_layout.addWidget(category_years_label, row, 0, 1, 1)
         self.category_years_input = QLineEdit("10")
-        category_controls_layout.addWidget(self.category_years_input, 4, 0, 1, 1)
+        self.category_years_input.setPlaceholderText("Enter number of years")
+        self.category_years_input.editingFinished.connect(
+            lambda: self.validate_float(self.category_years_input, 10)
+        )
+        category_controls_layout.addWidget(self.category_years_input, row, 1, 1, 1)
+        row += 1
 
         # Add Update Balance Plot button
         category_filter_button = QPushButton("Update Category Plot")
         category_filter_button.clicked.connect(self.update_category_spending_chart)
-        category_controls_layout.addWidget(category_filter_button, 5, 0, 1, 1)
+        category_controls_layout.addWidget(category_filter_button, row, 0, 1, 2)
 
         # Place the QGridLayout in a GroupBox so its max size can be set
         category_controls_group = QGroupBox("Category Spending Controls")
@@ -523,6 +564,9 @@ class PyGuiBank(QMainWindow):
         self.table_view.setModel(table_model)
         self.table_view.resizeColumnsToContents()
 
+        # Set default sorting
+        self.table_view.sortByColumn(2, Qt.DescendingOrder)
+
         # Fix the table width
         total_width = sum(
             self.table_view.columnWidth(i)
@@ -542,24 +586,43 @@ class PyGuiBank(QMainWindow):
                 selected_items.append(item.text())
         return selected_items
 
+    def validate_float(self, line_edit: QLineEdit, fallback: float) -> float:
+        try:
+            return float(line_edit.text())
+        except ValueError:
+            line_edit.setText(str(fallback))
+            return fallback
+
+    def validate_int(self, line_edit: QLineEdit, fallback: int) -> int:
+        try:
+            # Attempt to parse the input as an integer
+            value = int(float(line_edit.text()))
+            line_edit.setText(str(value))
+            return value
+        except ValueError:
+            # On failure, reset to fallback
+            line_edit.setText(str(fallback))
+            return fallback
+
     def update_balance_history_chart(self):
         # Get filter prefs
-        try:
-            limit_years = float(self.balance_years_input.text())
-        except ValueError:
-            self.balance_years_input.setText("10")
-            limit_years = 10
+        smoothing_days = self.validate_int(self.balance_smoothing_input, 0)
+        limit_years = self.validate_float(self.balance_years_input, 10)
         selected_accounts = self.get_checked_items(self.account_select_list)
-
-        # Clear the current contents of the plot
-        self.balance_ax.cla()
 
         # Plot all balances on the same chart
         df, debt_cols = plot.get_balance_data(self.db_path)
 
-        # Truncate the data to the specified year range
-        limit_days = int(limit_years * 365)
-        df = df.iloc[-limit_days:]
+        # Limit the data to the specified year range
+        cutoff_date = datetime.now() - timedelta(days=limit_years * 365)
+        df = df[df.index >= cutoff_date]
+
+        # Apply smoothing (rolling average)
+        if smoothing_days > 1:
+            df = df.rolling(window=smoothing_days, min_periods=1).mean()
+
+        # Clear the current contents of the plot
+        self.balance_ax.cla()
 
         # Plot only account data where the account is in the checklist
         filtered_accounts = [
@@ -584,22 +647,23 @@ class PyGuiBank(QMainWindow):
 
     def update_category_spending_chart(self):
         # Get filter prefs
-        try:
-            limit_years = float(self.category_years_input.text())
-        except ValueError:
-            self.category_years_input.setText("10")
-            limit_years = 10
+        smoothing_months = self.validate_int(self.category_smoothing_input, 0)
+        limit_years = self.validate_float(self.category_years_input, 10)
         selected_cats = self.get_checked_items(self.category_select_list)
-
-        # Clear the current contents of the plot
-        self.category_ax.cla()
 
         # Get the category spending data by month
         df = plot.get_category_data(self.db_path)
 
-        # Truncate data to year range
-        limit_months = int(12 * limit_years)
-        df = df.iloc[-limit_months:]
+        # Limit the data to the specified year range
+        cutoff_date = datetime.now() - timedelta(days=limit_years * 365)
+        df = df[df.index >= cutoff_date]
+
+        # Apply smoothing (rolling average)
+        if smoothing_months > 1:
+            df = df.rolling(window=smoothing_months, min_periods=1).mean()
+
+        # Clear the current contents of the plot
+        self.category_ax.cla()
 
         # Plot only the selected categories
         filtered_cats = [cat for cat in df.columns.values if cat in selected_cats]
