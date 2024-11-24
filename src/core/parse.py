@@ -1,188 +1,256 @@
 import csv
-from datetime import datetime
+import re
 from pathlib import Path
+from typing import Any
 
 import openpyxl
 import pdftotext
+from loguru import logger
 
-from . import parsepdf, parsecsv, parsexlsx
+from . import parsecsv, parsepdf, parsexlsx
 from .query import statement_types
 
 
 def select_parser(db_path: Path, text: str, extension="") -> tuple[int, str]:
-    """
-    Determine what kind of statement this is so the correct parser can be used.
+    """_summary_
+
+    Args:
+        db_path (Path): Path to database
+        text (str): Plaintext contents of statement
+        extension (str, optional): Extension of statement file. Defaults to "".
+
+    Raises:
+        ValueError: Statement is not recognized. A parser likely needs to be built.
+
+    Returns:
+        tuple[int, str]: StatementTypeID and parser name from StatementTypes.Parser
     """
     data, _ = statement_types(db_path, extension=extension)
-
-    # Search the text block for each search string
-    parser = None
-    STID = None
     text_lower = text.lower()
     for STID, pattern, parser in data:
-        search_strs = pattern.lower().split("&&")
-        matching = all([search_str in text_lower for search_str in search_strs])
-        if matching:
-            break
+        if all(
+            re.search(re.escape(search_str), text_lower)
+            for search_str in pattern.lower().split("&&")
+        ):
+            return STID, parser
+    logger.error(
+        "Statement type not recognized. Update StatementTypes and parsing scripts."
+    )
+    raise ValueError("Statement type not recognized.")
 
-    if not matching:
-        raise ValueError("Statement type not recognized. Update tables and scripts.")
 
-    return STID, parser
+def route_data_to_parser(
+    parser: str, parsers: dict, input_data: Any
+) -> tuple[dict[str, Any], dict[str, list]]:
+    """Called by multiple file routing classes.
+    Selects a parsing module from the dict based on the parser str
+    then passes the data variable to it and returns the output of the parser
 
+    Args:
+        parser (str): Parser name from StatementTypes.Parser
+        parsers (dict): Class attribute dict from the xRouter classes
+        input_data (Any): PDFReader, list[list[str]], dict[str, list], etc...
 
-def read_pdf(fpath: Path) -> tuple[str, list[str], list[str]]:
+    Raises:
+        ValueError: Parser could not be found for this statement
+
+    Returns:
+        tuple[dict[str, Any], dict[str, list]]: metadata dict and data dict from parser
     """
-    Uses pdftotext to open and clean up the text in the document.
-    """
-    # Load PDF file
-    with fpath.open("rb") as f:
-        doc = pdftotext.PDF(f, physical=True)
-
-    # Shape and clean the text
-    text = "\n".join(doc)
-    lines_raw = [line for line in text.splitlines() if line.strip() != ""]
-    lines = [" ".join(line.split()) for line in lines_raw]
-
-    return text, lines_raw, lines
-
-
-def parse_pdf(
-    db_path: Path, fpath: Path
-) -> tuple[int, list[datetime], dict[str, list]]:
-    """
-    Opens the pdf and routes the contents to the appropriate parsing script
-    """
-    text, lines_raw, lines = read_pdf(fpath)
-
-    # Determine statement type
-    STID, parser = select_parser(db_path, text, extension=".pdf")
-
-    # Parse lines into transactions for each account type
-    match parser:
-        case "occubank":
-            date_range, data = parsepdf.occubank.parse(lines)
-        case "citi":
-            date_range, data = parsepdf.citi.parse(lines)
-        case "usbank":
-            date_range, data = parsepdf.usbank.parse(lines)
-        case "occucc":
-            date_range, data = parsepdf.occucc.parse(lines)
-        case "wfper":
-            date_range, data = parsepdf.wfper.parse(lines_raw, lines)
-        case "wfbus":
-            date_range, data = parsepdf.wfbus.parse(lines_raw, lines)
-        case "wfploan":
-            date_range, data = parsepdf.wfploan.parse(lines)
-        case "fidelity401k":
-            date_range, data = parsepdf.fidelity401k.parse(lines)
-        case "fidelityhsa":
-            date_range, data = parsepdf.fidelityhsa.parse(lines)
-        case "hehsa":
-            date_range, data = parsepdf.hehsa.parse(lines)
-        case "transamerica":
-            date_range, data = parsepdf.transamerica.parse(lines)
-        case "vanguard":
-            date_range, data = parsepdf.vanguard.parse(lines)
-        case _:
-            raise ValueError(f"Parser name {parser} must be added to parse.py")
-
-    return STID, date_range, data
-
-
-def parse_csv(
-    db_path: Path, fpath: Path
-) -> tuple[int, list[datetime], dict[str, list]]:
-    """
-    Opens the csv and routes the contents to the appropriate parsing script.
-    """
-    # Load csv as plain text
-    with fpath.open("r", encoding="utf-8-sig") as f:
-        text = f.read()
-
-    # Load csv as array
-    array = []
-    with fpath.open("r", encoding="utf-8-sig") as f:
-        reader = csv.reader(f)
-        for row in reader:
-            array.append(row)
-
-    # Determine which parsing script to use
-    STID, parser = select_parser(db_path, text, extension=".csv")
-
-    # Parse lines into transactions for each account type
-    match parser:
-        case "occuauto":
-            date_range, data = parsecsv.occuauto.parse(array)
-        case "amazonper":
-            date_range, data = parsecsv.amazonper.parse(array)
-        case "amazonbus":
-            date_range, data = parsecsv.amazonbus.parse(array)
-        case _:
-            raise ValueError(f"Parser name {parser} must be added to parse.py")
-
-    return STID, date_range, data
-
-
-def read_xlsx(fpath: Path) -> dict[str, list]:
-    # Load the worksheets, skipping any blank rows
-    workbook = openpyxl.load_workbook(fpath)
-    sheets = {}
-    sheetnames = workbook.sheetnames
-    for i, worksheet in enumerate(workbook.worksheets):
-        contents = list(worksheet.values)
-        clean_sheet = [row for row in contents if any([col is not None for col in row])]
-        sheets[sheetnames[i]] = clean_sheet
-    return sheets
-
-
-def parse_xlsx(
-    db_path: Path, fpath: Path
-) -> tuple[int, list[datetime], dict[str, list]]:
-    """
-    Opens the xlsx and routes the contents to the appropriate parsing script.
-    """
-    # Read the sheets into a dict[str, list[list]]
-    sheets = read_xlsx(fpath)
-
-    # Convert all workbook data to plaintext
-    doc = []
-    for sheet in sheets.values():
-        doc.append(
-            "\n".join(
-                [
-                    ", ".join([str(cell) for cell in row if cell is not None])
-                    for row in sheet
-                ]
-            )
+    if parser not in parsers:
+        available_parsers = ", ".join(parsers.keys())
+        logger.error(
+            f"Parser name '{parser}' must be added to the registry. "
+            f"Available parsers: {available_parsers}"
         )
-    text = "\n".join(doc)
-
-    # Determine the parser and route the sheets to that module
-    STID, parser = select_parser(db_path, text, extension=".xlsx")
-    match parser:
-        case "fedloan":
-            date_range, data = parsexlsx.fedloan.parse(sheets)
-        case _:
-            raise ValueError(f"Parser name {parser} must be added to parse.py")
-
-    return STID, date_range, data
+        raise ValueError(f"Parser '{parser}' not found.")
+    return parsers[parser](input_data)
 
 
-def parse(
-    db_path: Path, fpath: Path
-) -> tuple[int, list[datetime], dict[str, list[tuple]]]:
-    """
-    Routes the file to the appropriate parser based on file type.
-    Scrape all the transactions from the file and get simplified filename
+class PDFReader:
+    def __init__(self, fpath: Path):
+        self.fpath = fpath
+        self.text = None
+        self.lines_raw = None
+        self.lines = None
+        self.read_pdf()
+
+    def read_pdf(self):
+        """
+        Reads and processes the PDF file, storing text and lines in the instance.
+        """
+        with self.fpath.open("rb") as f:
+            doc = pdftotext.PDF(f, physical=True)
+        self.text = "\n".join(doc)
+        self.lines_raw = [line for line in self.text.splitlines() if line.strip()]
+        self.lines = [" ".join(line.split()) for line in self.lines_raw]
+
+
+class PDFRouter:
+    # Add parsing modules here as the project grows
+    PARSERS = {
+        "occubank": parsepdf.occubank.parse,
+        "citi": parsepdf.citi.parse,
+        "usbank": parsepdf.usbank.parse,
+        "occucc": parsepdf.occucc.parse,
+        "wfper": parsepdf.wfper.parse,
+        "wfbus": parsepdf.wfbus.parse,
+        "wfploan": parsepdf.wfploan.parse,
+        "fidelity401k": parsepdf.fidelity401k.parse,
+        "fidelityhsa": parsepdf.fidelityhsa.parse,
+        "hehsa": parsepdf.hehsa.parse,
+        "transamerica": parsepdf.transamerica.parse,
+        "vanguard": parsepdf.vanguard.parse,
+    }
+
+    def __init__(self, db_path: Path, fpath: Path):
+        self.db_path = db_path
+        self.fpath = fpath
+
+    def parse(self) -> tuple[dict[str, Any], dict[str, list]]:
+        """Opens the PDF file, determines its type, and routes its contents
+        to the appropriate parsing script.
+
+        Returns:
+            tuple[dict[str, Any], dict[str, list]]: metadata and data from the statement
+        """
+        reader = PDFReader(self.fpath)
+        STID, parser = select_parser(reader.text, extension=".pdf")
+        metadata, data = self.parse_switch(parser, reader)
+        metadata["StatementTypeID"] = STID
+        return metadata, data
+
+    def parse_switch(self, parser: str, pdf_reader: PDFReader):
+        """Dynamically route to the correct parsing function using PDFReader."""
+        try:
+            return route_data_to_parser(parser, self.PARSERS, pdf_reader)
+        except Exception:
+            logger.exception(f"Error while parsing PDF with parser '{parser}':")
+            raise
+
+
+class CSVRouter:
+    # Add parsing modules here as the project grows
+    PARSERS = {
+        "occuauto": parsecsv.occuauto.parse,
+        "amazonper": parsecsv.amazonper.parse,
+        "amazonbus": parsecsv.amazonbus.parse,
+    }
+
+    def __init__(self, db_path: Path, fpath: Path):
+        self.db_path = db_path
+        self.fpath = fpath
+
+    def parse(self) -> tuple[dict[str, Any], dict[str, list]]:
+        """Opens the CSV file, determines its type, and routes its contents
+        to the appropriate parsing script.
+
+        Returns:
+            tuple[dict[str, Any], dict[str, list]]: metadata and data from the statement
+        """
+        text = self.read_csv_as_text()
+        self.array = self.read_csv_as_array()
+
+        # Determine which parsing script to use
+        STID, parser = select_parser(self.db_path, text, extension=".csv")
+        metadata, data = self.parse_switch(parser)
+        metadata["StatementTypeID"] = STID
+        return metadata, data
+
+    def read_csv_as_text(self):
+        """Reads the CSV file and returns its contents as plain text."""
+        with self.fpath.open("r", encoding="utf-8-sig") as f:
+            return f.read()
+
+    def read_csv_as_array(self):
+        """Reads the CSV file and returns its contents as a list of rows."""
+        array = []
+        with self.fpath.open("r", encoding="utf-8-sig") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                array.append(row)
+        return array
+
+    def parse_switch(self, parser: str):
+        """Dynamically route to the correct parsing function."""
+        try:
+            return route_data_to_parser(parser, self.PARSERS, self.array)
+        except Exception:
+            logger.exception(f"Error while parsing CSV with parser '{parser}':")
+            raise
+
+
+class XLSXRouter:
+    # Add parsing modules here as the project grows
+    PARSERS = {"fedloan": parsexlsx.fedloan.parse}
+
+    def __init__(self, db_path: Path, fpath: Path):
+        self.db_path = db_path
+        self.fpath = fpath
+
+    def parse(self) -> tuple[dict[str, Any], dict[str, list]]:
+        """Opens the XLSX file, determines its type, and routes its contents
+        to the appropriate parsing script.
+
+        Returns:
+            tuple[dict[str, Any], dict[str, list]]: metadata and data from the statement
+        """
+        sheets = self.read_xlsx()
+        text = self.plaintext(sheets)
+        STID, parser = select_parser(self.db_path, text, extension=".xlsx")
+        metadata, data = self.parse_switch(parser, sheets)
+        metadata["StatementTypeID"] = STID
+        return metadata, data
+
+    def plaintext(self, sheets):
+        """Convert all workbook data to plaintext"""
+        text = "\n".join(
+            "\n".join(", ".join(str(cell) for cell in row if cell) for row in sheet)
+            for sheet in sheets.values()
+        )
+        return text
+
+    def read_xlsx(self) -> dict[str, list]:
+        """Load the worksheets, skipping any blank rows"""
+        workbook = openpyxl.load_workbook(self.fpath)
+        sheets = {
+            sheet.title: [row for row in sheet.values if any(row)]
+            for sheet in workbook.worksheets
+        }
+        return sheets
+
+    def parse_switch(self, parser: str, sheets: dict[str, list]):
+        """Dynamically route to the correct parsing function."""
+        try:
+            return route_data_to_parser(parser, self.PARSERS, sheets)
+        except Exception:
+            logger.exception(f"Error while parsing XLSX with parser '{parser}':")
+            raise
+
+
+# Definte routers for extensibility
+ROUTERS = {
+    ".pdf": PDFRouter,
+    ".csv": CSVRouter,
+    ".xlsx": XLSXRouter,
+}
+
+
+def parse(db_path: Path, fpath: Path) -> tuple[dict[str, Any], dict[str, list[tuple]]]:
+    """Routes the file to the appropriate parser based on its extension.
+
+    Args:
+        db_path (Path): Path to database file
+        fpath (Path): Statement file to be parsed
+
+    Raises:
+        ValueError: Unsupported file extension
+
+    Returns:
+        tuple[dict[str, Any], dict[str, list[tuple]]]: metadata and data dicts
     """
     suffix = fpath.suffix.lower()
-    match suffix:
-        case ".pdf":
-            return parse_pdf(db_path, fpath)
-        case ".csv":
-            return parse_csv(db_path, fpath)
-        case ".xlsx":
-            return parse_xlsx(db_path, fpath)
-        case _:
-            raise ValueError("Unsupported file extension: %s" % suffix)
+    if suffix in ROUTERS:
+        router = ROUTERS[suffix](db_path, fpath)
+        return router.parse()
+    raise ValueError(f"Unsupported file extension: {suffix}")
