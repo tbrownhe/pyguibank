@@ -137,15 +137,17 @@ class PyGuiBank(QMainWindow):
         statements_menu.addAction("Pick File for Import", self.import_one_statement)
         statements_menu.addAction("Completeness Grid", self.statement_matrix)
 
-        # Reports Menu
-        reports_menu = menubar.addMenu("Reports")
-        reports_menu.addAction("Export Excel", self.make_reports)
-
         # Transactions Menu
         transactions_menu = menubar.addMenu("Transactions")
         transactions_menu.addAction("Insert Manually", self.insert_transaction)
         transactions_menu.addAction("Plot Balances", self.plot_balances)
         transactions_menu.addAction("Plot Categories", self.plot_categories)
+
+        # Reports Menu
+        reports_menu = menubar.addMenu("Reports")
+        reports_menu.addAction("Export Three Months", self.report_3months)
+        reports_menu.addAction("Export One Year", self.report_1year)
+        reports_menu.addAction("Export All Time", self.report_all_time)
 
         # Categorize Menu
         categorize_menu = menubar.addMenu("Categorize")
@@ -156,7 +158,6 @@ class PyGuiBank(QMainWindow):
         categorize_menu.addAction(
             "Train Pipeline for Deployment", self.train_pipeline_save
         )
-        # categorize_menu.addAction("Retrain Classifier Model", train_classifier)
 
         # Help Menu
         help_menu = menubar.addMenu("Help")
@@ -453,16 +454,40 @@ class PyGuiBank(QMainWindow):
     def plot_categories(self):
         plot.plot_category_spending(self.db_path)
 
-    def make_reports(self):
+    def report_all_time(self):
         report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
-        reports.make_reports(self.db_path, report_dir)
+        timestamp = datetime.now().strftime(r"%Y%m%d%H%M%S")
+        dpath = report_dir / f"{timestamp}_Report_AllTime.xlsx"
+        reports.report(self.db_path, dpath)
+
+    def report_1year(self):
+        report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
+        timestamp = datetime.now().strftime(r"%Y%m%d%H%M%S")
+        dpath = report_dir / f"{timestamp}_Report_OneYear.xlsx"
+        reports.report(
+            self.db_path, dpath, where="WHERE Date >= DATE('now', '-1 year')"
+        )
+
+    def report_3months(self):
+        report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
+        timestamp = datetime.now().strftime(r"%Y%m%d%H%M%S")
+        dpath = report_dir / f"{timestamp}_Report_ThreeMonths.xlsx"
+        reports.report(
+            self.db_path, dpath, where="WHERE Date >= DATE('now', '-3 month')"
+        )
 
     def train_pipeline_test(self):
         data, columns = query.training_set(self.db_path, where="WHERE Verified=1")
         if len(data) == 0:
-            print("No verified transactions to train with!")
+            QMessageBox.information(
+                self,
+                "No Verified Categories",
+                "There are no verified transactions to train a model.",
+            )
             return
         df = pd.DataFrame(data, columns=columns)
+
+        # Train and test a pipeline
         learn.train_pipeline_test(df, amount=False)
 
     def train_pipeline_save(self):
@@ -489,12 +514,20 @@ class PyGuiBank(QMainWindow):
         # Retrieve verified transactions
         data, columns = query.training_set(self.db_path, where="WHERE Verified=1")
         if len(data) == 0:
-            print("No verified transactions to train with!")
+            QMessageBox.information(
+                self,
+                "No Verified Categories",
+                "There are no verified transactions to train a model.",
+            )
             return
         df = pd.DataFrame(data, columns=columns)
 
         # Train and save pipeline
         learn.train_pipeline_save(df, model_path, amount=False)
+
+        QMessageBox.information(
+            self, "Pipeline Saved", "Trained pipeline has been saved successfully."
+        )
 
         # Save new pipeline path to config
         if Path("").resolve() == model_path.parents[0]:
@@ -633,6 +666,7 @@ class PyGuiBank(QMainWindow):
             self.balance_ax.plot(df.index, df[account_name], linestyle=linestyle)
 
         # Apply plot customizations
+        self.balance_ax.axhline(0, color="black", linewidth=1.5, linestyle="-")
         self.balance_ax.set_title("Balance History")
         self.balance_ax.set_xlabel("Date")
         self.balance_ax.set_ylabel("Balance ($)")
@@ -671,6 +705,7 @@ class PyGuiBank(QMainWindow):
             self.category_ax.plot(df.index, df[category])
 
         # Customize plot
+        self.category_ax.axhline(0, color="black", linewidth=1.5, linestyle="-")
         self.category_ax.set_title("Spending by Category")
         self.category_ax.set_xlabel("Date")
         self.category_ax.set_ylabel("Amount ($)")

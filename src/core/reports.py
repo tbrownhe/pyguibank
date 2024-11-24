@@ -26,17 +26,12 @@ def save_pivot_tables(df: pd.DataFrame, timestamp: str) -> None:
     """
 
 
-def make_reports(db_path: Path, report_dir: Path):
+def report(db_path: Path, dpath: Path, where=""):
     # Pull recent transactions and create reports
-    data, columns = transactions(db_path, where="WHERE Date >= DATE('now', '-1 year')")
+    data, columns = transactions(db_path, where=where)
     df = pd.DataFrame(data, columns=columns)
     df["Date"] = pd.to_datetime(df["Date"])
     df["Month"] = df["Date"].dt.to_period("M").astype(str)
-
-    # Formatting
-    timestamp = datetime.now().strftime(r"%Y%m%d%H%M%S")
-    if report_dir.is_file():
-        report_dir = report_dir.parents[0]
 
     # Make pivot tables
     df_pivot = df.pivot_table(
@@ -48,18 +43,10 @@ def make_reports(db_path: Path, report_dir: Path):
     ).fillna(0)
 
     # Save to Excel workbook
-    dpath = report_dir / f"{timestamp}_report.xlsx"
     with pd.ExcelWriter(path=dpath) as writer:
         df.to_excel(writer, sheet_name="Transactions")
         df_pivot.to_excel(writer, sheet_name="Pivot Category")
         df_pivot_assets.to_excel(writer, "Pivot CategoryAsset")
 
+    # Open new file in Excel
     open_file_in_os(dpath)
-
-
-if __name__ == "__main__":
-    # Get the db path
-    config = read_config(Path("") / "config.ini")
-    db_path = Path(config.get("DATABASE", "db_path")).resolve()
-    report_dir = Path(config.get("REPORTS", "report_dir")).resolve()
-    make_reports(db_path, report_dir)
