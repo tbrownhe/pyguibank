@@ -4,11 +4,11 @@ from pathlib import Path
 from typing import Any
 
 import openpyxl
-import pdftotext
 from loguru import logger
 
 from . import parsecsv, parsepdf, parsexlsx
 from .query import statement_types
+from .utils import PDFReader
 
 
 def select_parser(db_path: Path, text: str, extension="") -> tuple[int, str]:
@@ -67,25 +67,6 @@ def route_data_to_parser(
     return parsers[parser](input_data)
 
 
-class PDFReader:
-    def __init__(self, fpath: Path):
-        self.fpath = fpath
-        self.text = None
-        self.lines_raw = None
-        self.lines = None
-        self.read_pdf()
-
-    def read_pdf(self):
-        """
-        Reads and processes the PDF file, storing text and lines in the instance.
-        """
-        with self.fpath.open("rb") as f:
-            doc = pdftotext.PDF(f, physical=True)
-        self.text = "\n".join(doc)
-        self.lines_raw = [line for line in self.text.splitlines() if line.strip()]
-        self.lines = [" ".join(line.split()) for line in self.lines_raw]
-
-
 class PDFRouter:
     # Add parsing modules here as the project grows
     PARSERS = {
@@ -115,7 +96,7 @@ class PDFRouter:
             tuple[dict[str, Any], dict[str, list]]: metadata and data from the statement
         """
         reader = PDFReader(self.fpath)
-        STID, parser = select_parser(reader.text, extension=".pdf")
+        STID, parser = select_parser(self.db_path, reader.text, extension=".pdf")
         metadata, data = self.parse_switch(parser, reader)
         metadata["StatementTypeID"] = STID
         return metadata, data
