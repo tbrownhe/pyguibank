@@ -1,7 +1,9 @@
 import re
 from datetime import datetime
+from typing import Any
 
 from ..utils import (
+    PDFReader,
     convert_amount_to_float,
     find_line_startswith,
     find_param_in_line,
@@ -151,15 +153,16 @@ def parse_transactions(
     return transactions
 
 
-def parse(lines: list[str]) -> tuple[list[datetime], dict[str, list]]:
+def parse(reader: PDFReader) -> tuple[dict[str, Any], dict[str, list]]:
     """
     Parse lines of CITIstatement PDF to obtain structured transaction data
     """
     # Get the statement dates, starting balance, and raw transaction lines
-    account = get_account_number(lines)
-    date_range = get_statement_dates(lines)
-    balance = get_starting_balance(lines)
-    transaction_lines = get_transaction_lines(lines)
+    account = get_account_number(reader.lines)
+    date_range = get_statement_dates(reader.lines)
+    balance = get_starting_balance(reader.lines)
+    transaction_lines = get_transaction_lines(reader.lines)
     transactions = parse_transactions(date_range, balance, transaction_lines)
+    metadata = {"StartDate": date_range[0], "EndDate": date_range[1]}
     data = {account: transactions}
-    return date_range, data
+    return metadata, data

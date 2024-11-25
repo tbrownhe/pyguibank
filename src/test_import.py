@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+from loguru import logger
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
     QApplication,
@@ -11,9 +12,9 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from loguru import logger
-from core.parse import parse, read_pdf
-from core.utils import read_config
+
+from core.parse import parse
+from core.utils import PDFReader, read_config
 
 
 class TestImportApp(QMainWindow):
@@ -71,17 +72,17 @@ class TestImportApp(QMainWindow):
             fpath = Path(fpath).resolve()
 
             # Parse the selected file
-            text, lines_raw, lines = read_pdf(fpath)
+            reader = PDFReader(fpath)
 
             # Display parsed data in the output display
             self.output_display.clear()
             self.output_display.append(f"File: {fpath}")
             self.output_display.append("Verbatim Text:\n" + 60 * "=")
-            self.output_display.append(f"{text}")
+            self.output_display.append(f"{reader.text}")
             self.output_display.append("\n\nRaw Lines:\n" + 60 * "=")
-            self.output_display.append("\n".join(lines_raw))
+            self.output_display.append("\n".join(reader.lines_raw))
             self.output_display.append("\n\nCleaned Lines:\n" + 60 * "=")
-            self.output_display.append("\n".join(lines))
+            self.output_display.append("\n".join(reader.lines))
 
         except Exception as e:
             logger.exception("Import failed:")
@@ -99,16 +100,17 @@ class TestImportApp(QMainWindow):
             fpath = Path(fpath).resolve()
 
             # Parse the selected file
-            STID, date_range, data = parse(self.db_path, fpath)
+            metadata, data = parse(self.db_path, fpath)
 
             # Display parsed data in the output display
             self.output_display.clear()
             self.output_display.append(f"File: {fpath}")
-            self.output_display.append(f"STID: {STID}")
-            self.output_display.append(f"Date Range: {date_range}")
+            for key, value in metadata.items():
+                self.output_display.append(f"{key}: {value}")
+
             self.output_display.append("Parsed Data:")
-            for account, transactions in data.items():
-                self.output_display.append("Account: " + str(account))
+            for account_num, transactions in data.items():
+                self.output_display.append("AccountNumber: " + str(account_num))
                 self.output_display.append(
                     "\n".join([str(line) for line in transactions])
                 )
