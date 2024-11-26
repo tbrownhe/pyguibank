@@ -1,168 +1,158 @@
 import re
 from datetime import datetime
-from typing import Any
+from typing import Any, List, Tuple
+
+from loguru import logger
 
 from ..utils import (
-    PDFReader,
     convert_amount_to_float,
     find_line_startswith,
     find_param_in_line,
     get_absolute_date,
 )
+from ..validation import (
+    Account,
+    PDFReader,
+    Statement,
+    Transaction,
+    validate_transactions,
+)
 
 
-def get_account_number(lines: list[str]) -> str:
-    """
-    Retrieve the account  number from the statement
+class CitiParser:
+    DATE_FORMAT = r"%m/%d/%y"
 
-    The line looks like this:
-    Member Since 2020 Account number ending in: 6402 Customer Service 1-888-766-CIT...
-    """
-    search_str = "Account number ending in:"
-    _, line = find_param_in_line(lines, search_str)
-    rline = line.split(search_str)[-1]
-    account = rline.split()[0].strip()
-    return account
+    def __init__(self, reader: PDFReader):
+        reader.remove_white_space()
+        self.reader = reader
 
+    def parse(self) -> Statement:
+        """
+        Main entry point to parse the statement.
+        """
+        logger.trace("Starting parsing for Citi statement")
+        self.statement_dates()
+        accounts = self.extract_accounts()
+        return Statement(
+            start_date=self.start_date, end_date=self.end_date, accounts=accounts
+        )
 
-def get_statement_dates(lines: list[str]) -> list[datetime]:
-    """
-    Parse the lines into datetime and return variable date_range
-    dateline looks like:
-    Billing Period: 02/04/21-03/03/21 TTY-hearing....
-    """
-    # Declare the search pattern and dateformat
-    date_format = r"%m/%d/%y"
-    _, dateline = find_line_startswith(lines, "Billing Period")
+    def statement_dates(self) -> None:
+        """
+        Extract the start and end dates from the statement.
+        """
+        _, dateline = find_line_startswith(self.reader.lines_clean, "Billing Period")
+        parts = dateline.split()
+        self.start_date, self.end_date = [
+            datetime.strptime(date, self.DATE_FORMAT) for date in parts[2].split("-")
+        ]
 
-    parts = dateline.split()
-    datespl = parts[2].split("-")
-    start_date = datetime.strptime(datespl[0], date_format)
-    end_date = datetime.strptime(datespl[1], date_format)
-    date_range = [start_date, end_date]
-    return date_range
+    def extract_accounts(self) -> List[Account]:
+        """One account per Citi statement"""
+        account_num = self.get_account_number()
+        start_balance = self.get_starting_balance()
+        try:
+            self.extract_metadata()
+            self.extract_transactions()
+        except Exception as e:
+            logger.error(f"Parsing failed: {e}")
+            raise
 
+    def extract_metadata(self) -> None:
+        """
+        Extract metadata such as account number, date range, and starting balance.
+        """
 
-def get_starting_balance(lines: list[str]) -> float:
-    """
-    Get the starting balance, which looks like:
-    Previous balance $1,014.71
-    """
-    search_str = "Previous balance "
-    _, balance_line = find_param_in_line(lines, search_str)
-    balance_line_r = balance_line.split(search_str)[-1]
-    balance_str = balance_line_r.split()[0]
-    balance = -convert_amount_to_float(balance_str)
-    return balance
+    def extract_transactions(self) -> None:
+        """
+        Parse and extract transactions from the statement.
+        """
+        transaction_lines = self.get_transaction_lines()
+        self.transactions = self.parse_transaction_lines(transaction_lines)
 
+    def get_account_number(self) -> str:
+        """
+        Retrieve the account number from the statement.
+        """
+        search_str = "Account number ending in:"
+        _, line = find_param_in_line(self.reader.lines, search_str)
+        account = line.split(search_str)[-1].split()[0].strip()
+        return account
 
-def get_transaction_lines(lines: list[str]) -> list[str]:
-    """
-    Returns only lines that contain transaction information
-    """
-    # Get the indices of lines that start with a date.
-    # These are each the first line of a transaction record.
-    leading_date = re.compile(r"^\d{2}/\d{2}\s")
-    transaction_indx = [
-        i for i, line in enumerate(lines) if re.search(leading_date, line)
-    ]
+    def get_starting_balance(self) -> float:
+        """
+        Extract the starting balance from the statement.
+        """
+        search_str = "Previous balance " "New balance "
+        _, balance_line = find_param_in_line(self.reader.lines, search_str)
+        balance_str = balance_line.split(search_str)[-1].split()[0]
+        return -convert_amount_to_float(balance_str)
 
-    transaction_lines = []
-    for i in transaction_indx:
-        # Get the first part of the transaction
-        line = lines[i]
+    def get_transaction_lines(self) -> List[str]:
+        """
+        Extract lines containing transaction information.
+        """
+        leading_date = re.compile(r"^\d{2}/\d{2}\s")
+        transaction_indices = [
+            i
+            for i, line in enumerate(self.reader.lines)
+            if re.search(leading_date, line)
+        ]
+        transaction_lines = []
 
-        # Deal with last transaction
-        if i == transaction_indx[-1]:
+        for i in transaction_indices:
+            line = self.reader.lines[i]
+            if i == transaction_indices[-1] or "$" in line:
+                transaction_lines.append(line)
+                continue
+
+            # Handle multi-line transactions
+            k = 0
+            while True:
+                k += 1
+                if k > 5 or i + k in transaction_indices:
+                    break
+                next_line = self.reader.lines[i + k]
+                if "$" in line and "$" not in next_line:
+                    break
+                line = f"{line} {next_line}"
+
             transaction_lines.append(line)
-            continue
 
-        if "$" in line:
-            # Normal Transaction
-            transaction_lines.append(line)
-            continue
+        return transaction_lines
 
-        # Lookahead for end of multi-line transactions
-        k = 0
-        while True:
-            k += 1
+    def parse_transaction_lines(self, transaction_lines: List[str]) -> List[Tuple]:
+        """
+        Convert raw transaction lines into structured data.
+        """
+        transactions = []
+        date_pattern = re.compile(r"\d{2}/\d{2}")
 
-            if k > 5:
-                raise ValueError("Transaction end point not found: %s" % line)
+        for line in transaction_lines:
+            words = line.split()
+            date_str = words.pop(0)
+            date = get_absolute_date(
+                date_str, [self.metadata["StartDate"], self.metadata["EndDate"]]
+            )
+            date = date.strftime(r"%Y-%m-%d")
 
-            if i + k in transaction_indx:
-                # The next line is a new transaction
-                break
+            if re.search(date_pattern, words[0]):
+                words.pop(0)
 
-            # Get the next line
-            next_line = lines[i + k]
+            i_amount, amount_str = [
+                (i, word) for i, word in enumerate(words) if "$" in word
+            ][-1]
+            amount = -convert_amount_to_float(amount_str)
 
-            if "$" in line and "$" not in next_line:
-                # We already found the end of the transaction
-                break
+            # Update running balance
+            self.balance = round(self.balance + amount, 2)
 
-            if "Foreign Fee" in line:
-                break
+            description = " ".join(words[:i_amount])
+            transactions.append((date, amount, self.balance, description))
 
-            # Append the next line to the transaction line and continue
-            line = " ".join([line, next_line])
-
-        transaction_lines.append(line)
-
-    return transaction_lines
+        return transactions
 
 
-def parse_transactions(
-    date_range: list[datetime], balance: float, transaction_lines: list[str]
-) -> list[tuple]:
-    """
-    Converts the raw transaction text into an organized list of transactions.
-    """
-    date_format = re.compile(r"\d{2}/\d{2}")
-    transactions = []
-    for line in transaction_lines:
-        # Split the line into a list of words
-        words = line.split()
-
-        # The first item is the date
-        date_str = words.pop(0)
-        date = get_absolute_date(date_str, date_range)
-        date = date.strftime(r"%Y-%m-%d")
-
-        # Skip the second date if there is one
-        if re.search(date_format, words[0]):
-            words.pop(0)
-
-        # Get the word containing the transaction amount
-        i_amount, amount_str = [
-            (i, word) for i, word in enumerate(words) if "$" in word
-        ][-1]
-        amount = -convert_amount_to_float(amount_str)
-
-        # Compute the balance after this transaction
-        balance = round(balance + amount, 2)
-
-        # Assemble the description.
-        # Warning: Sometimes there is spurious text after the amount.
-        description = " ".join(words[:i_amount])
-
-        # Build the transaction list
-        transaction = (date, amount, balance, description)
-        transactions.append(transaction)
-
-    return transactions
-
-
-def parse(reader: PDFReader) -> tuple[dict[str, Any], dict[str, list]]:
-    """
-    Parse lines of CITIstatement PDF to obtain structured transaction data
-    """
-    # Get the statement dates, starting balance, and raw transaction lines
-    account = get_account_number(reader.lines)
-    date_range = get_statement_dates(reader.lines)
-    balance = get_starting_balance(reader.lines)
-    transaction_lines = get_transaction_lines(reader.lines)
-    transactions = parse_transactions(date_range, balance, transaction_lines)
-    metadata = {"StartDate": date_range[0], "EndDate": date_range[1]}
-    data = {account: transactions}
-    return metadata, data
+def parse(reader: PDFReader) -> Statement:
+    citiparser = CitiParser(reader)
+    return citiparser.parse()

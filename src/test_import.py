@@ -14,7 +14,8 @@ from PyQt5.QtWidgets import (
 )
 
 from core.parse import parse
-from core.utils import PDFReader, read_config
+from core.utils import read_config
+from core.validation import PDFReader
 
 
 class TestImportApp(QMainWindow):
@@ -72,22 +73,24 @@ class TestImportApp(QMainWindow):
             fpath = Path(fpath).resolve()
 
             # Parse the selected file
-            reader = PDFReader(fpath)
-
-            # Display parsed data in the output display
-            self.output_display.clear()
-            self.output_display.append(f"File: {fpath}")
-            self.output_display.append("Verbatim Text:\n" + 60 * "=")
-            self.output_display.append(f"{reader.text}")
-            self.output_display.append("\n\nRaw Lines:\n" + 60 * "=")
-            self.output_display.append("\n".join(reader.lines_raw))
-            self.output_display.append("\n\nCleaned Lines:\n" + 60 * "=")
-            self.output_display.append("\n".join(reader.lines))
+            with PDFReader(fpath) as reader:
+                self.display_output(fpath, reader)
 
         except Exception as e:
             logger.exception("Import failed:")
             # Display any errors in the output display
             self.output_display.append(f"Error: {str(e)}")
+
+    def display_output(self, fpath: Path, reader: PDFReader):
+        # Display parsed data in the output display
+        self.output_display.clear()
+        self.output_display.append(f"File: {fpath}")
+        self.output_display.append("Verbatim Text:\n" + 60 * "=")
+        self.output_display.append(f"{reader.extract_text()}")
+        self.output_display.append("\n\nRaw Lines:\n" + 60 * "=")
+        self.output_display.append("\n".join(reader.remove_empty_lines()))
+        self.output_display.append("\n\nCleaned Lines:\n" + 60 * "=")
+        self.output_display.append("\n".join(reader.remove_white_space()))
 
     def test_import(self):
         """

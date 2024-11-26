@@ -6,27 +6,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-import pdftotext
 from loguru import logger
-
-
-class PDFReader:
-    def __init__(self, fpath: Path):
-        self.fpath = fpath
-        self.text = None
-        self.lines_raw = None
-        self.lines = None
-        self.read_pdf()
-
-    def read_pdf(self):
-        """
-        Reads and processes the PDF file, storing text and lines in the instance.
-        """
-        with self.fpath.open("rb") as f:
-            self.doc = pdftotext.PDF(f, physical=True)
-        self.text = "\n".join(self.doc)
-        self.lines_raw = [line for line in self.text.splitlines() if line.strip()]
-        self.lines = [" ".join(line.split()) for line in self.lines_raw]
 
 
 def read_config(config_path: Path):

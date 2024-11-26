@@ -95,9 +95,10 @@ class PDFRouter:
         Returns:
             tuple[dict[str, Any], dict[str, list]]: metadata and data from the statement
         """
-        reader = PDFReader(self.fpath)
-        STID, parser = select_parser(self.db_path, reader.text, extension=".pdf")
-        metadata, data = self.parse_switch(parser, reader)
+        with PDFReader(self.fpath) as reader:
+            reader.extract_text()
+            STID, parser = select_parser(self.db_path, reader.text, extension=".pdf")
+            metadata, data = self.parse_switch(parser, reader)
         metadata["StatementTypeID"] = STID
         return metadata, data
 
