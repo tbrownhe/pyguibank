@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import Any, List, Tuple
+from typing import Any
 
 from loguru import logger
 
@@ -31,44 +31,41 @@ class CitiParser:
         Main entry point to parse the statement.
         """
         logger.trace("Starting parsing for Citi statement")
-        self.statement_dates()
+        return self.extract_statement()
+
+    def extract_statement(self) -> Statement:
+        self.get_statement_dates()
         accounts = self.extract_accounts()
         return Statement(
             start_date=self.start_date, end_date=self.end_date, accounts=accounts
         )
 
-    def statement_dates(self) -> None:
+    def get_statement_dates(self) -> tuple[datetime, datetime]:
         """
         Extract the start and end dates from the statement.
+        `Billing Period:12/04/20-01/05/21 TTY-hearing-impaired services..`
         """
-        _, dateline = find_line_startswith(self.reader.lines_clean, "Billing Period")
-        parts = dateline.split()
+        _, dateline = find_line_startswith(self.reader.lines, "Billing Period:")
+        parts = dateline.split(":")[1].split()[0]
         self.start_date, self.end_date = [
-            datetime.strptime(date, self.DATE_FORMAT) for date in parts[2].split("-")
+            datetime.strptime(date, self.DATE_FORMAT) for date in parts.split("-")
         ]
 
-    def extract_accounts(self) -> List[Account]:
+    def extract_accounts(self) -> list[Account]:
         """One account per Citi statement"""
+        return [self.extract_account()]
+
+    def extract_account(self) -> Account:
+        """Extract account level data"""
         account_num = self.get_account_number()
-        start_balance = self.get_starting_balance()
-        try:
-            self.extract_metadata()
-            self.extract_transactions()
-        except Exception as e:
-            logger.error(f"Parsing failed: {e}")
-            raise
-
-    def extract_metadata(self) -> None:
-        """
-        Extract metadata such as account number, date range, and starting balance.
-        """
-
-    def extract_transactions(self) -> None:
-        """
-        Parse and extract transactions from the statement.
-        """
-        transaction_lines = self.get_transaction_lines()
-        self.transactions = self.parse_transaction_lines(transaction_lines)
+        self.get_statement_balances()
+        transactions = self.extract_transactions()
+        return Account(
+            account_num=account_num,
+            start_balance=self.start_balance,
+            end_balance=self.end_balance,
+            transactions=transactions,
+        )
 
     def get_account_number(self) -> str:
         """
@@ -76,19 +73,42 @@ class CitiParser:
         """
         search_str = "Account number ending in:"
         _, line = find_param_in_line(self.reader.lines, search_str)
-        account = line.split(search_str)[-1].split()[0].strip()
-        return account
+        account_num = line.split(search_str)[-1].split()[0].strip()
+        return account_num
 
-    def get_starting_balance(self) -> float:
+    def get_statement_balances(self) -> None:
         """
         Extract the starting balance from the statement.
+        `Previous balance $0.00`
+        `New balance as of 01/05/21: $123.45
         """
-        search_str = "Previous balance " "New balance "
-        _, balance_line = find_param_in_line(self.reader.lines, search_str)
-        balance_str = balance_line.split(search_str)[-1].split()[0]
-        return -convert_amount_to_float(balance_str)
+        patterns = ["Previous balance ", "New balance "]
+        balances = []
 
-    def get_transaction_lines(self) -> List[str]:
+        for pattern in patterns:
+            try:
+                _, balance_line = find_param_in_line(self.reader.lines, pattern)
+                balance_str = balance_line.split()[-1]
+                balance = -convert_amount_to_float(balance_str)
+                balances.append(balance)
+            except ValueError as e:
+                raise ValueError(
+                    f"Failed to extract balance for pattern '{pattern}': {e}"
+                )
+
+        if len(balances) != 2:
+            raise ValueError("Could not extract both starting and ending balances.")
+
+        self.start_balance, self.end_balance = balances
+
+    def extract_transactions(self) -> list[Transaction]:
+        """
+        Parse and extract transactions from the statement.
+        """
+        transaction_lines = self.get_transaction_lines()
+        return self.parse_transaction_lines(transaction_lines)
+
+    def get_transaction_lines(self) -> list[str]:
         """
         Extract lines containing transaction information.
         """
@@ -121,34 +141,38 @@ class CitiParser:
 
         return transaction_lines
 
-    def parse_transaction_lines(self, transaction_lines: List[str]) -> List[Tuple]:
+    def parse_transaction_lines(
+        self, transaction_lines: list[str]
+    ) -> list[Transaction]:
         """
         Convert raw transaction lines into structured data.
         """
         transactions = []
         date_pattern = re.compile(r"\d{2}/\d{2}")
+        balance = float(self.start_balance)
 
         for line in transaction_lines:
             words = line.split()
             date_str = words.pop(0)
-            date = get_absolute_date(
-                date_str, [self.metadata["StartDate"], self.metadata["EndDate"]]
-            )
-            date = date.strftime(r"%Y-%m-%d")
+            date = get_absolute_date(date_str, [self.start_date, self.end_date])
+            # date = date.strftime(r"%Y-%m-%d")
 
             if re.search(date_pattern, words[0]):
                 words.pop(0)
 
             i_amount, amount_str = [
                 (i, word) for i, word in enumerate(words) if "$" in word
-            ][-1]
+            ][0]
             amount = -convert_amount_to_float(amount_str)
 
             # Update running balance
-            self.balance = round(self.balance + amount, 2)
+            balance = round(balance + amount, 2)
 
-            description = " ".join(words[:i_amount])
-            transactions.append((date, amount, self.balance, description))
+            desc = " ".join(words[:i_amount])
+            transaction = Transaction(
+                date=date, amount=amount, balance=balance, desc=desc
+            )
+            transactions.append(transaction)
 
         return transactions
 

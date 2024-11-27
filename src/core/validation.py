@@ -2,10 +2,11 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import pdfplumber
-import pdftotext
+
+# import pdftotext
 
 
 @dataclass
@@ -13,13 +14,13 @@ class Transaction:
     date: datetime
     amount: float
     balance: float
-    description: str
+    desc: str
 
 
 @dataclass
 class Account:
-    account_number: str
-    account_name: str
+    account_num: str
+    # account_name: str
     start_balance: float
     end_balance: float
     transactions: List[Transaction] = field(default_factory=list)
@@ -27,6 +28,7 @@ class Account:
 
 @dataclass
 class Statement:
+    # statement_type_id: int
     start_date: datetime
     end_date: datetime
     accounts: List[Account] = field(default_factory=list)
@@ -38,11 +40,11 @@ class PDFReader:
         self.doc = None
         self.text = None
         self.lines_raw = None
-        self.lines_clean = None
+        self.lines = None
 
     def __enter__(self):
         """
-        Open the PDF document.
+        Open the PDF document using context manager.
         """
         self.doc = pdfplumber.open(self.fpath)
         return self
@@ -79,8 +81,8 @@ class PDFReader:
     def remove_white_space(self) -> list[str]:
         if self.lines_raw is None:
             self.remove_empty_lines()
-        self.lines_clean = [" ".join(line.split()) for line in self.lines_raw]
-        return self.lines_clean
+        self.lines = [" ".join(line.split()) for line in self.lines_raw]
+        return self.lines
 
 
 """

@@ -83,14 +83,15 @@ class TestImportApp(QMainWindow):
 
     def display_output(self, fpath: Path, reader: PDFReader):
         # Display parsed data in the output display
+        reader.remove_white_space()
         self.output_display.clear()
         self.output_display.append(f"File: {fpath}")
         self.output_display.append("Verbatim Text:\n" + 60 * "=")
-        self.output_display.append(f"{reader.extract_text()}")
+        self.output_display.append(f"{reader.text}")
         self.output_display.append("\n\nRaw Lines:\n" + 60 * "=")
-        self.output_display.append("\n".join(reader.remove_empty_lines()))
+        self.output_display.append("\n".join(reader.lines_raw))
         self.output_display.append("\n\nCleaned Lines:\n" + 60 * "=")
-        self.output_display.append("\n".join(reader.remove_white_space()))
+        self.output_display.append("\n".join(reader.lines))
 
     def test_import(self):
         """
@@ -103,7 +104,8 @@ class TestImportApp(QMainWindow):
             fpath = Path(fpath).resolve()
 
             # Parse the selected file
-            metadata, data = parse(self.db_path, fpath)
+            statement = parse(self.db_path, fpath)
+            print(statement)
 
             # Display parsed data in the output display
             self.output_display.clear()
