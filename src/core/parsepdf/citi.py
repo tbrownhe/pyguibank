@@ -198,8 +198,3 @@ class CitiParser(IParser):
             )
 
         return transactions
-
-
-def parse(reader: PDFReader) -> Statement:
-    citiparser = CitiParser(reader)
-    return citiparser.parse()
