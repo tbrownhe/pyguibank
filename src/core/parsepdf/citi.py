@@ -1,26 +1,23 @@
 import re
 from datetime import datetime
-from typing import Any
 
 from loguru import logger
 
 from ..utils import (
+    PDFReader,
     convert_amount_to_float,
     find_line_startswith,
     find_param_in_line,
     get_absolute_date,
 )
-from ..validation import (
-    Account,
-    PDFReader,
-    Statement,
-    Transaction,
-    validate_transactions,
-)
+from ..validation import Account, Statement, Transaction
 
 
 class CitiParser:
-    DATE_FORMAT = r"%m/%d/%y"
+    HEADER_DATE = r"%m/%d/%y"
+    LEADING_DATE = re.compile(r"^\d{2}/\d{2}\s")
+    TRANSACTION_DATE = re.compile(r"\d{2}/\d{2}")
+    AMOUNT = re.compile(r"\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?")
 
     def __init__(self, reader: PDFReader):
         reader.remove_white_space()
@@ -30,8 +27,9 @@ class CitiParser:
         """
         Main entry point to parse the statement.
         """
-        logger.trace("Starting parsing for Citi statement")
-        return self.extract_statement()
+        logger.trace("Parsing Citi statement")
+        statement = self.extract_statement()
+        return statement
 
     def extract_statement(self) -> Statement:
         self.get_statement_dates()
@@ -48,7 +46,7 @@ class CitiParser:
         _, dateline = find_line_startswith(self.reader.lines, "Billing Period:")
         parts = dateline.split(":")[1].split()[0]
         self.start_date, self.end_date = [
-            datetime.strptime(date, self.DATE_FORMAT) for date in parts.split("-")
+            datetime.strptime(date, self.HEADER_DATE) for date in parts.split("-")
         ]
 
     def extract_accounts(self) -> list[Account]:
@@ -59,7 +57,8 @@ class CitiParser:
         """Extract account level data"""
         account_num = self.get_account_number()
         self.get_statement_balances()
-        transactions = self.extract_transactions()
+        transaction_lines = self.get_transaction_lines()
+        transactions = self.parse_transaction_lines(transaction_lines)
         return Account(
             account_num=account_num,
             start_balance=self.start_balance,
@@ -101,43 +100,52 @@ class CitiParser:
 
         self.start_balance, self.end_balance = balances
 
-    def extract_transactions(self) -> list[Transaction]:
-        """
-        Parse and extract transactions from the statement.
-        """
-        transaction_lines = self.get_transaction_lines()
-        return self.parse_transaction_lines(transaction_lines)
-
     def get_transaction_lines(self) -> list[str]:
         """
         Extract lines containing transaction information.
-        """
-        leading_date = re.compile(r"^\d{2}/\d{2}\s")
-        transaction_indices = [
-            i
-            for i, line in enumerate(self.reader.lines)
-            if re.search(leading_date, line)
-        ]
-        transaction_lines = []
+        Example line:
+        `12/20 12/20 BESTBUYCOM806399323439 888-BESTBUY MN $39.99`
 
+        - Lines must start with a date (`self.LEADING_DATE`) and include an amount (`self.AMOUNT`).
+        - Multi-line transactions are concatenated until an amount is found or the next transaction starts.
+        """
+
+        def has_date(line: str) -> bool:
+            """Check if a line starts with a valid date."""
+            return bool(re.search(self.LEADING_DATE, line))
+
+        def has_amount(line: str) -> bool:
+            """Check if a line contains an amount."""
+            return bool(re.search(self.AMOUNT, line))
+
+        # Identify indices of potential transaction start lines
+        transaction_indices = [
+            i for i, line in enumerate(self.reader.lines) if has_date(line)
+        ]
+
+        transaction_lines = []
+        max_lookahead = 5
+
+        # Process each potential transaction line
         for i in transaction_indices:
             line = self.reader.lines[i]
-            if i == transaction_indices[-1] or "$" in line:
-                transaction_lines.append(line)
-                continue
 
-            # Handle multi-line transactions
-            k = 0
-            while True:
-                k += 1
-                if k > 5 or i + k in transaction_indices:
+            # Look ahead for multi-line transactions
+            for k in range(1, max_lookahead + 1):
+                if has_amount(line):
                     break
-                next_line = self.reader.lines[i + k]
-                if "$" in line and "$" not in next_line:
+                next_index = i + k
+                if (
+                    next_index >= len(self.reader.lines)
+                    or next_index in transaction_indices
+                ):
+                    # Stop if end of document or next transaction start is reached
                     break
+                next_line = self.reader.lines[next_index]
                 line = f"{line} {next_line}"
 
-            transaction_lines.append(line)
+            if has_amount(line):
+                transaction_lines.append(line)
 
         return transaction_lines
 
@@ -148,31 +156,48 @@ class CitiParser:
         Convert raw transaction lines into structured data.
         """
         transactions = []
-        date_pattern = re.compile(r"\d{2}/\d{2}")
         balance = float(self.start_balance)
 
         for line in transaction_lines:
             words = line.split()
-            date_str = words.pop(0)
-            date = get_absolute_date(date_str, [self.start_date, self.end_date])
-            # date = date.strftime(r"%Y-%m-%d")
 
-            if re.search(date_pattern, words[0]):
-                words.pop(0)
+            # Convert leading mm/dd to full datetime
+            mmdd = words.pop(0)
+            transaction_date = get_absolute_date(mmdd, self.start_date, self.end_date)
 
+            # If there is a second date, it is the posting date
+            if words and re.search(self.TRANSACTION_DATE, words[0]):
+                mmdd = words.pop(0)
+                posting_date = get_absolute_date(mmdd, self.start_date, self.end_date)
+            else:
+                # The leading date is the posting date
+                posting_date = transaction_date
+                transaction_date = None
+
+            # Extract the first amount-like string
             i_amount, amount_str = [
-                (i, word) for i, word in enumerate(words) if "$" in word
+                (i, word)
+                for i, word in enumerate(words)
+                if re.search(self.AMOUNT, word)
             ][0]
             amount = -convert_amount_to_float(amount_str)
 
             # Update running balance
             balance = round(balance + amount, 2)
 
+            # Extract the description
             desc = " ".join(words[:i_amount])
-            transaction = Transaction(
-                date=date, amount=amount, balance=balance, desc=desc
+
+            # Append the transaction
+            transactions.append(
+                Transaction(
+                    transaction_date=transaction_date,
+                    posting_date=posting_date,
+                    amount=amount,
+                    balance=balance,
+                    desc=desc,
+                )
             )
-            transactions.append(transaction)
 
         return transactions
 

@@ -6,7 +6,10 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+import pdfplumber
 from loguru import logger
+
+# import pdftotext
 
 
 def read_config(config_path: Path):
@@ -93,30 +96,47 @@ def find_line_re_search(lines: list[str], search_str: str) -> tuple[int, str]:
     raise ValueError("Regex %s not found in lines." % search_str)
 
 
-def get_absolute_date(MMDD: str, date_range: list[datetime]) -> datetime:
+def get_absolute_date(mmdd: str, start_date: datetime, end_date: datetime) -> datetime:
     """
-    Convert MM/DD date string like 02/23 to datetime.
-    Correct for year wraparound like 12/29, 12/31, 01/01
+    Convert MM/DD date string to a full datetime object, accounting for year wraparounds.
+
+    Args:
+        mmdd (str): Date string in MM/DD format.
+        date_range (list[datetime]): List containing the start and end dates of the statement period.
+
+    Returns:
+        datetime: The full datetime object for the given MM/DD.
     """
-    MM = MMDD.split("/")[0]
-    start_year = date_range[0].year
-    end_year = date_range[1].year
-    if int(MM) == 1 and end_year > start_year:
-        MMDDYYYY = MMDD + "/" + str(end_year)
-    else:
-        MMDDYYYY = MMDD + "/" + str(start_year)
-    date = datetime.strptime(MMDDYYYY, r"%m/%d/%Y")
-    return date
+    # Extract start and end years
+    start_year, end_year = start_date.year, end_date.year
+
+    # Append the appropriate year to the MM/DD
+    month = int(mmdd.split("/")[0])
+    year = end_year if month == 1 and end_year > start_year else start_year
+
+    # Parse the final MM/DD/YYYY string
+    return datetime.strptime(f"{mmdd}/{year}", r"%m/%d/%Y")
 
 
-def remove_unimportant_words(description: str) -> str:
+def remove_stop_words(description: str, stop_words=None) -> str:
     """
-    Delete spurious words from Descriptions
+    Remove spurious words from a description.
+
+    Args:
+        description (str): Input description string.
+        stop_words (list[str]): List of words to remove (case-insensitive). Defaults to a predefined list.
+
+    Returns:
+        str: The cleaned description with stop words removed.
     """
-    rm_words = ["purchase", "pos", "dbt", "recur-purch", "return"]
-    clean_words = [word for word in description.split() if word.lower() not in rm_words]
-    clean_desc = " ".join(clean_words)
-    return clean_desc
+    if stop_words is None:
+        stop_words = {"purchase", "pos", "dbt", "recur-purch"}  # , "return"}
+
+    # Filter out stop words
+    clean_words = [
+        word for word in description.split() if word.lower() not in stop_words
+    ]
+    return " ".join(clean_words)
 
 
 def convert_amount_to_float(amount_str: str) -> float:
@@ -202,3 +222,72 @@ def standardize_fname(fpath: Path, parser: str, date_range) -> str:
         + fpath.suffix.lower()
     )
     return new_fname
+
+
+class PDFReader:
+    def __init__(self, fpath: Path):
+        self.fpath = fpath
+        self.doc = None
+        self.text = None
+        self.lines_raw = None
+        self.lines = None
+
+    def __enter__(self):
+        """
+        Open the PDF document using context manager.
+        """
+        self.doc = pdfplumber.open(self.fpath)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """
+        Close the PDF document upon exiting the context.
+        """
+        if self.doc:
+            self.doc.close()
+            self.doc = None
+
+    def __del__(self):
+        """
+        Ensure the PDF document is closed when the object is deleted.
+        """
+        if self.doc:
+            self.doc.close()
+
+    def extract_text(self) -> str:
+        if self.doc is None:
+            raise ValueError("PDF not opened properly")
+        self.text = "\n".join(
+            [page.extract_text_simple() or "" for page in self.doc.pages]
+        )
+        return self.text
+
+    def remove_empty_lines(self) -> list[str]:
+        if self.text is None:
+            self.extract_text()
+        self.lines_raw = [line for line in self.text.splitlines() if line.strip()]
+        return self.lines_raw
+
+    def remove_white_space(self) -> list[str]:
+        if self.lines_raw is None:
+            self.remove_empty_lines()
+        self.lines = [" ".join(line.split()) for line in self.lines_raw]
+        return self.lines
+
+
+"""
+class PDFReader:
+    def __init__(self, fpath: Path):
+        self.fpath = fpath
+        self.text = None
+        self.lines_raw = None
+        self.lines = None
+        self.read_pdf()
+
+    def read_pdf(self):
+        with self.fpath.open("rb") as f:
+            self.doc = pdftotext.PDF(f, physical=True)
+        self.text = "\n".join(self.doc)
+        self.lines_raw = [line for line in self.text.splitlines() if line.strip()]
+        self.lines = [" ".join(line.split()) for line in self.lines_raw]
+"""

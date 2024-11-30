@@ -1,14 +1,26 @@
 import csv
+import importlib
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Union, Callable
 
 import openpyxl
 from loguru import logger
 
 from . import parsecsv, parsepdf, parsexlsx
 from .query import statement_types
-from .validation import PDFReader, Statement
+from .utils import PDFReader
+from .validation import Statement, StatementValidationError, validate_statement
+
+
+def load_parser(entry_point: str) -> Any:
+    """Loads a parser dynamically from its entry point."""
+    try:
+        module_path, func_name = entry_point.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        return getattr(module, func_name)
+    except (ImportError, AttributeError) as e:
+        raise ValueError(f"Failed to load parser: {entry_point}") from e
 
 
 def select_parser(db_path: Path, text: str, extension="") -> tuple[int, str]:
@@ -28,12 +40,12 @@ def select_parser(db_path: Path, text: str, extension="") -> tuple[int, str]:
     """
     data, _ = statement_types(db_path, extension=extension)
     text_lower = text.lower()
-    for stid, pattern, parser in data:
+    for stid, pattern, entry_point in data:
         if all(
             re.search(re.escape(search_str), text_lower)
             for search_str in pattern.lower().split("&&")
         ):
-            return stid, parser
+            return stid, entry_point
     logger.error(
         "Statement type not recognized. Update StatementTypes and parsing scripts."
     )
@@ -66,28 +78,67 @@ def route_data_to_parser(parser: str, parsers: dict, input_data: Any) -> Stateme
     return parsers[parser](input_data)
 
 
-class PDFRouter:
-    # Add parsing modules here as the project grows
-    PARSERS = {
-        "occubank": parsepdf.occubank.parse,
-        "citi": parsepdf.citi.parse,
-        "usbank": parsepdf.usbank.parse,
-        "occucc": parsepdf.occucc.parse,
-        "wfper": parsepdf.wfper.parse,
-        "wfbus": parsepdf.wfbus.parse,
-        "wfploan": parsepdf.wfploan.parse,
-        "fidelity401k": parsepdf.fidelity401k.parse,
-        "fidelityhsa": parsepdf.fidelityhsa.parse,
-        "hehsa": parsepdf.hehsa.parse,
-        "transamerica": parsepdf.transamerica.parse,
-        "vanguard": parsepdf.vanguard.parse,
-    }
+class BaseRouter:
+    def __init__(self, parsers: dict):
+        self.parsers = parsers
 
+    def parse_switch(
+        self,
+        parser: str,
+        input_data: Union[PDFReader, list[list[str]], dict[str, list]],
+    ) -> Statement:
+        """Send the input data to the correct parser based on the
+        PARSERS dict passed from child classes
+
+        Args:
+            parser (str): name of parsing module from StatementTypes.Parsers
+            input_data (Any): PDFReader, csv array, or xlsx sheets
+
+        Returns:
+            Statement: Contents of parsed statement
+        """
+        try:
+            return route_data_to_parser(parser, self.parsers, input_data)
+        except Exception:
+            logger.exception(
+                f"Error while parsing with parser '{parser}'"
+                f"and input type '{type(input_data).__name__}':"
+            )
+            raise
+
+    def validate(self, statement: Statement, parser: str):
+        try:
+            validate_statement(statement)
+        except StatementValidationError as e:
+            logger.error(
+                f"Validation failed for statement imported using"
+                f" parser '{parser}': {e}"
+            )
+            raise
+
+
+class PDFRouter(BaseRouter):
     def __init__(self, db_path: Path, fpath: Path):
+        # Add parsing modules here as the project grows
+        parsers = {
+            "occubank": parsepdf.occubank.parse,
+            "citi": parsepdf.citi.parse,
+            "usbank": parsepdf.usbank.parse,
+            "occucc": parsepdf.occucc.parse,
+            "wfper": parsepdf.wfper.parse,
+            "wfbus": parsepdf.wfbus.parse,
+            "wfploan": parsepdf.wfploan.parse,
+            "fidelity401k": parsepdf.fidelity401k.parse,
+            "fidelityhsa": parsepdf.fidelityhsa.parse,
+            "hehsa": parsepdf.hehsa.parse,
+            "transamerica": parsepdf.transamerica.parse,
+            "vanguard": parsepdf.vanguard.parse,
+        }
+        super().__init__(parsers)
         self.db_path = db_path
         self.fpath = fpath
 
-    def parse(self) -> Statement:
+    def parse(self) -> tuple[int, Statement]:
         """Opens the PDF file, determines its type, and routes its reader
         to the appropriate parsing module.
 
@@ -96,30 +147,62 @@ class PDFRouter:
         """
         with PDFReader(self.fpath) as reader:
             text = reader.extract_text()
-            stid, parser = select_parser(self.db_path, text, extension=".pdf")
-            statement = self.parse_switch(parser, reader)
-        statement.statement_type_id = stid
+            stid, entry_point = select_parser(self.db_path, text, extension=".pdf")
+            parser = self.load_and_validate_parser(entry_point)
+            statement = self.run_parser(parser, reader)
+
+        # Validate and return statement data
+        statement.stid = stid
+        self.validate(statement, parser)
         return statement
 
-    def parse_switch(self, parser: str, pdf_reader: PDFReader) -> Statement:
-        """Dynamically route to the correct parsing function using PDFReader."""
-        try:
-            return route_data_to_parser(parser, self.PARSERS, pdf_reader)
-        except Exception:
-            logger.exception(f"Error while parsing PDF with parser '{parser}':")
-            raise
+    def load_and_validate_parser(
+        self, entry_point: str
+    ) -> Callable[[PDFReader], Statement]:
+        """
+        Load a parser and validate its signature.
+
+        Args:
+            entry_point (str): Entry point for the parser.
+
+        Returns:
+            Callable[[PDFReader], Statement]: A validated parser function.
+        """
+        parser = load_parser(entry_point)
+        if not callable(parser):
+            raise ValueError(f"Parser at {entry_point} is not callable.")
+        return parser
+
+    def run_parser(
+        self, parser: Callable[[PDFReader], Statement], reader: PDFReader
+    ) -> Statement:
+        """
+        Run the parser and enforce return type.
+
+        Args:
+            parser (Callable[[PDFReader], Statement]): The parser function.
+            reader (PDFReader): The PDFReader instance.
+
+        Returns:
+            Statement: The parsed statement data.
+        """
+        result = parser(reader)
+        if not isinstance(result, Statement):
+            raise TypeError(f"Parser did not return a Statement: {parser.__name__}")
+        return result
 
 
-class CSVRouter:
-    # Add parsing modules here as the project grows
-    PARSERS = {
-        "occuauto": parsecsv.occuauto.parse,
-        "amazonper": parsecsv.amazonper.parse,
-        "amazonbus": parsecsv.amazonbus.parse,
-    }
+class CSVRouter(BaseRouter):
     ENCODING = "utf-8-sig"
 
     def __init__(self, db_path: Path, fpath: Path):
+        # Add parsing modules here as the project grows
+        parsers = {
+            "occuauto": parsecsv.occuauto.parse,
+            "amazonper": parsecsv.amazonper.parse,
+            "amazonbus": parsecsv.amazonbus.parse,
+        }
+        super().__init__(parsers)
         self.db_path = db_path
         self.fpath = fpath
 
@@ -136,7 +219,10 @@ class CSVRouter:
         # Determine which parsing script to use
         stid, parser = select_parser(self.db_path, text, extension=".csv")
         statement = self.parse_switch(parser, array)
-        statement.statement_type_id = stid
+
+        # Validate and return statement data
+        statement.stid = stid
+        self.validate(statement, parser)
         return statement
 
     def read_csv_as_text(self) -> str:
@@ -154,20 +240,12 @@ class CSVRouter:
                 array.append(row)
         return array
 
-    def parse_switch(self, parser: str, array: list[list[str]]) -> Statement:
-        """Dynamically route to the correct parsing function."""
-        try:
-            return route_data_to_parser(parser, self.PARSERS, array)
-        except Exception:
-            logger.exception(f"Error while parsing CSV with parser '{parser}':")
-            raise
 
-
-class XLSXRouter:
-    # Add parsing modules here as the project grows
-    PARSERS = {"fedloan": parsexlsx.fedloan.parse}
-
+class XLSXRouter(BaseRouter):
     def __init__(self, db_path: Path, fpath: Path):
+        # Add parsing modules here as the project grows
+        parsers = {"fedloan": parsexlsx.fedloan.parse}
+        super().__init__(parsers)
         self.db_path = db_path
         self.fpath = fpath
 
@@ -182,7 +260,10 @@ class XLSXRouter:
         text = self.plain_text(sheets)
         stid, parser = select_parser(self.db_path, text, extension=".xlsx")
         statement = self.parse_switch(parser, sheets)
-        statement.statement_type_id = stid
+
+        # Validate and return statement data
+        statement.stid = stid
+        self.validate(statement, parser)
         return statement
 
     def plain_text(self, sheets) -> str:
@@ -201,14 +282,6 @@ class XLSXRouter:
             for sheet in workbook.worksheets
         }
         return sheets
-
-    def parse_switch(self, parser: str, sheets: dict[str, list]) -> Statement:
-        """Dynamically route to the correct parsing function."""
-        try:
-            return route_data_to_parser(parser, self.PARSERS, sheets)
-        except Exception:
-            logger.exception(f"Error while parsing XLSX with parser '{parser}':")
-            raise
 
 
 # Definte routers for extensibility

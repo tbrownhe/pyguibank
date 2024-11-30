@@ -2,9 +2,10 @@ from pathlib import Path
 
 from core.db import execute_sql_query
 
-db_path = Path("") / "pyguibank_good.db"
+db_path = Path("") / "pyguibank.db"
 data, _ = execute_sql_query(
-    db_path, "SELECT Company, Type, Extension, SearchString, Parser FROM StatementTypes"
+    db_path,
+    "SELECT AccountTypeID, Company, Description, Extension, SearchString, Parser, EntryPoint FROM StatementTypes",
 )
 
 for i, row in enumerate(data):

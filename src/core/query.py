@@ -25,7 +25,7 @@ def statement_info(db_path: Path, md5hash: str) -> tuple[int, str]:
 
 def statement_types(db_path: Path, extension=""):
     # Get the list of accounts and search strings from the db.
-    query = "SELECT StatementTypeID, SearchString, Parser FROM StatementTypes"
+    query = "SELECT StatementTypeID, SearchString, EntryPoint FROM StatementTypes"
     if extension:
         query += f" WHERE Extension = '{extension}'"
     return execute_sql_query(db_path, query)

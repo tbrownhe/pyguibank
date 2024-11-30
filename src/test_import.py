@@ -14,15 +14,14 @@ from PyQt5.QtWidgets import (
 )
 
 from core.parse import parse
-from core.utils import read_config
-from core.validation import PDFReader
+from core.utils import PDFReader, read_config
 
 
 class TestImportApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Test Import Environment")
-        self.resize(600, 400)
+        self.resize(800, 600)
 
         # Central widget
         central_widget = QWidget()
@@ -105,20 +104,23 @@ class TestImportApp(QMainWindow):
 
             # Parse the selected file
             statement = parse(self.db_path, fpath)
-            print(statement)
 
             # Display parsed data in the output display
             self.output_display.clear()
             self.output_display.append(f"File: {fpath}")
-            for key, value in metadata.items():
-                self.output_display.append(f"{key}: {value}")
-
-            self.output_display.append("Parsed Data:")
-            for account_num, transactions in data.items():
-                self.output_display.append("AccountNumber: " + str(account_num))
-                self.output_display.append(
-                    "\n".join([str(line) for line in transactions])
-                )
+            self.output_display.append(f"StatementTypeID: {statement.stid}")
+            self.output_display.append(f"Start Date: {statement.start_date}")
+            self.output_display.append(f"End Date: {statement.end_date}")
+            for account in statement.accounts:
+                self.output_display.append(f"  Account Number: {account.account_num}")
+                self.output_display.append(f"  Start Balance: {account.start_balance}")
+                self.output_display.append(f"  End Balance: {account.end_balance}")
+                self.output_display.append(f"  Transactions:")
+                for transaction in account.transactions:
+                    self.output_display.append(
+                        f"    {transaction.transaction_date} {transaction.posting_date}"
+                        f" {transaction.amount} {transaction.balance} {transaction.desc}"
+                    )
 
         except Exception as e:
             logger.exception("Import failed:")
