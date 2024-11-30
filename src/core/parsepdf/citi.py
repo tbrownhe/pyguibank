@@ -3,6 +3,7 @@ from datetime import datetime
 
 from loguru import logger
 
+from ..interfaces import IParser
 from ..utils import (
     PDFReader,
     convert_amount_to_float,
@@ -13,23 +14,20 @@ from ..utils import (
 from ..validation import Account, Statement, Transaction
 
 
-class CitiParser:
+class CitiParser(IParser):
     HEADER_DATE = r"%m/%d/%y"
     LEADING_DATE = re.compile(r"^\d{2}/\d{2}\s")
     TRANSACTION_DATE = re.compile(r"\d{2}/\d{2}")
     AMOUNT = re.compile(r"\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?")
 
-    def __init__(self, reader: PDFReader):
-        reader.remove_white_space()
-        self.reader = reader
-
-    def parse(self) -> Statement:
+    def parse(self, reader: PDFReader) -> Statement:
         """
         Main entry point to parse the statement.
         """
         logger.trace("Parsing Citi statement")
-        statement = self.extract_statement()
-        return statement
+        reader.remove_white_space()
+        self.reader = reader
+        return self.extract_statement()
 
     def extract_statement(self) -> Statement:
         self.get_statement_dates()

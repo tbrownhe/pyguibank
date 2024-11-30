@@ -116,24 +116,22 @@ VALUES
 -- Prepopulate StatementTypes with statement recognition values and entry points
 INSERT INTO "StatementTypes" ("AccountTypeID", "Company", "Description", "Extension", "SearchString", "Parser", "EntryPoint") 
 VALUES 
-	(1, 'Oregon Community Credit Union', 'Personal', '.pdf', 'oregon community credit union&&member number', 'occubank', 'parsepdf.occubank:parse'),
-	(3, 'Oregon Community Credit Union', 'OCCU', '.pdf', 'www.myoccu.org&&card services', 'occucc', 'parsepdf.occucc:parse'),
-	(6, 'Oregon Community Credit Union', 'Auto', '.csv', '254779', 'occuauto', 'parsecsv.occuauto:parse'),
-	(1, 'Wells Fargo', 'Personal', '.pdf', 'wells fargo everyday checking', 'wfper', 'parsepdf.wfper:parse'),
-	(2, 'Wells Fargo', 'Personal', '.pdf', 'wells fargo way2save savings', 'wfper', 'parsepdf.wfper:parse'),
-	(1, 'Wells Fargo', 'Business', '.pdf', 'wells fargo&&initiate business checking', 'wfbus', 'parsepdf.wfbus:parse'),
-	(2, 'Wells Fargo', 'Business', '.pdf', 'wells fargo&&business market rate savings', 'wfbus', 'parsepdf.wfbus:parse'),
-	(6, 'Wells Fargo', 'Personal', '.pdf', 'wells fargo&&personal loan statement', 'wfploan', 'parsepdf.wfploan:parse'),
-	(3, 'Citibank', '', '.pdf', 'www.citicards.com', 'citi', 'parsepdf.citi:parse'),
-	(3, 'US Bank', '', '.pdf', 'u.s. bank&&reivisa.com', 'usbank', 'parsepdf.usbank:parse'),
-	(3, 'US Bank', '', '.pdf', 'u.s. bank&&reimastercard.com', 'usbank', 'parsepdf.usbank:parse'),
-	(4, 'Fidelity', 'Intel', '.pdf', 'intel 401(k)&&fidelity', 'fidelity401k', 'parsepdf.fidelity401k:parse'),
-	(5, 'Fidelity', '', '.pdf', 'fidelity health savings account', 'fidelityhsa', 'parsepdf.fidelityhsa:parse'),
-	(5, 'Health Equity', '', '.pdf', 'healthequity&&health savings account', 'hehsa', 'parsepdf.hehsa:parse'),
-	(4, 'Transamerica', '', '.pdf', 'transamerica&&retirement account statement', 'transamerica', 'parsepdf.transamerica:parse'),
-	(6, 'Fedloan Servicing', 'Student', '.xlsx', 'fedloan servicing', 'fedloan', 'parsexlsx.fedloan:parse'),
-	(7, 'Amazon', 'Personal', '.csv', 'amazon&&unspsc code&&asin/isbn', 'amazonper', 'parsecsv.amazonper:parse'),
-	(7, 'Amazon', 'Business', '.csv', 'amazon&&account group&&po number', 'amazonbus', 'parsecsv.amazonbus:parse'),
-	(4, 'Vanguard', '', '.pdf', 'vanguard.com&&account summary', 'vanguard', 'parsepdf.vanguard:parse');
-
-
+	(1, 'Oregon Community Credit Union', 'Personal', '.pdf', 'oregon community credit union&&member number', 'occubank', 'core.parsepdf.occubank:parse'),
+	(3, 'Oregon Community Credit Union', 'OCCU', '.pdf', 'www.myoccu.org&&card services', 'occucc', 'core.parsepdf.occucc:parse'),
+	(6, 'Oregon Community Credit Union', 'Auto', '.csv', '254779', 'occuauto', 'core.parsecsv.occuauto:parse'),
+	(1, 'Wells Fargo', 'Personal', '.pdf', 'wells fargo everyday checking', 'wfper', 'core.parsepdf.wfper:parse'),
+	(2, 'Wells Fargo', 'Personal', '.pdf', 'wells fargo way2save savings', 'wfper', 'core.parsepdf.wfper:parse'),
+	(1, 'Wells Fargo', 'Business', '.pdf', 'wells fargo&&initiate business checking', 'wfbus', 'core.parsepdf.wfbus:parse'),
+	(2, 'Wells Fargo', 'Business', '.pdf', 'wells fargo&&business market rate savings', 'wfbus', 'core.parsepdf.wfbus:parse'),
+	(6, 'Wells Fargo', 'Personal', '.pdf', 'wells fargo&&personal loan statement', 'wfploan', 'core.parsepdf.wfploan:parse'),
+	(3, 'Citibank', '', '.pdf', 'www.citicards.com', 'citi', 'core.parsepdf.citi:parse'),
+	(3, 'US Bank', '', '.pdf', 'u.s. bank&&reivisa.com', 'usbank', 'core.parsepdf.usbank:parse'),
+	(3, 'US Bank', '', '.pdf', 'u.s. bank&&reimastercard.com', 'usbank', 'core.parsepdf.usbank:parse'),
+	(4, 'Fidelity', 'Intel', '.pdf', 'intel 401(k)&&fidelity', 'fidelity401k', 'core.parsepdf.fidelity401k:parse'),
+	(5, 'Fidelity', '', '.pdf', 'fidelity health savings account', 'fidelityhsa', 'core.parsepdf.fidelityhsa:parse'),
+	(5, 'Health Equity', '', '.pdf', 'healthequity&&health savings account', 'hehsa', 'core.parsepdf.hehsa:parse'),
+	(4, 'Transamerica', '', '.pdf', 'transamerica&&retirement account statement', 'transamerica', 'core.parsepdf.transamerica:parse'),
+	(6, 'Fedloan Servicing', 'Student', '.xlsx', 'fedloan servicing', 'fedloan', 'core.parsexlsx.fedloan:parse'),
+	(7, 'Amazon', 'Personal', '.csv', 'amazon&&unspsc code&&asin/isbn', 'amazonper', 'core.parsecsv.amazonper:parse'),
+	(7, 'Amazon', 'Business', '.csv', 'amazon&&account group&&po number', 'amazonbus', 'core.parsecsv.amazonbus:parse'),
+	(4, 'Vanguard', '', '.pdf', 'vanguard.com&&account summary', 'vanguard', 'core.parsepdf.vanguard:parse');
