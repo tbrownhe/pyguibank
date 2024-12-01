@@ -8,19 +8,57 @@ def optimize_db(db_path: Path):
     _, _ = execute_sql_query(db_path, "ANALYZE")
 
 
-def statement_info(db_path: Path, md5hash: str) -> tuple[int, str]:
+def statements_containing_hash(db_path: Path, md5hash: str) -> list[tuple]:
     """
-    Retrieves a StatementID based on the md5hash.
+    Retrieves StatementID based on the md5hash.
     """
     query = f"SELECT StatementID, Filename FROM Statements WHERE MD5 = '{md5hash}'"
     data, _ = execute_sql_query(db_path, query)
+    return data
+
+
+def statements_containing_filename(db_path: Path, filename: str) -> list[tuple]:
+    """
+    Retrieves StatementID based on the filename.
+    """
+    query = (
+        f"SELECT StatementID, Filename FROM Statements WHERE Filename = '{filename}'"
+    )
+    data, _ = execute_sql_query(db_path, query)
+    return data
+
+
+def statement_id(db_path: Path, account_id: int, md5hash: str) -> int:
+    """Retrieves unique StatementID based on account_id and md5hash
+
+    Args:
+        db_path (Path): _description_
+        account_id (int): _description_
+        md5hash (str): _description_
+
+    Raises:
+        KeyError: _description_
+        KeyError: _description_
+
+    Returns:
+        int: _description_
+    """
+    query = (
+        "SELECT StatementID FROM Statements"
+        f" WHERE AccountID = {account_id} AND MD5 = '{md5hash}'"
+    )
+    data, _ = execute_sql_query(db_path, query)
     if len(data) == 0:
-        return -1, ""
-    elif len(data) == 1:
-        statement_id, fname = data[0]
-        return statement_id, fname
-    else:
-        raise KeyError(f"{md5hash} is not unique in Statements.MD5.")
+        raise KeyError(
+            "StatementID could not be found for found for"
+            f" AccountID = {account_id} and MD5 = '{md5hash}'"
+        )
+    if len(data) > 1:
+        raise KeyError(
+            "StatementID is not unique for"
+            f" AccountID = {account_id} and MD5 = '{md5hash}'"
+        )
+    return data[0][0]
 
 
 def statement_types(db_path: Path, extension=""):
