@@ -250,7 +250,7 @@ register_router(".csv", CSVRouter)
 register_router(".xlsx", XLSXRouter)
 
 
-def parse(db_path: Path, fpath: Path, **kwargs) -> Statement:
+def parse_any(db_path: Path, fpath: Path, **kwargs) -> Statement:
     """Routes the file to the appropriate parser based on its extension.
 
     Args:

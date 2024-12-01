@@ -28,7 +28,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from core import learn, plot, query, reports, statements
+from core import learn, plot, query, reports
 from core.categorize import categorize_new
 from core.db import create_new_db
 from core.dialog import (
@@ -37,6 +37,7 @@ from core.dialog import (
     InsertTransaction,
     PreferencesDialog,
 )
+from core.statements import StatementProcessor
 from core.utils import open_file_in_os, read_config
 
 
@@ -393,22 +394,8 @@ class PyGuiBank(QMainWindow):
 
     def import_all_statements(self):
         # Import everything
-        total, success, duplicate, fail = statements.import_all(self.config)
-        remain = total - success - duplicate - fail
-
-        # Show result to user
-        import_dir = Path(self.config.get("IMPORT", "import_dir")).resolve()
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Information)
-        msg_box.setText(
-            f"Successfully imported {success} of {total} files in {import_dir}."
-            f"\n{duplicate} duplicate files were found,"
-            f"\n{fail} files failed to import, and"
-            f"\n{remain} files remain to be imported."
-        )
-        msg_box.setWindowTitle("Import Summary")
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
+        processor = StatementProcessor(self.config)
+        processor.import_all(parent=self)
 
         # Update all GUI elements
         self.update_main_gui()
@@ -438,7 +425,8 @@ class PyGuiBank(QMainWindow):
             return
 
         # Import statement
-        statements.import_one(self.config, fpath)
+        processor = StatementProcessor(self.config)
+        processor.import_one(fpath)
 
         # Update all GUI elements
         self.update_main_gui()

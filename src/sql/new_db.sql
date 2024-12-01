@@ -41,14 +41,17 @@ CREATE TABLE "Statements" (
 	"StatementID"	INTEGER UNIQUE,
 	"StatementTypeID"	INTEGER,
 	"AccountID"	INTEGER,
+	"ImportDate"	TEXT,
 	"StartDate"	TEXT,
 	"EndDate"	TEXT,
-	"ImportDate"	TEXT,
+	"StartBalance"	NUMERIC,
+	"EndBalance"	NUMERIC,
+	"TransactionCount"	INTEGER,
 	"Filename"	TEXT,
-	"MD5"	TEXT UNIQUE,
+	"MD5"	TEXT,
 	PRIMARY KEY("StatementID" AUTOINCREMENT),
-	FOREIGN KEY("StatementTypeID") REFERENCES "StatementTypes"("StatementTypeID"),
-	FOREIGN KEY("AccountID") REFERENCES "Accounts"("AccountID")
+	FOREIGN KEY("AccountID") REFERENCES "Accounts"("AccountID"),
+	FOREIGN KEY("StatementTypeID") REFERENCES "StatementTypes"("StatementTypeID")
 );
 
 CREATE TABLE "Transactions" (
@@ -124,7 +127,7 @@ VALUES
 	(1, 'Wells Fargo', 'Business', '.pdf', 'wells fargo&&initiate business checking', 'wfbus', 'core.parsepdf.wfbus:parse'),
 	(2, 'Wells Fargo', 'Business', '.pdf', 'wells fargo&&business market rate savings', 'wfbus', 'core.parsepdf.wfbus:parse'),
 	(6, 'Wells Fargo', 'Personal', '.pdf', 'wells fargo&&personal loan statement', 'wfploan', 'core.parsepdf.wfploan:parse'),
-	(3, 'Citibank', '', '.pdf', 'www.citicards.com', 'citi', 'core.parsepdf.citi:parse'),
+	(3, 'Citibank', '', '.pdf', 'www.citicards.com', 'citi', 'core.parsepdf.citi:CitiParser'),
 	(3, 'US Bank', '', '.pdf', 'u.s. bank&&reivisa.com', 'usbank', 'core.parsepdf.usbank:parse'),
 	(3, 'US Bank', '', '.pdf', 'u.s. bank&&reimastercard.com', 'usbank', 'core.parsepdf.usbank:parse'),
 	(4, 'Fidelity', 'Intel', '.pdf', 'intel 401(k)&&fidelity', 'fidelity401k', 'core.parsepdf.fidelity401k:parse'),
