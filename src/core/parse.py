@@ -22,8 +22,9 @@ class BaseRouter(Generic[T]):
         Generic (T): T adopts the type passed to it when a child class inherits this class
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, fpath: Path, hard_fail=True):
+        self.fpath = fpath
+        self.hard_fail = hard_fail
 
     def select_parser(self, db_path: Path, text: str, extension="") -> tuple[int, str]:
         """Pulls parser search strings from database, then does pattern matching to
@@ -63,8 +64,11 @@ class BaseRouter(Generic[T]):
         parser = self.load_parser(entry_point)
         statement = self.run_parser(parser, input_data)
 
-        # Validate and return statement data
+        # Attach additional metadata
+        statement.fpath = self.fpath
         statement.stid = stid
+
+        # Validate and return statement data
         self.validate_statement(statement, parser)
         return statement
 
@@ -121,7 +125,7 @@ class BaseRouter(Generic[T]):
 
     def validate_statement(self, statement: Statement, parser: str) -> None:
         try:
-            validate_statement(statement)
+            validate_statement(statement, self.hard_fail)
         except StatementValidationError as e:
             logger.error(
                 f"Validation failed for statement imported using"
@@ -137,8 +141,8 @@ class PDFRouter(BaseRouter[PDFReader]):
         BaseRouter (PDFReader): _description_
     """
 
-    def __init__(self, db_path: Path, fpath: Path):
-        super().__init__()
+    def __init__(self, db_path: Path, fpath: Path, **kwargs):
+        super().__init__(fpath, **kwargs)
         self.db_path = db_path
         self.fpath = fpath
 
@@ -159,8 +163,8 @@ class PDFRouter(BaseRouter[PDFReader]):
 class CSVRouter(BaseRouter[list[list[str]]]):
     ENCODING = "utf-8-sig"
 
-    def __init__(self, db_path: Path, fpath: Path):
-        super().__init__()
+    def __init__(self, db_path: Path, fpath: Path, **kwargs):
+        super().__init__(fpath, **kwargs)
         self.db_path = db_path
         self.fpath = fpath
 
@@ -197,8 +201,8 @@ class CSVRouter(BaseRouter[list[list[str]]]):
 
 
 class XLSXRouter(BaseRouter):
-    def __init__(self, db_path: Path, fpath: Path):
-        super().__init__()
+    def __init__(self, db_path: Path, fpath: Path, **kwargs):
+        super().__init__(fpath, **kwargs)
         self.db_path = db_path
         self.fpath = fpath
 
@@ -246,7 +250,7 @@ register_router(".csv", CSVRouter)
 register_router(".xlsx", XLSXRouter)
 
 
-def parse(db_path: Path, fpath: Path) -> Statement:
+def parse(db_path: Path, fpath: Path, **kwargs) -> Statement:
     """Routes the file to the appropriate parser based on its extension.
 
     Args:
@@ -261,6 +265,6 @@ def parse(db_path: Path, fpath: Path) -> Statement:
     """
     suffix = fpath.suffix.lower()
     if suffix in ROUTERS:
-        router = ROUTERS[suffix](db_path, fpath)
+        router = ROUTERS[suffix](db_path, fpath, **kwargs)
         return router.parse()
     raise ValueError(f"Unsupported file extension: {suffix}")
