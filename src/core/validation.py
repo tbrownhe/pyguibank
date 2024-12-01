@@ -70,7 +70,7 @@ class Account:
         """Validate all fields for final processing."""
         self.validate_initial()
         self.validate_account_info()
-        if self.statement_id is None or not isinstance(self.statement_id, int):
+        if not isinstance(self.statement_id, int):
             raise ValidationError("statement_id must be an integer")
 
 
@@ -84,6 +84,14 @@ class Statement:
     dpath: Optional[Path] = None
     md5hash: Optional[str] = None
 
+    def add_metadata(self, fpath: Path, stid: int):
+        if not isinstance(fpath, Path):
+            raise ValidationError("fpath must be a Path")
+        if not isinstance(stid, str):
+            raise ValidationError("stid must be int")
+        self.fpath = fpath
+        self.stid = stid
+
     def add_md5hash(self, md5hash: str):
         if not isinstance(md5hash, str):
             raise ValidationError("md5hash must be a str")
@@ -91,6 +99,14 @@ class Statement:
 
     def add_dpath(self, dpath: Path):
         self.dpath = dpath
+
+    def validate_metadata(self) -> list[str]:
+        errors = []
+        if not isinstance(self.fpath, Path):
+            errors.append("fpath must be a Path")
+        if not isinstance(self.stid, str):
+            errors.append("stid must be int")
+        return errors
 
 
 ### Validation framework
@@ -114,12 +130,10 @@ def validate_statement(statement: Statement, hard_fail: bool):
 
 ### Validation functions
 def validate_metadata(statement: Statement) -> list[str]:
-    errors = []
-    if statement.stid is None:
-        errors.append("StatementTypeID cannot be None")
-    if statement.fpath is None:
-        errors.append("Statement fpath cannot be None")
-    return errors
+    try:
+        statement.validate_metadata()
+    except Exception as errors:
+        return errors
 
 
 def validate_transactions(statement: Statement) -> list[str]:

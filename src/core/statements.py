@@ -139,11 +139,12 @@ class StatementProcessor:
 
         # Rename and move the statement file to the success directory
         self.move_file_safely(self.statement.fpath, self.statement.dpath)
+
         return 1, 0
 
     def attach_metadata(self, md5hash: str) -> None:
         # Add the statement file hash
-        self.statement.add_md5hash(self.md5hash)
+        self.statement.add_md5hash(md5hash)
 
         # Attach the account_id and account_name
         self.attach_account_info()

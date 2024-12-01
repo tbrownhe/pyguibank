@@ -65,8 +65,7 @@ class BaseRouter(Generic[T]):
         statement = self.run_parser(parser, input_data)
 
         # Attach additional metadata
-        statement.fpath = self.fpath
-        statement.stid = stid
+        statement.add_metadata(self.fpath, stid)
 
         # Validate and return statement data
         self.validate_statement(statement, parser)
