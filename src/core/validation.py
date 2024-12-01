@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Callable, List, Optional
+
+from loguru import logger
 
 
 ### Exceptions
@@ -24,7 +27,9 @@ class Account:
     start_balance: float
     end_balance: float
     transactions: List[Transaction]
+    account_id: Optional[int] = None
     account_name: Optional[str] = None
+    statement_id: Optional[int] = None
 
 
 @dataclass
@@ -33,6 +38,9 @@ class Statement:
     end_date: datetime
     accounts: List[Account]
     stid: Optional[int] = None
+    fpath: Optional[Path] = None
+    dpath: Optional[Path] = None
+    md5hash: Optional[str] = None
 
 
 ### Validation framework
@@ -43,21 +51,24 @@ def register_validation(check: Callable[[Statement], List[str]]):
     VALIDATION_CHECKS.append(check)
 
 
-def validate_statement(statement: Statement):
+def validate_statement(statement: Statement, hard_fail: bool):
     errors = []
     for check in VALIDATION_CHECKS:
         errors.extend(check(statement))
     if errors:
-        raise StatementValidationError("\n".join(errors))
+        if hard_fail:
+            raise StatementValidationError("\n".join(errors))
+        else:
+            logger.debug(errors)
 
 
 ### Validation functions
-
-
 def validate_metadata(statement: Statement) -> list[str]:
     errors = []
     if statement.stid is None:
         errors.append("StatementTypeID cannot be None")
+    if statement.fpath is None:
+        errors.append("Statement fpath cannot be None")
     return errors
 
 
@@ -72,21 +83,22 @@ def validate_transactions(statement: Statement) -> list[str]:
                 transaction.posting_date > statement.end_date
             ):
                 errors.append(
-                    f"Transaction date {transaction.date} is outside the statement"
+                    f"Transaction date {transaction.posting_date} is outside the statement"
                     f" date range {statement.start_date} - {statement.end_date}"
                 )
 
-            # Transaction date (if available) must be within 1 week of the posting date
+            # Transaction date (if available) must be within 30 days of the posting date
+            # `04/17 05/05 ROSAN JAMAICA LIMITED MONTEGO BAY`
             if transaction.transaction_date:
                 if not isinstance(transaction.transaction_date, datetime):
                     errors.append(f"Invalid date: {transaction.transaction_date}")
                 if (
                     abs((transaction.transaction_date - transaction.posting_date).days)
-                    > 7
+                    > 30
                 ):
                     errors.append(
                         f"Transaction date {transaction.transaction_date} is more than 7 days"
-                        " from posting date {transaction.posting_date}"
+                        f" from posting date {transaction.posting_date}"
                     )
 
             # Amount, balance, and description must exist with correct type
