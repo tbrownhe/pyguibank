@@ -216,13 +216,17 @@ class CitiParser(IParser):
             ][0]
             amount = -convert_amount_to_float(amount_str)
 
-            # Update running balance
-            balance = round(balance + amount, 2)
-
             # Extract the description
             desc = " ".join(words[:i_amount])
 
-            # Append the transaction
+            # Store this transaction in a list to be sorted
+            transactions.append((transaction_date, posting_date, amount, desc))
+
+        # Sort transactions by posting date before computing running balance
+        sorted_transactions = sorted(transactions, key=lambda x: x[1])
+        transactions = []
+        for transaction_date, posting_date, amount, desc in sorted_transactions:
+            balance = round(balance + amount, 2)
             transactions.append(
                 Transaction(
                     transaction_date=transaction_date,
