@@ -107,6 +107,32 @@ class CitiParser(IParser):
         - Lines must start with a date (`self.LEADING_DATE`) and include an amount (`self.AMOUNT`).
         - Multi-line transactions are concatenated until an amount is found or the next transaction starts.
         """
+        transaction_lines = []
+        for page in self.reader.pages:
+            transaction_lines.extend(self.get_transactions_from_page(page))
+        return transaction_lines
+
+    def get_transactions_from_page(self, page: str) -> list[str]:
+        # Get the raw lines and word array for this page
+        lines_raw = [line for line in page.splitlines() if line.strip()]
+        word_array = [[word for word in line.split()] for line in lines_raw]
+        lines_clean = [" ".join(words) for words in word_array]
+
+        # Find the line containing the transaction table header
+        search_words = ["date", "description", "amount"]
+        header = None
+        for line in lines_raw:
+            if all(word in line.lower().split() for word in search_words):
+                header = line.lower()
+                break
+
+        if header is None:
+            # No transactions on this page
+            return []
+
+        # Get the index of the end of "Amount"
+        # No valid words start past this index
+        max_index = header.index("amount") + len("amount")
 
         def has_date(line: str) -> bool:
             """Check if a line starts with a valid date."""
@@ -116,30 +142,40 @@ class CitiParser(IParser):
             """Check if a line contains an amount."""
             return bool(re.search(self.AMOUNT, line))
 
+        def truncate_words(line: str, max_index: int) -> str:
+            """Do not include words that start farther than max_index unless there is
+            only a single space between the last included word and the current word.
+            """
+            words, start, last_end = [], 0, -1
+            for word in line.split():
+                start = line.find(word, start)
+                if start > max_index and (last_end == -1 or start - last_end > 1):
+                    break
+                words.append(word)
+                last_end = start + len(word)
+                start += len(word)
+            return " ".join(words)
+
         # Identify indices of potential transaction start lines
         transaction_indices = [
-            i for i, line in enumerate(self.reader.lines) if has_date(line)
+            i for i, line in enumerate(lines_clean) if has_date(line)
         ]
 
+        # Process each potential transaction line
         transaction_lines = []
         max_lookahead = 5
-
-        # Process each potential transaction line
         for i in transaction_indices:
-            line = self.reader.lines[i]
+            line = truncate_words(lines_raw[i], max_index)
 
             # Look ahead for multi-line transactions
             for k in range(1, max_lookahead + 1):
                 if has_amount(line):
                     break
                 next_index = i + k
-                if (
-                    next_index >= len(self.reader.lines)
-                    or next_index in transaction_indices
-                ):
+                if next_index >= len(lines_raw) or next_index in transaction_indices:
                     # Stop if end of document or next transaction start is reached
                     break
-                next_line = self.reader.lines[next_index]
+                next_line = truncate_words(lines_raw[next_index], max_index)
                 line = f"{line} {next_line}"
 
             if has_amount(line):
