@@ -233,27 +233,11 @@ def hash_file(fpath: Path) -> str:
     return md5hash
 
 
-def standardize_fname(fpath: Path, parser: str, date_range) -> str:
-    """
-    Creates consistent fname
-    """
-    new_fname = (
-        "_".join(
-            [
-                parser,
-                date_range[0].strftime(r"%Y%m%d"),
-                date_range[1].strftime(r"%Y%m%d"),
-            ]
-        )
-        + fpath.suffix.lower()
-    )
-    return new_fname
-
-
 class PDFReader:
     def __init__(self, fpath: Path):
         self.fpath = fpath
         self.doc = None
+        self.pages = None
         self.text = None
         self.lines_raw = None
         self.lines = None
@@ -280,12 +264,16 @@ class PDFReader:
         if self.doc:
             self.doc.close()
 
-    def extract_text(self) -> str:
+    def extract_pages(self) -> list[str]:
         if self.doc is None:
             raise ValueError("PDF not opened properly")
-        self.text = "\n".join(
-            [page.extract_text_simple() or "" for page in self.doc.pages]
-        )
+        self.pages = [page.extract_text(layout=True) or "" for page in self.doc.pages]
+        return self.pages
+
+    def extract_text(self) -> str:
+        if self.pages is None:
+            self.extract_pages()
+        self.text = "\n".join(self.pages)
         return self.text
 
     def remove_empty_lines(self) -> list[str]:
