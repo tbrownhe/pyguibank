@@ -1,4 +1,3 @@
-import hashlib
 import shutil
 from configparser import ConfigParser
 from datetime import datetime
@@ -12,107 +11,14 @@ from . import query
 from .db import insert_into_db
 from .dialog import AssignAccountNumber
 from .parse import parse
-from .utils import hash_file, hash_transactions, read_config, standardize_fname
+from .utils import hash_file, hash_transactions
+from .validation import Statement
 
 
-def statement_already_imported(db_path: Path, fpath: Path) -> bool:
-    # Check if the file has already been saved to the db
-    md5hash = hash_file(fpath)
-    statement_id, statement_fname = query.statement_info(db_path, md5hash)
-    imported = statement_id != -1
-    if imported:
-        logger.info(
-            f"Previously imported {statement_fname} (StatementID: {statement_id})"
-            f" has identical hash {md5hash}"
-        )
-    return imported
+def move_file_safely(fpath: Path, dpath: Path):
+    # Make sure destination parent dir exists
+    dpath.parents[0].mkdir(parents=True, exist_ok=True)
 
-
-def insert_statement_metadata(
-    db_path: Path,
-    fpath: Path,
-    STID: int,
-    account_id: int,
-    nick_name: str,
-    date_range: list[datetime],
-) -> tuple[str, int]:
-    """
-    Updates db with information about this statement file.
-    """
-    # Assemble the metadata
-    md5hash = hash_file(fpath)
-    columns = [
-        "StatementTypeID",
-        "AccountID",
-        "StartDate",
-        "EndDate",
-        "ImportDate",
-        "Filename",
-        "MD5",
-    ]
-    start_date = date_range[0].strftime(r"%Y-%m-%d")
-    end_date = date_range[1].strftime(r"%Y-%m-%d")
-    import_date = datetime.now().strftime(r"%Y-%m-%d")
-    new_fname = standardize_fname(fpath, nick_name, date_range)
-    metadata = (
-        STID,
-        account_id,
-        start_date,
-        end_date,
-        import_date,
-        new_fname,
-        md5hash,
-    )
-
-    # Insert metadata into db
-    insert_into_db(db_path, "Statements", columns, [metadata])
-
-    # Get the new StatementID
-    statement_id, _ = query.statement_info(db_path, md5hash)
-
-    return new_fname, statement_id
-
-
-def prompt_account_num(db_path: Path, fpath: Path, STID: int, account_num: str) -> int:
-    """
-    Ask user to associate this unknown account_num with an Accounts.AccountID
-    """
-    account_id = None
-    dialog = AssignAccountNumber(db_path, fpath, STID, account_num)
-    if dialog.exec_() == QDialog.Accepted:
-        account_id = dialog.get_account_id()
-        return account_id
-    else:
-        raise ValueError("No AccountID selected.")
-
-
-def get_account_info(
-    db_path: Path, fpath: Path, STID: int, account_nums: list[str]
-) -> tuple[dict[str, int], str]:
-    """
-    Makes sure all accounts in the statement have an entry in the lookup table.
-    Return the nicknames of all accounts
-    """
-    account_ids = {}
-    for account_num in account_nums:
-        try:
-            account_id = query.account_id(db_path, account_num)
-        except KeyError:
-            account_id = prompt_account_num(db_path, fpath, STID, account_num)
-        account_ids[account_num] = account_id
-    nick_name = query.account_name(db_path, account_ids[account_nums[0]])
-    return account_ids, nick_name
-
-
-def move_to_archive(fpath: Path, archive_dir: Path, dname: str) -> None:
-    """
-    Move a file to the archive dir
-    """
-    # Create the archive directory if it doesn't exist
-    archive_dir.mkdir(parents=True, exist_ok=True)
-
-    # Move the original file to the archive
-    dpath = archive_dir / dname
     while True:
         try:
             shutil.move(fpath, dpath)
@@ -127,6 +33,102 @@ def move_to_archive(fpath: Path, archive_dir: Path, dname: str) -> None:
             msg_box.setWindowTitle("Unable to Move File")
             msg_box.setStandardButtons(QMessageBox.Ok)
             msg_box.exec_()
+
+
+def standardize_dpath(statement: Statement, success_dir: Path) -> Statement:
+    """
+    Creates consistent destination path.
+    Uses first account as the main account.
+    """
+    dname = (
+        "_".join(
+            [
+                statement.accounts[0].account_name,
+                statement.start_date.strftime(r"%Y-%m-%d"),
+                statement.end_date.strftime(r"%Y-%m-%d"),
+            ]
+        )
+        + statement.fpath.suffix.lower()
+    )
+    statement.dpath = success_dir / dname
+    return statement
+
+
+def insert_statement_metadata(db_path: Path, statement: Statement) -> Statement:
+    """
+    Updates db with information about this statement file.
+    """
+    for account in statement.accounts:
+        # Assemble the metadata
+        columns = [
+            "StatementTypeID",
+            "AccountID",
+            "ImportDate",
+            "StartDate",
+            "EndDate",
+            "StartBalance",
+            "EndBalance",
+            "TransactionCount",
+            "Filename",
+            "MD5",
+        ]
+        metadata = (
+            statement.stid,
+            account.account_id,
+            datetime.now().strftime(r"%Y-%m-%d"),
+            statement.start_date.strftime(r"%Y-%m-%d"),
+            statement.end_date.strftime(r"%Y-%m-%d"),
+            account.start_balance,
+            account.end_balance,
+            len(account.transactions),
+            statement.dpath.name,
+            statement.md5hash,
+        )
+
+        # Insert metadata into db
+        insert_into_db(db_path, "Statements", columns, [metadata])
+
+        # Get the new StatementID
+        account.statement_id = query.statement_id(
+            db_path, account.account_id, statement.md5hash
+        )
+
+    return statement
+
+
+def insert_statement_data(db_path: Path, statement: Statement) -> None:
+    # Save transaction data for each account to the db
+    for account in statement.accounts:
+        if len(account.transactions) == 0:
+            # Skip. There will still be metadata in Statements table
+            continue
+
+        # Construct list of tuple containing transaction data
+        transactions = []
+        for transaction in account.transactions:
+            transactions.append(
+                (
+                    account.account_id,
+                    transaction.posting_date,
+                    transaction.amount,
+                    transaction.balance,
+                    transaction.desc,
+                )
+            )
+
+        # Hash each transaction
+        transactions = hash_transactions(transactions)
+
+        # Prepend the StatementID to each transaction row
+        transactions = [(account.statement_id,) + row for row in transactions]
+
+        match account.account_name:
+            case "amazonper":
+                insert_into_shopping(db_path, transactions)
+            case "amazonbus":
+                insert_into_shopping(db_path, transactions)
+            case _:
+                insert_into_transactions(db_path, transactions)
 
 
 def insert_into_shopping(db_path: Path, transactions: list[tuple]) -> None:
@@ -164,71 +166,135 @@ def insert_into_transactions(db_path: Path, transactions: list[tuple]) -> None:
     insert_into_db(db_path, "Transactions", columns, transactions, skip_duplicates=True)
 
 
+def file_already_imported(db_path: Path, md5hash: str) -> bool:
+    """Check if the file has already been saved to the db
+
+    Args:
+        db_path (Path): Path to db
+        md5hash (str): Byte hash of passed file
+
+    Returns:
+        bool: Whether md56hash exists in the db already
+    """
+    data = query.statements_containing_hash(db_path, md5hash)
+    if len(data) == 0:
+        return False
+
+    for statement_id, filename in data:
+        logger.info(
+            f"Previously imported {filename} (StatementID: {statement_id})"
+            f" has identical hash {md5hash}"
+        )
+    return True
+
+
+def statement_already_imported(db_path: Path, filename: Path) -> bool:
+    """Check if the file has already been saved to the db
+
+    Args:
+        db_path (Path): Path to db
+        filename (str): Name of statement file after standardization
+
+    Returns:
+        bool: Whether md56hash exists in the db already
+    """
+    data = query.statements_containing_filename(db_path, filename)
+    if len(data) == 0:
+        return False
+
+    for statement_id, filename in data:
+        logger.info(f"Previously imported {filename} (StatementID: {statement_id})")
+    return True
+
+
+def prompt_account_num(db_path: Path, fpath: Path, stid: int, account_num: str) -> int:
+    """
+    Ask user to associate this unknown account_num with an Accounts.AccountID
+    """
+    dialog = AssignAccountNumber(db_path, fpath, stid, account_num)
+    if dialog.exec_() == QDialog.Accepted:
+        return dialog.get_account_id()
+    raise ValueError("No AccountID selected.")
+
+
+def get_account_info(db_path: Path, statement: Statement) -> Statement:
+    """
+    Makes sure all accounts in the statement have an entry in the lookup table.
+    Return the nicknames of all accounts
+    """
+    # Ensure an account-to-account_num association is set up for each account_num
+    for account in statement.accounts:
+        try:
+            # Lookup existing account
+            account.account_id = query.account_id(db_path, account.account_num)
+        except KeyError:
+            # Prompt user to select account to associate with this account_num
+            account.account_id = prompt_account_num(
+                db_path, statement.fpath, statement.stid, account.account_num
+            )
+
+        # Get the account_name for this account_id
+        account.account_name = query.account_name(db_path, account.account_id)
+
+    return statement
+
+
 def import_one(config: ConfigParser, fpath: Path):
     """
     Parses the statement and saves the transaction data to the database.
     """
     logger.info("Importing {f}", f=fpath.name)
     db_path = Path(config.get("DATABASE", "db_path")).resolve()
+    success_dir = Path(config.get("IMPORT", "success_dir")).resolve()
 
-    # Abort if this statement has already been imported to db
-    if statement_already_imported(db_path, fpath):
+    # Abort if this exact statement file has already been imported to db
+    md5hash = hash_file(fpath)
+    if file_already_imported(db_path, md5hash):
         duplicate_dir = Path(config.get("IMPORT", "duplicate_dir")).resolve()
         dpath = duplicate_dir / fpath.name
-        shutil.move(fpath, dpath)
+        move_file_safely(fpath, dpath)
         logger.info("Duplicate statement moved to {d}", d=dpath)
         return 0, 1
 
-    # Get all the transactions in this file.
-    STID, date_range, data = parse(db_path, fpath)
+    # Extract the statement data into a Statement dataclass
+    statement = parse(db_path, fpath)
+    statement.md5hash = md5hash
 
     # Ensure there are listings for this account in the AccountNumbers table
-    account_ids, nick_name = get_account_info(db_path, fpath, STID, list(data.keys()))
+    statement = get_account_info(db_path, statement)
+
+    # Create a destination path based on the statement metadata
+    statement = standardize_dpath(statement, success_dir)
+
+    # Abort if a statement with similar metadata has been imported
+    if statement_already_imported(db_path, statement.dpath.name):
+        duplicate_dir = Path(config.get("IMPORT", "duplicate_dir")).resolve()
+        dpath = duplicate_dir / fpath.name
+        move_file_safely(fpath, dpath)
+        logger.info("Duplicate statement moved to {d}", d=dpath)
+        return 0, 1
 
     # Insert statement metadata into db
-    main_account_id = list(account_ids.values())[0]
-    new_fname, statement_id = insert_statement_metadata(
-        db_path, fpath, STID, main_account_id, nick_name, date_range
-    )
+    statement = insert_statement_metadata(db_path, statement)
 
-    # Save transaction data for each account to the db
-    for account, transactions in data.items():
-        if len(transactions) == 0:
-            continue
+    # Insert transactions into db
+    insert_statement_data(db_path, statement)
 
-        # Prepend AccountID to each transaction row
-        account_id = account_ids[account]
-        transactions = [(account_id,) + row for row in transactions]
-
-        # Hash each transaction
-        transactions = hash_transactions(transactions)
-
-        # Prepend the StatementID to each transaction row
-        transactions = [(statement_id,) + row for row in transactions]
-
-        match account:
-            case "amazonper":
-                insert_into_shopping(db_path, transactions)
-            case "amazonbus":
-                insert_into_shopping(db_path, transactions)
-            case _:
-                insert_into_transactions(db_path, transactions)
-
-    # Archive the file
-    move_to_archive(fpath, Path(config.get("IMPORT", "success_dir")), new_fname)
+    # Rename and move the statement file to the success directory
+    move_file_safely(statement.fpath, statement.dpath)
     return 1, 0
 
 
-def import_all(config: ConfigParser, parent=None) -> None:
+def import_all(config: ConfigParser, parent=None):
     """
     Finds all statements in the import_dir and imports all of them.
     """
     # Get the list of files in the input_dir
-    input_dir = Path(config.get("IMPORT", "import_dir")).resolve()
+    import_dir = Path(config.get("IMPORT", "import_dir")).resolve()
     extensions = [ext.strip() for ext in config.get("IMPORT", "extensions").split(",")]
     fpaths = []
     for ext in extensions:
-        fpaths.extend(input_dir.glob("*." + ext))
+        fpaths.extend(import_dir.glob("*." + ext))
 
     # Create progress dialog
     progress = QProgressDialog(
@@ -242,7 +308,7 @@ def import_all(config: ConfigParser, parent=None) -> None:
     success = 0
     duplicate = 0
     fail = 0
-    for idx, fpath in enumerate(fpaths):
+    for idx, fpath in enumerate(sorted(fpaths)):
         if progress.wasCanceled():
             QMessageBox.information(
                 parent, "Import Canceled", "The import was canceled."
@@ -270,10 +336,3 @@ def import_all(config: ConfigParser, parent=None) -> None:
         progress.setValue(idx + 1)
 
     return len(fpaths), success, duplicate, fail
-
-
-if __name__ == "__main__":
-    # Get the config
-    config_path = Path("") / "config.ini"
-    config = read_config(config_path)
-    import_all(config)
