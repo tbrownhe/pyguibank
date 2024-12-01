@@ -36,6 +36,11 @@ class TestImportApp(QMainWindow):
         layout.addWidget(self.import_button)
 
         # Add Import button
+        self.extract_tables_button = QPushButton("Extract Tables")
+        self.extract_tables_button.clicked.connect(self.extract_tables)
+        layout.addWidget(self.extract_tables_button)
+
+        # Add Import button
         self.import_button = QPushButton("Import and Parse File")
         self.import_button.clicked.connect(self.test_import)
         layout.addWidget(self.import_button)
@@ -73,24 +78,58 @@ class TestImportApp(QMainWindow):
 
             # Parse the selected file
             with PDFReader(fpath) as reader:
-                self.display_output(fpath, reader)
+                self.display_raw_output(fpath, reader)
 
         except Exception as e:
             logger.exception("Import failed:")
             # Display any errors in the output display
             self.output_display.append(f"Error: {str(e)}")
 
-    def display_output(self, fpath: Path, reader: PDFReader):
+    def display_raw_output(self, fpath: Path, reader: PDFReader):
         # Display parsed data in the output display
         reader.remove_white_space()
         self.output_display.clear()
         self.output_display.append(f"File: {fpath}")
-        self.output_display.append("Verbatim Text:\n" + 60 * "=")
-        self.output_display.append(f"{reader.text}")
+        self.output_display.append("Page Layout Text:\n" + 60 * "=")
+        for page_no, page in enumerate(reader.pages):
+            self.output_display.append(f"Page No:{page_no}")
+            self.output_display.append(f"{page}")
         self.output_display.append("\n\nRaw Lines:\n" + 60 * "=")
         self.output_display.append("\n".join(reader.lines_raw))
         self.output_display.append("\n\nCleaned Lines:\n" + 60 * "=")
         self.output_display.append("\n".join(reader.lines))
+
+    def extract_tables(self):
+        try:
+            fpath = self.select_file()
+            if not fpath:
+                return
+            fpath = Path(fpath).resolve()
+
+            # Parse the selected file
+            with PDFReader(fpath) as reader:
+                self.display_table_output(fpath, reader)
+
+        except Exception as e:
+            logger.exception("Import failed:")
+            # Display any errors in the output display
+            self.output_display.append(f"Error: {str(e)}")
+
+    def display_table_output(self, fpath: Path, reader: PDFReader):
+        table_settings = {
+            "vertical_strategy": "text",
+            "horizontal_strategy": "text",
+        }
+        self.output_display.clear()
+        self.output_display.append(f"File: {fpath}")
+        for page_no, page in enumerate(reader.doc.pages):
+            self.output_display.append(f"Page No: {page_no}")
+            tables = page.extract_tables(table_settings=table_settings)
+            for table_no, table in enumerate(tables):
+                self.output_display.append(f"Table No: {table_no}")
+                for row in table:
+                    line = " ".join((" ".join(row)).split())
+                    self.output_display.append(f"{line}")
 
     def test_import(self):
         """
@@ -103,11 +142,11 @@ class TestImportApp(QMainWindow):
             fpath = Path(fpath).resolve()
 
             # Parse the selected file
-            statement = parse(self.db_path, fpath)
+            statement = parse(self.db_path, fpath, hard_fail=False)
 
             # Display parsed data in the output display
             self.output_display.clear()
-            self.output_display.append(f"File: {fpath}")
+            self.output_display.append(f"File: {statement.fpath}")
             self.output_display.append(f"StatementTypeID: {statement.stid}")
             self.output_display.append(f"Start Date: {statement.start_date}")
             self.output_display.append(f"End Date: {statement.end_date}")
