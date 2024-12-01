@@ -21,8 +21,13 @@ class CitiParser(IParser):
     AMOUNT = re.compile(r"\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?")
 
     def parse(self, reader: PDFReader) -> Statement:
-        """
-        Main entry point to parse the statement.
+        """Entry point
+
+        Args:
+            reader (PDFReader): pdfplumber child class
+
+        Returns:
+            Statement: Statement dataclass
         """
         logger.trace("Parsing Citi statement")
         reader.remove_white_space()
@@ -30,15 +35,19 @@ class CitiParser(IParser):
         return self.extract_statement()
 
     def extract_statement(self) -> Statement:
+        """Extracts all statement data
+
+        Returns:
+            Statement: Statement dataclass
+        """
         self.get_statement_dates()
         accounts = self.extract_accounts()
         return Statement(
             start_date=self.start_date, end_date=self.end_date, accounts=accounts
         )
 
-    def get_statement_dates(self) -> tuple[datetime, datetime]:
-        """
-        Extract the start and end dates from the statement.
+    def get_statement_dates(self) -> None:
+        """Extract the start and end dates from the statement.
         `Billing Period:12/04/20-01/05/21 TTY-hearing-impaired services..`
         """
         _, dateline = find_line_startswith(self.reader.lines, "Billing Period:")
@@ -48,15 +57,24 @@ class CitiParser(IParser):
         ]
 
     def extract_accounts(self) -> list[Account]:
-        """One account per Citi statement"""
+        """One account per Citi statement
+
+        Returns:
+            list[Account]: List of accounts for this statement
+        """
         return [self.extract_account()]
 
     def extract_account(self) -> Account:
-        """Extract account level data"""
+        """Extract account level data
+
+        Returns:
+            Account: Account dataclass
+        """
         account_num = self.get_account_number()
         self.get_statement_balances()
         transaction_lines = self.get_transaction_lines()
-        transactions = self.parse_transaction_lines(transaction_lines)
+        transaction_array = self.parse_transaction_lines(transaction_lines)
+        transactions = self.validate_transactions(transaction_array)
         return Account(
             account_num=account_num,
             start_balance=self.start_balance,
@@ -65,8 +83,10 @@ class CitiParser(IParser):
         )
 
     def get_account_number(self) -> str:
-        """
-        Retrieve the account number from the statement.
+        """Retrieve the account number from the statement.
+
+        Returns:
+            str: Account number
         """
         search_str = "Account number ending in:"
         _, line = find_param_in_line(self.reader.lines, search_str)
@@ -74,10 +94,13 @@ class CitiParser(IParser):
         return account_num
 
     def get_statement_balances(self) -> None:
-        """
-        Extract the starting balance from the statement.
+        """Extract the starting balance from the statement.
         `Previous balance $0.00`
         `New balance as of 01/05/21: $123.45
+
+        Raises:
+            ValueError: Unable to extract a balance
+            ValueError: Unable to extract both balances
         """
         patterns = ["Previous balance ", "New balance "]
         balances = []
@@ -99,13 +122,10 @@ class CitiParser(IParser):
         self.start_balance, self.end_balance = balances
 
     def get_transaction_lines(self) -> list[str]:
-        """
-        Extract lines containing transaction information.
-        Example line:
-        `12/20 12/20 BESTBUYCOM806399323439 888-BESTBUY MN $39.99`
+        """Extract lines containing transaction information.
 
-        - Lines must start with a date (`self.LEADING_DATE`) and include an amount (`self.AMOUNT`).
-        - Multi-line transactions are concatenated until an amount is found or the next transaction starts.
+        Returns:
+            list[str]: Processed lines containing dates and amounts for this statement
         """
         transaction_lines = []
         for page in self.reader.pages:
@@ -113,6 +133,20 @@ class CitiParser(IParser):
         return transaction_lines
 
     def get_transactions_from_page(self, page: str) -> list[str]:
+        """Extracts transaction lines from each page of the pdf.
+        Example line:
+        `12/20 12/20 BESTBUYCOM806399323439 888-BESTBUY MN $39.99`
+
+        Lines must start with a date and include an amount.
+        Multi-line transactions are concatenated until an amount
+        is found or the next transaction starts.
+
+        Args:
+            page (str): Extracted via the pdfplumber.extract_text(layout=True) method
+
+        Returns:
+            list[str]: Processed lines containing dates and amounts for this page
+        """
         # Get the raw lines and word array for this page
         lines_raw = [line for line in page.splitlines() if line.strip()]
         word_array = [[word for word in line.split()] for line in lines_raw]
@@ -183,14 +217,16 @@ class CitiParser(IParser):
 
         return transaction_lines
 
-    def parse_transaction_lines(
-        self, transaction_lines: list[str]
-    ) -> list[Transaction]:
+    def parse_transaction_lines(self, transaction_lines: list[str]) -> list[tuple]:
+        """Convert raw transaction lines into structured data.
+
+        Args:
+            transaction_lines (list[str]): Lines containing valid transaction data
+
+        Returns:
+            list[tuple]: Unsorted transaction array
         """
-        Convert raw transaction lines into structured data.
-        """
-        transactions = []
-        balance = float(self.start_balance)
+        transaction_array = []
 
         for line in transaction_lines:
             words = line.split()
@@ -220,12 +256,27 @@ class CitiParser(IParser):
             desc = " ".join(words[:i_amount])
 
             # Store this transaction in a list to be sorted
-            transactions.append((transaction_date, posting_date, amount, desc))
+            transaction_array.append((transaction_date, posting_date, amount, desc))
 
-        # Sort transactions by posting date before computing running balance
-        sorted_transactions = sorted(transactions, key=lambda x: x[1])
+        return transaction_array
+
+    def validate_transactions(
+        self, transaction_array: list[tuple]
+    ) -> list[Transaction]:
+        """Sort transactions by posting date before computing running balance.
+        The sorted() method uses stable sorting, so transaction order
+        for same date is preserved
+
+        Args:
+            transaction_array (list[tuple]): Unsorted transaction data
+
+        Returns:
+            list[Transaction]: Ordered and validated transaction data
+        """
+        balance = float(self.start_balance)
+        transaction_array = sorted(transaction_array, key=lambda x: x[1])
         transactions = []
-        for transaction_date, posting_date, amount, desc in sorted_transactions:
+        for transaction_date, posting_date, amount, desc in transaction_array:
             balance = round(balance + amount, 2)
             transactions.append(
                 Transaction(
