@@ -102,20 +102,46 @@ def get_absolute_date(mmdd: str, start_date: datetime, end_date: datetime) -> da
 
     Args:
         mmdd (str): Date string in MM/DD format.
-        date_range (list[datetime]): List containing the start and end dates of the statement period.
+        start_date (datetime): Start date of the statement period.
+        end_date (datetime): End date of the statement period.
 
     Returns:
         datetime: The full datetime object for the given MM/DD.
     """
     # Extract start and end years
-    start_year, end_year = start_date.year, end_date.year
+    statement_days = (end_date - start_date).days
+    possible_years = {
+        start_date.year,
+        start_date.year + 1,
+        end_date.year,
+        end_date.year - 1,
+    }
 
-    # Append the appropriate year to the MM/DD
-    month = int(mmdd.split("/")[0])
-    year = end_year if month == 1 and end_year > start_year else start_year
+    # Generate guesses for MM/DD with each possible year
+    guesses = []
+    for year in possible_years:
+        try:
+            guesses.append(datetime.strptime(f"{mmdd}/{year}", r"%m/%d/%Y"))
+        except ValueError:
+            # Probably guessed a leap day for a non-lear year
+            continue
 
-    # Parse the final MM/DD/YYYY string
-    return datetime.strptime(f"{mmdd}/{year}", r"%m/%d/%Y")
+    # Find the guess closest to the statement period
+    best_guess = min(
+        guesses,
+        key=lambda date: min(
+            abs((date - start_date).days), abs((date - end_date).days)
+        ),
+    )
+
+    # Ensure the guess is within a reasonable range
+    if (
+        abs((best_guess - start_date).days) <= statement_days
+        or abs((best_guess - end_date).days) <= statement_days
+    ):
+        return best_guess
+
+    raise ValueError(f"Could not resolve a valid date for MM/DD: {mmdd}")
 
 
 def remove_stop_words(description: str, stop_words=None) -> str:
