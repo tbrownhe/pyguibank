@@ -162,6 +162,7 @@ def transactions(db_path: Path, where="") -> tuple[list[tuple], list[str]]:
 def training_set(db_path: Path, where=""):
     query = f"""
     SELECT
+        Transactions.TransactionID,
         Accounts.Company,
         AccountTypes.AccountType,
         Transactions.Description,

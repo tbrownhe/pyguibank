@@ -29,7 +29,7 @@ from PyQt5.QtWidgets import (
 )
 
 from core import learn, plot, query, reports
-from core.categorize import categorize_new
+from core.categorize import categorize_uncategorized, categorize_unverified
 from core.db import create_new_db
 from core.dialog import (
     AddAccount,
@@ -152,7 +152,10 @@ class PyGuiBank(QMainWindow):
 
         # Categorize Menu
         categorize_menu = menubar.addMenu("Categorize")
-        categorize_menu.addAction("Categorize New Transactions", self.categorize_new)
+        categorize_menu.addAction(
+            "Uncategorized Transactions", self.categorize_uncategorized
+        )
+        categorize_menu.addAction("Unverified Transactions", self.categorize_unverified)
         categorize_menu.addAction(
             "Train Pipeline for Testing", self.train_pipeline_test
         )
@@ -345,6 +348,7 @@ class PyGuiBank(QMainWindow):
         msg_box.setWindowTitle("Unhandled Exception")
         msg_box.setText("An unexpected error occurred:\n" + tb)
         msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowStaysOnTopHint)
         msg_box.exec_()
 
     def ensure_db(self):
@@ -526,18 +530,14 @@ class PyGuiBank(QMainWindow):
         with open("config.ini", "w") as configfile:
             self.config.write(configfile)
 
-    def categorize_new(self):
-        where = "WHERE Category='Uncategorized' OR Category='' OR Category IS NULL"
-        # where = "WHERE Verified != 1"
-        data, columns = query.training_set(self.db_path, where=where)
-        if len(data) == 0:
-            print("No new transactions to categorize!")
-            return
+    def categorize_uncategorized(self):
+        model_path = Path(self.config.get("CLASSIFIER", "model_path")).resolve()
+        categorize_uncategorized(self.db_path, model_path)
+        self.update_main_gui()
 
-        model_path = Path(self.config.get("CATEGORIZE", "model_path")).resolve()
-        nrows = categorize_new(self.db_path, model_path)
-
-        # Update all GUI elements
+    def categorize_unverified(self):
+        model_path = Path(self.config.get("CLASSIFIER", "model_path")).resolve()
+        categorize_unverified(self.db_path, model_path)
         self.update_main_gui()
 
     ################################
@@ -564,15 +564,17 @@ class PyGuiBank(QMainWindow):
         self.update_checklist(self.category_select_list, category_names)
 
     def update_checklist(self, list_widget, names):
-        count = list_widget.count()
-        checked = self.get_checked_items(list_widget)
+        checked, unchecked = self.get_checked_items(list_widget)
         list_widget.clear()
         for name in names:
             item = QListWidgetItem(name)
-            if count == 0 or name in checked:
+            if name in checked:
                 item.setCheckState(Qt.Checked)
-            else:
+            elif name in unchecked:
                 item.setCheckState(Qt.Unchecked)
+            else:
+                # New items should be checked
+                item.setCheckState(Qt.Checked)
             list_widget.addItem(item)
 
     def update_balances_table(self):
@@ -599,13 +601,17 @@ class PyGuiBank(QMainWindow):
         table_width = total_width + vertical_scrollbar_width + 30
         self.table_view.setFixedWidth(table_width)
 
-    def get_checked_items(self, list_widget: QListWidget):
-        selected_items = []
+    def get_checked_items(
+        self, list_widget: QListWidget
+    ) -> tuple[list[str], list[str]]:
+        checked, unchecked = [], []
         for index in range(list_widget.count()):
             item = list_widget.item(index)
             if item.checkState() == Qt.Checked:
-                selected_items.append(item.text())
-        return selected_items
+                checked.append(item.text())
+            else:
+                unchecked.append(item.text())
+        return checked, unchecked
 
     def validate_float(self, line_edit: QLineEdit, fallback: float) -> float:
         try:
@@ -626,10 +632,11 @@ class PyGuiBank(QMainWindow):
             return fallback
 
     def update_balance_history_chart(self):
+        QApplication.processEvents()
         # Get filter prefs
         smoothing_days = self.validate_int(self.balance_smoothing_input, 0)
         limit_years = self.validate_float(self.balance_years_input, 10)
-        selected_accounts = self.get_checked_items(self.account_select_list)
+        selected_accounts, _ = self.get_checked_items(self.account_select_list)
 
         # Plot all balances on the same chart
         df, debt_cols = plot.get_balance_data(self.db_path)
@@ -668,10 +675,11 @@ class PyGuiBank(QMainWindow):
         self.balance_ax.figure.canvas.draw()
 
     def update_category_spending_chart(self):
+        QApplication.processEvents()
         # Get filter prefs
         smoothing_months = self.validate_int(self.category_smoothing_input, 0)
         limit_years = self.validate_float(self.category_years_input, 10)
-        selected_cats = self.get_checked_items(self.category_select_list)
+        selected_cats, _ = self.get_checked_items(self.category_select_list)
 
         # Get the category spending data by month
         df = plot.get_category_data(self.db_path)

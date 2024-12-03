@@ -235,7 +235,7 @@ class StatementProcessor:
                 account_id = self.prompt_account_num(account.account_num)
 
             # Get the account_name for this account_id
-            account_name = query.account_name(self.db_path, account.account_id)
+            account_name = query.account_name(self.db_path, account_id)
 
             # Add the new data to the account
             account.add_account_info(account_id, account_name)

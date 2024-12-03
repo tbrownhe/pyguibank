@@ -173,13 +173,9 @@ def predict(model_path: Path, df: pd.DataFrame) -> pd.DataFrame:
     pipeline, amount = load_model(model_path)
 
     # Get data in same format that was used to train the pipeline
-    X, _ = prepare_data(df, amount)
+    X, _, _ = prepare_data(df, amount)
 
     # Predict categories and confidence scores
     df["Category"] = pipeline.predict(X)
-    df["Confidence"] = confidence_score(X, pipeline)
+    df["ConfidenceScore"] = confidence_score(pipeline, X)
     return df
-
-
-if __name__ == "__main__":
-    db_path = Path("") / "pyguibank.db"
