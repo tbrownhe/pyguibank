@@ -96,6 +96,25 @@ def insert_into_db(
         )
 
 
+def construct_update_query(
+    table: str, update_cols: list[str], where_cols: list[str]
+) -> str:
+    """
+    Constructs an SQL update query with placeholders for values.
+
+    Args:
+        table (str): The name of the table to update.
+        update_cols (List[str]): Columns to update.
+        where_cols (List[str]): Columns for the WHERE clause.
+
+    Returns:
+        str: The constructed SQL query with placeholders.
+    """
+    update_str = ", ".join([f"{col} = ?" for col in update_cols])
+    where_str = " AND ".join([f"{col} = ?" for col in where_cols])
+    return f"UPDATE {table} SET {update_str} WHERE {where_str}"
+
+
 def update_db_where(
     db_path: Path,
     table: str,
@@ -103,32 +122,44 @@ def update_db_where(
     update_list: list[tuple],
     where_cols: list[str],
     where_list: list[tuple],
-):
+) -> None:
     """
-    Updates rows of data in an sqlite3 data table
+    Updates rows of data in an SQLite3 database table.
+
+    Args:
+        db_path (Path): Path to the SQLite database file.
+        table (str): Name of the table to update.
+        update_cols (List[str]): Columns to update.
+        update_list (List[Tuple]): Values to update in the corresponding columns.
+        where_cols (List[str]): Columns for the WHERE clause.
+        where_list (List[Tuple]): Values for the WHERE clause.
+
     Example:
         table = "Transactions"
         update_cols = ["Category", "Verified"]
         update_list = [("Auto", 1), ("Restaurant", 1)]
-        where_cols = ["TranID", "AccountID"]
+        where_cols = ["TransactionID", "AccountID"]
         where_list = [(1, 6), (42, 6)]
     """
-    # Ensure passed data is a uniform array
-    assert all([len(update_vals) == len(update_cols) for update_vals in update_list])
-    assert all([len(where_vals) == len(where_cols) for where_vals in where_list])
+    # Ensure data integrity
+    if len(update_list) != len(where_list):
+        raise ValueError("Length of update_list and where_list must be equal.")
+    if any(len(row) != len(update_cols) for row in update_list):
+        raise ValueError(
+            "Each tuple in update_list must match the number of update_cols."
+        )
+    if any(len(row) != len(where_cols) for row in where_list):
+        raise ValueError(
+            "Each tuple in where_list must match the number of where_cols."
+        )
 
-    # Prepare query parts
-    table_str = "UPDATE %s" % table
-    update_str_list = ["%s='%s'" % (col, "%s") for col in update_cols]
-    update_template = "SET " + ", ".join(update_str_list)
-    where_str_list = ["%s='%s'" % (col, "%s") for col in where_cols]
-    where_template = "WHERE " + " AND ".join(where_str_list)
+    # Construct the base query
+    query = construct_update_query(table, update_cols, where_cols)
 
-    # Update all rows in a single commit
-    with open_sqlite3(db_path) as cursor:
-        for update_vals, where_vals in zip(update_list, where_list):
-            # Finalize the query for this row and execute it
-            update_str = update_template % update_vals
-            where_str = where_template % where_vals
-            query = " ".join([table_str, update_str, where_str])
-            cursor.execute(query)
+    # Execute updates
+    try:
+        with open_sqlite3(db_path) as cursor:
+            for update_vals, where_vals in zip(update_list, where_list):
+                cursor.execute(query, update_vals + where_vals)
+    except sqlite3.Error as e:
+        raise RuntimeError(f"Database update failed: {e}")
