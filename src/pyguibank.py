@@ -375,6 +375,7 @@ class PyGuiBank(QMainWindow):
         if dialog.exec_() == QDialog.Accepted:
             self.config = read_config(self.config_path)
             self.db_path = Path(self.config.get("DATABASE", "db_path"))
+            self.update_main_gui()
 
     def about(self):
         msg_box = QMessageBox()
@@ -545,6 +546,7 @@ class PyGuiBank(QMainWindow):
     ################################
     def update_main_gui(self):
         """Update all tables, checklists, and charts in the main GUI window"""
+        self.setWindowTitle(f"PyGuiBank - {self.db_path.name}")
         self.update_balances_table()
         self.update_accounts_checklist()
         self.update_category_checklist()
