@@ -65,9 +65,10 @@ CREATE TABLE "Transactions" (
 	"MD5"	TEXT UNIQUE,
 	"Category"	TEXT DEFAULT 'Uncategorized',
 	"Verified"	INTEGER DEFAULT 0,
+	"ConfidenceScore"	NUMERIC,
 	PRIMARY KEY("TransactionID" AUTOINCREMENT),
-	FOREIGN KEY("StatementID") REFERENCES "Statements"("StatementID"),
-	FOREIGN KEY("AccountID") REFERENCES "Accounts"("AccountID")
+	FOREIGN KEY("AccountID") REFERENCES "Accounts"("AccountID"),
+	FOREIGN KEY("StatementID") REFERENCES "Statements"("StatementID")
 );
 
 CREATE TABLE "CardNumbers" (
