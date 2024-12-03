@@ -10,7 +10,7 @@ from loguru import logger
 from .interfaces import IParser
 from .query import statement_types
 from .utils import PDFReader
-from .validation import Statement, StatementValidationError, validate_statement
+from .validation import Statement, ValidationError, validate_statement
 
 T = TypeVar("T")
 
@@ -63,6 +63,10 @@ class BaseRouter(Generic[T]):
         # Dynamically load the parser and use it to extract the statement data
         parser = self.load_parser(entry_point)
         statement = self.run_parser(parser, input_data)
+
+        # Make sure all balances are populated
+        for account in statement.accounts:
+            account.process_transactions()
 
         # Attach additional metadata
         statement.add_metadata(self.fpath, stid)
@@ -125,7 +129,7 @@ class BaseRouter(Generic[T]):
     def validate_statement(self, statement: Statement, parser: str) -> None:
         try:
             validate_statement(statement, self.hard_fail)
-        except StatementValidationError as e:
+        except ValidationError as e:
             logger.error(
                 f"Validation failed for statement imported using"
                 f" parser '{parser}': {e}"

@@ -73,8 +73,7 @@ class CitiParser(IParser):
         account_num = self.get_account_number()
         self.get_statement_balances()
         transaction_lines = self.get_transaction_lines()
-        transaction_array = self.parse_transaction_lines(transaction_lines)
-        transactions = self.validate_transactions(transaction_array)
+        transactions = self.parse_transaction_lines(transaction_lines)
         return Account(
             account_num=account_num,
             start_balance=self.start_balance,
@@ -217,7 +216,9 @@ class CitiParser(IParser):
 
         return transaction_lines
 
-    def parse_transaction_lines(self, transaction_lines: list[str]) -> list[tuple]:
+    def parse_transaction_lines(
+        self, transaction_lines: list[str]
+    ) -> list[Transaction]:
         """Convert raw transaction lines into structured data.
 
         Args:
@@ -226,8 +227,7 @@ class CitiParser(IParser):
         Returns:
             list[tuple]: Unsorted transaction array
         """
-        transaction_array = []
-
+        transactions = []
         for line in transaction_lines:
             words = line.split()
 
@@ -255,35 +255,12 @@ class CitiParser(IParser):
             # Extract the description
             desc = " ".join(words[:i_amount])
 
-            # Store this transaction in a list to be sorted
-            transaction_array.append((transaction_date, posting_date, amount, desc))
-
-        return transaction_array
-
-    def validate_transactions(
-        self, transaction_array: list[tuple]
-    ) -> list[Transaction]:
-        """Sort transactions by posting date before computing running balance.
-        The sorted() method uses stable sorting, so transaction order
-        for same date is preserved
-
-        Args:
-            transaction_array (list[tuple]): Unsorted transaction data
-
-        Returns:
-            list[Transaction]: Ordered and validated transaction data
-        """
-        balance = float(self.start_balance)
-        transaction_array = sorted(transaction_array, key=lambda x: x[1])
-        transactions = []
-        for transaction_date, posting_date, amount, desc in transaction_array:
-            balance = round(balance + amount, 2)
+            # Append transaction
             transactions.append(
                 Transaction(
                     transaction_date=transaction_date,
                     posting_date=posting_date,
                     amount=amount,
-                    balance=balance,
                     desc=desc,
                 )
             )

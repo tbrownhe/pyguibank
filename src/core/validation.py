@@ -14,11 +14,53 @@ class ValidationError(Exception):
 ### Data structures
 @dataclass
 class Transaction:
+    transaction_date: datetime
     posting_date: datetime
     amount: float
-    balance: float
-    desc: str
-    transaction_date: Optional[datetime] = None
+    desc: str = ""
+    balance: Optional[float] = None
+
+    @classmethod
+    def sort_and_compute_balances(
+        cls, transactions: List["Transaction"], start_balance: float
+    ) -> List["Transaction"]:
+        """
+        Sorts transactions by posting date and computes running balances.
+
+        Args:
+            transactions (List[Transaction]): List of transactions to process.
+            start_balance (float): The starting balance for the account.
+
+        Returns:
+            List[Transaction]: Transactions sorted by posting date with computed balances.
+        """
+        if len(transactions) == 0:
+            return transactions
+
+        sorted_transactions = sorted(transactions, key=lambda t: t.posting_date)
+
+        # Check if all transactions already have balances
+        if all(
+            isinstance(transaction.balance, float)
+            for transaction in sorted_transactions
+        ):
+            logger.debug("Balances are already populated; skipping recalculation.")
+            return sorted_transactions
+
+        current_balance = start_balance
+        for transaction in sorted_transactions:
+            current_balance = round(current_balance + transaction.amount, 2)
+            transaction.balance = current_balance
+
+        return sorted_transactions
+
+    @classmethod
+    def validate_balances(cls, transactions: List["Transaction"]) -> List[str]:
+        errors = []
+        for transaction in transactions:
+            if not isinstance(transaction.balance, float):
+                errors.append(f"Invalid balance for transaction: {transaction.desc}")
+        return errors
 
 
 @dataclass
@@ -30,6 +72,17 @@ class Account:
     account_id: Optional[int] = None
     account_name: Optional[str] = None
     statement_id: Optional[int] = None
+
+    def process_transactions(self):
+        """
+        Sort transactions and calculate balances. Updates the end balance.
+        """
+        if self.transactions is None:
+            raise ValueError("Transactions must be populated before processing.")
+
+        self.transactions = Transaction.sort_and_compute_balances(
+            self.transactions, self.start_balance
+        )
 
     def add_account_info(self, account_id: int, account_name: str):
         if not isinstance(account_id, int):
@@ -47,6 +100,9 @@ class Account:
     def validate_initial(self):
         """Validate fields required before assigning account_id and account_name."""
         errors = []
+
+        errors.extend(Transaction.validate_balances(self.transactions))
+
         if not isinstance(self.account_num, str):
             errors.append("account_num must be a string")
         if not isinstance(self.start_balance, float):
@@ -59,17 +115,17 @@ class Account:
     def validate_account_info(self):
         """Validate fields required before assigning statement_id."""
         errors = []
-        if self.account_id is None or not isinstance(self.account_id, int):
+        if not isinstance(self.account_id, int):
             errors.append("account_id must be an integer")
-        if self.account_name is None or not isinstance(self.account_name, str):
+        if not isinstance(self.account_name, str):
             errors.append("account_name must be a string")
         if errors:
             raise ValidationError("\n".join(errors))
 
     def validate_complete(self):
         """Validate all fields for final processing."""
-        self.validate_initial()
-        self.validate_account_info()
+        # self.validate_initial()
+        # self.validate_account_info()
         if not isinstance(self.statement_id, int):
             raise ValidationError("statement_id must be an integer")
 
@@ -87,7 +143,7 @@ class Statement:
     def add_metadata(self, fpath: Path, stid: int):
         if not isinstance(fpath, Path):
             raise ValidationError("fpath must be a Path")
-        if not isinstance(stid, str):
+        if not isinstance(stid, int):
             raise ValidationError("stid must be int")
         self.fpath = fpath
         self.stid = stid
@@ -104,7 +160,7 @@ class Statement:
         errors = []
         if not isinstance(self.fpath, Path):
             errors.append("fpath must be a Path")
-        if not isinstance(self.stid, str):
+        if not isinstance(self.stid, int):
             errors.append("stid must be int")
         return errors
 
@@ -130,10 +186,7 @@ def validate_statement(statement: Statement, hard_fail: bool):
 
 ### Validation functions
 def validate_metadata(statement: Statement) -> list[str]:
-    try:
-        statement.validate_metadata()
-    except Exception as errors:
-        return errors
+    return statement.validate_metadata()
 
 
 def validate_transactions(statement: Statement) -> list[str]:
