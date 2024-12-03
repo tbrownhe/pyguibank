@@ -26,6 +26,7 @@ from PyQt5.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
 )
+from sqlalchemy.orm import sessionmaker
 
 from . import db, query
 from .utils import hash_transactions, open_file_in_os, read_config
@@ -200,13 +201,16 @@ class PreferencesDialog(QDialog):
 
 
 def update_accounts_table(
-    dialog: QDialog, accounts_table: QTableWidget, max_height_ratio=0.8
+    dialog: QDialog,
+    Session: sessionmaker,
+    accounts_table: QTableWidget,
 ):
     accounts_table.setSortingEnabled(True)
     accounts_table.setSelectionBehavior(QAbstractItemView.SelectRows)
     accounts_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-    data, columns = query.accounts(dialog.db_path)
+    with Session() as session:
+        data, columns = query.accounts(session)
     accounts_table.setRowCount(len(data))
     accounts_table.setColumnCount(len(columns))
     accounts_table.setHorizontalHeaderLabels(columns)
@@ -232,7 +236,9 @@ def update_accounts_table(
 
 
 class AddAccount(QDialog):
-    def __init__(self, db_path: Path, company="", description="", account_type=""):
+    def __init__(
+        self, Session: sessionmaker, company="", description="", account_type=""
+    ):
         super().__init__()
         self.setWindowTitle("Accounts")
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
@@ -242,7 +248,7 @@ class AddAccount(QDialog):
         self.setMaximumHeight(int(screen_height))
         self.setContentsMargins(10, 10, 10, 10)
 
-        self.db_path = db_path
+        self.Session = Session
         self.account_cols = None
 
         # Main layout
@@ -256,7 +262,7 @@ class AddAccount(QDialog):
         # Display Accounts table
         self.accounts_table = QTableWidget(self)
         layout.addWidget(self.accounts_table)
-        update_accounts_table(self, self.accounts_table)
+        update_accounts_table(self, self.Session, self.accounts_table)
 
         # Descriptive text
         desc2_text = "To add an account, please fill out the following information:"
@@ -277,11 +283,11 @@ class AddAccount(QDialog):
             self.description_edit.setText(description)
 
         self.account_type_combo = QComboBox(self)
-        data, _ = db.execute_sql_query(db_path, "SELECT AccountType FROM AccountTypes")
-        account_type_list = [item[0] for item in data]
-        self.account_type_combo.addItems(account_type_list)
+        with self.Session() as session:
+            account_types = query.account_types(session)
+        self.account_type_combo.addItems(account_types)
         if account_type:
-            index = account_type_list.index(account_type)
+            index = account_types.index(account_type)
             self.account_type_combo.setCurrentIndex(index)
 
         # Tool tips
@@ -336,7 +342,8 @@ class AddAccount(QDialog):
 
         # Grab the AccountTypeID
         account_type = self.account_type_combo.currentText()
-        account_type_id = query.account_type_id(self.db_path, account_type)
+        with self.Session() as session:
+            account_type_id = query.account_type_id(session, account_type)
 
         # Insert new account into Accounts Table
         columns = ["AccountTypeID", "Company", "Description", "AccountName"]
@@ -359,7 +366,12 @@ class AddAccount(QDialog):
 
 class AssignAccountNumber(QDialog):
     def __init__(
-        self, db_path: Path, fpath: Path, STID: int, account_num: str, parent=None
+        self,
+        Session: sessionmaker,
+        fpath: Path,
+        STID: int,
+        account_num: str,
+        parent=None,
     ):
         super().__init__(parent)
         self.setWindowTitle("New Account Number Found")
@@ -371,7 +383,7 @@ class AssignAccountNumber(QDialog):
         self.setMaximumHeight(max_height)
         self.setContentsMargins(10, 10, 10, 10)
 
-        self.db_path = db_path
+        self.Session = Session
         self.fpath = fpath
         self.account_num = account_num
         self.account_id = None
@@ -416,7 +428,7 @@ class AssignAccountNumber(QDialog):
         self.accounts_table = QTableWidget(self)
         self.accounts_table.cellClicked.connect(self.handle_cell_click)
         layout.addWidget(self.accounts_table)
-        update_accounts_table(self, self.accounts_table)
+        update_accounts_table(self, self.Session, self.accounts_table)
 
         # Add New Account button
         new_account_button = QPushButton("Create New Account")
@@ -450,7 +462,7 @@ class AssignAccountNumber(QDialog):
             self.db_path, self.company, self.description, self.account_type
         )
         if dialog.exec_() == QDialog.Accepted:
-            update_accounts_table(self, self.accounts_table)
+            update_accounts_table(self, self.Session, self.accounts_table)
 
             # Auto-select the newly created account (assuming it's added to the last row)
             self.accounts_table.selectRow(self.accounts_table.rowCount() - 1)
@@ -646,13 +658,12 @@ class InsertTransaction(QDialog):
             )
 
 
-def get_missing_coverage(db_path: Path):
+def get_missing_coverage(Session: sessionmaker):
     """
     Returns a DataFrame showing coverage for the first of the month for each account.
     """
-    data, columns = query.statements(
-        db_path, where="WHERE StartDate >= DATE('now', '-15 Months')"
-    )
+    with Session() as session:
+        data, columns = query.statements(session)
     df = pd.DataFrame(data, columns=columns)
     df["StartDate"] = pd.to_datetime(df["StartDate"])
     df["EndDate"] = pd.to_datetime(df["EndDate"])
@@ -727,7 +738,7 @@ class PandasModel(QAbstractTableModel):
 
 
 class CompletenessDialog(QDialog):
-    def __init__(self, db_path, parent=None):
+    def __init__(self, Session: sessionmaker, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Statement Completeness Grid")
 
@@ -735,7 +746,7 @@ class CompletenessDialog(QDialog):
         layout = QVBoxLayout()
 
         # Fetch DataFrame from the function
-        self.df = get_missing_coverage(db_path).astype(str)
+        self.df = get_missing_coverage(Session).astype(str)
 
         # Create a PandasModel and attach it to a QTableView
         self.table_model = PandasModel(self.df)

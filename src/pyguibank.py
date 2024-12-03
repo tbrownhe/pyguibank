@@ -27,6 +27,7 @@ from PyQt5.QtWidgets import (
     QTableView,
     QWidget,
 )
+from sqlalchemy.orm import Session
 
 from core import learn, plot, query, reports
 from core.categorize import categorize_uncategorized, categorize_unverified
@@ -37,6 +38,7 @@ from core.dialog import (
     InsertTransaction,
     PreferencesDialog,
 )
+from core.orm import create_database
 from core.statements import StatementProcessor
 from core.utils import open_file_in_os, read_config
 
@@ -168,9 +170,7 @@ class PyGuiBank(QMainWindow):
         help_menu.addAction("About", self.about)
 
         # INITIALIZE CONFIGURATION ################
-        self.config_path = Path("") / "config.ini"
-        self.config = read_config(self.config_path)
-        self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
+        self.update_from_config()
 
         # Make sure a database exists and initialize an empty one if it doesn't
         self.ensure_db()
@@ -370,11 +370,16 @@ class PyGuiBank(QMainWindow):
     def open_db(self):
         open_file_in_os(self.db_path)
 
+    def update_from_config(self):
+        self.config_path = Path("") / "config.ini"
+        self.config = read_config(self.config_path)
+        db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
+        self.Session = create_database(db_path)
+
     def preferences(self):
         dialog = PreferencesDialog(self.config_path)
         if dialog.exec_() == QDialog.Accepted:
-            self.config = read_config(self.config_path)
-            self.db_path = Path(self.config.get("DATABASE", "db_path"))
+            self.update_from_config()
             self.update_main_gui()
 
     def about(self):
@@ -437,37 +442,38 @@ class PyGuiBank(QMainWindow):
         self.update_main_gui()
 
     def statement_matrix(self):
-        dialog = CompletenessDialog(self.db_path)
+        dialog = CompletenessDialog(self.Session)
         if dialog.exec_() == QDialog.Accepted:
             pass
 
     def plot_balances(self):
-        plot.plot_balance_history(self.db_path)
+        with self.Session() as session:
+            plot.plot_balance_history(session)
 
     def plot_categories(self):
-        plot.plot_category_spending(self.db_path)
+        with self.Session() as session:
+            plot.plot_category_spending(session)
 
     def report_all_time(self):
         report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
         timestamp = datetime.now().strftime(r"%Y%m%d%H%M%S")
         dpath = report_dir / f"{timestamp}_Report_AllTime.xlsx"
-        reports.report(self.db_path, dpath)
+        with self.Session() as session:
+            reports.report(session, dpath)
 
     def report_1year(self):
         report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
         timestamp = datetime.now().strftime(r"%Y%m%d%H%M%S")
         dpath = report_dir / f"{timestamp}_Report_OneYear.xlsx"
-        reports.report(
-            self.db_path, dpath, where="WHERE Date >= DATE('now', '-1 year')"
-        )
+        with self.Session() as session:
+            reports.report(session, dpath, months=12)
 
     def report_3months(self):
         report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
         timestamp = datetime.now().strftime(r"%Y%m%d%H%M%S")
         dpath = report_dir / f"{timestamp}_Report_ThreeMonths.xlsx"
-        reports.report(
-            self.db_path, dpath, where="WHERE Date >= DATE('now', '-3 month')"
-        )
+        with self.Session() as session:
+            reports.report(session, dpath, months=3)
 
     def train_pipeline_test(self):
         data, columns = query.training_set(self.db_path, where="WHERE Verified=1")
@@ -547,41 +553,16 @@ class PyGuiBank(QMainWindow):
     def update_main_gui(self):
         """Update all tables, checklists, and charts in the main GUI window"""
         self.setWindowTitle(f"PyGuiBank - {self.db_path.name}")
-        self.update_balances_table()
-        self.update_accounts_checklist()
-        self.update_category_checklist()
-        self.update_balance_history_chart()
-        self.update_category_spending_chart()
+        with self.Session() as session:
+            self.update_balances_table(session)
+            self.update_accounts_checklist(session)
+            self.update_category_checklist(session)
+            self.update_balance_history_chart(session)
+            self.update_category_spending_chart(session)
 
-    def update_accounts_checklist(self):
-        account_names = [
-            "Net Worth",
-            "Total Assets",
-            "Total Debts",
-        ] + query.account_names(self.db_path)
-        self.update_checklist(self.account_select_list, account_names)
-
-    def update_category_checklist(self):
-        category_names = query.distinct_categories(self.db_path)
-        self.update_checklist(self.category_select_list, category_names)
-
-    def update_checklist(self, list_widget, names):
-        checked, unchecked = self.get_checked_items(list_widget)
-        list_widget.clear()
-        for name in names:
-            item = QListWidgetItem(name)
-            if name in checked:
-                item.setCheckState(Qt.Checked)
-            elif name in unchecked:
-                item.setCheckState(Qt.Unchecked)
-            else:
-                # New items should be checked
-                item.setCheckState(Qt.Checked)
-            list_widget.addItem(item)
-
-    def update_balances_table(self):
+    def update_balances_table(self, session: Session):
         # Fetch data for the table
-        data, columns = query.latest_balances(self.db_path)
+        data, columns = query.latest_balances(session)
         df_balances = pd.DataFrame(data, columns=columns)
 
         # Update the table contents
@@ -602,6 +583,33 @@ class PyGuiBank(QMainWindow):
         )
         table_width = total_width + vertical_scrollbar_width + 30
         self.table_view.setFixedWidth(table_width)
+
+    def update_accounts_checklist(self, session: Session):
+        account_names = [
+            "Net Worth",
+            "Total Assets",
+            "Total Debts",
+        ]
+        account_names.extend(query.account_names(session))
+        self.update_checklist(self.account_select_list, account_names)
+
+    def update_category_checklist(self, session: Session):
+        category_names = query.distinct_categories(session)
+        self.update_checklist(self.category_select_list, category_names)
+
+    def update_checklist(self, list_widget, names):
+        checked, unchecked = self.get_checked_items(list_widget)
+        list_widget.clear()
+        for name in names:
+            item = QListWidgetItem(name)
+            if name in checked:
+                item.setCheckState(Qt.Checked)
+            elif name in unchecked:
+                item.setCheckState(Qt.Unchecked)
+            else:
+                # New items should be checked
+                item.setCheckState(Qt.Checked)
+            list_widget.addItem(item)
 
     def get_checked_items(
         self, list_widget: QListWidget
@@ -633,7 +641,7 @@ class PyGuiBank(QMainWindow):
             line_edit.setText(str(fallback))
             return fallback
 
-    def update_balance_history_chart(self):
+    def update_balance_history_chart(self, session: Session):
         QApplication.processEvents()
         # Get filter prefs
         smoothing_days = self.validate_int(self.balance_smoothing_input, 0)
@@ -641,7 +649,7 @@ class PyGuiBank(QMainWindow):
         selected_accounts, _ = self.get_checked_items(self.account_select_list)
 
         # Plot all balances on the same chart
-        df, debt_cols = plot.get_balance_data(self.db_path)
+        df, debt_cols = plot.get_balance_data(session)
 
         # Limit the data to the specified year range
         cutoff_date = datetime.now() - timedelta(days=limit_years * 365)
@@ -676,7 +684,7 @@ class PyGuiBank(QMainWindow):
         # Redraw the canvas to reflect updates
         self.balance_ax.figure.canvas.draw()
 
-    def update_category_spending_chart(self):
+    def update_category_spending_chart(self, session: Session):
         QApplication.processEvents()
         # Get filter prefs
         smoothing_months = self.validate_int(self.category_smoothing_input, 0)
@@ -684,7 +692,7 @@ class PyGuiBank(QMainWindow):
         selected_cats, _ = self.get_checked_items(self.category_select_list)
 
         # Get the category spending data by month
-        df = plot.get_category_data(self.db_path)
+        df = plot.get_category_data(session)
 
         # Limit the data to the specified year range
         cutoff_date = datetime.now() - timedelta(days=limit_years * 365)

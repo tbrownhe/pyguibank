@@ -7,6 +7,7 @@ from loguru import logger
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QDialog, QMessageBox, QProgressDialog
 
+from sqlalchemy.orm import sessionmaker, Session
 from . import query
 from .db import insert_into_db
 from .dialog import AssignAccountNumber
@@ -17,15 +18,15 @@ from .validation import Statement
 
 class StatementProcessor:
 
-    def __init__(self, config: ConfigParser) -> None:
+    def __init__(self, Session: sessionmaker, config: ConfigParser) -> None:
         """Initialize the processor and make sure config is valid
 
         Args:
             config (ConfigParser): Configuration read from config.ini
         """
+        self.Session = Session
         self.config = config
         try:
-            self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
             self.import_dir = Path(self.config.get("IMPORT", "import_dir")).resolve()
             self.success_dir = Path(self.config.get("IMPORT", "success_dir")).resolve()
             self.duplicate_dir = Path(
@@ -119,7 +120,7 @@ class StatementProcessor:
             return 0, 1
 
         # Extract the statement data into a Statement dataclass
-        self.statement = parse_any(self.db_path, fpath)
+        self.statement = parse_any(self.Session, fpath)
         if not isinstance(self.statement, Statement):
             raise TypeError("Parsing module must return a Statement dataclass")
 
@@ -185,13 +186,13 @@ class StatementProcessor:
         """Check if the file has already been saved to the db
 
         Args:
-            db_path (Path): Path to db
             md5hash (str): Byte hash of passed file
 
         Returns:
-            bool: Whether md56hash exists in the db already
+            bool: Whether md5hash exists in the db already
         """
-        data = query.statements_containing_hash(self.db_path, md5hash)
+        with self.Session() as session:
+            data = query.statements_containing_hash(session, md5hash)
         if len(data) == 0:
             return False
 
@@ -206,13 +207,13 @@ class StatementProcessor:
         """Check if the file has already been saved to the db
 
         Args:
-            db_path (Path): Path to db
             filename (str): Name of statement file after standardization
 
         Returns:
             bool: Whether md56hash exists in the db already
         """
-        data = query.statements_containing_filename(self.db_path, filename)
+        with self.Session() as session:
+            data = query.statements_containing_filename(session, filename)
         if len(data) == 0:
             return False
 
@@ -229,13 +230,15 @@ class StatementProcessor:
         for account in self.statement.accounts:
             try:
                 # Lookup existing account
-                account_id = query.account_id(self.db_path, account.account_num)
+                with self.Session() as session:
+                    account_id = query.account_id(session, account.account_num)
             except KeyError:
                 # Prompt user to select account to associate with this account_num
                 account_id = self.prompt_account_num(account.account_num)
 
             # Get the account_name for this account_id
-            account_name = query.account_name(self.db_path, account_id)
+            with self.Session() as session:
+                account_name = query.account_name(session, account_id)
 
             # Add the new data to the account
             account.add_account_info(account_id, account_name)
@@ -245,7 +248,7 @@ class StatementProcessor:
         Ask user to associate this unknown account_num with an Accounts.AccountID
         """
         dialog = AssignAccountNumber(
-            self.db_path, self.statement.fpath, self.statement.stid, account_num
+            self.Session, self.statement.fpath, self.statement.stid, account_num
         )
         if dialog.exec_() == QDialog.Accepted:
             return dialog.get_account_id()
@@ -272,7 +275,7 @@ class StatementProcessor:
         dpath = self.success_dir / dname
         self.statement.add_dpath(dpath)
 
-    def insert_statement_metadata(self) -> None:
+    def insert_statement_metadata(self, session: Session) -> None:
         """Updates db with information about this statement file."""
         for account in self.statement.accounts:
             # Account should have account_id and account_name by now
@@ -305,15 +308,15 @@ class StatementProcessor:
             )
 
             # Insert metadata into db
-            insert_into_db(self.db_path, "Statements", columns, [metadata])
+            insert_into_db(session, "Statements", columns, [metadata])
 
             # Get the new StatementID and attach it to account
             statement_id = query.statement_id(
-                self.db_path, account.account_id, self.statement.md5hash
+                session, account.account_id, self.statement.md5hash
             )
             account.add_statement_id(statement_id)
 
-    def insert_statement_data(self) -> None:
+    def insert_statement_data(self, session: Session) -> None:
         """Convert Statement dataclass to list of tuple for insertion into SQLite"""
         # Save transaction data for each account to the db
         for account in self.statement.accounts:
@@ -345,13 +348,13 @@ class StatementProcessor:
 
             match account.account_name:
                 case "amazonper":
-                    self.insert_into_shopping(transactions)
+                    self.insert_into_shopping(session, transactions)
                 case "amazonbus":
-                    self.insert_into_shopping(transactions)
+                    self.insert_into_shopping(session, transactions)
                 case _:
-                    self.insert_into_transactions(transactions)
+                    self.insert_into_transactions(session, transactions)
 
-    def insert_into_shopping(self, transactions: list[tuple]) -> None:
+    def insert_into_shopping(self, session: Session, transactions: list[tuple]) -> None:
         """Insert the transactions into the shopping db table
 
         Args:
@@ -368,11 +371,11 @@ class StatementProcessor:
             "Description",
             "MD5",
         ]
-        insert_into_db(
-            self.db_path, "Shopping", columns, transactions, skip_duplicates=True
-        )
+        insert_into_db(session, "Shopping", columns, transactions, skip_duplicates=True)
 
-    def insert_into_transactions(self, transactions: list[tuple]) -> None:
+    def insert_into_transactions(
+        self, session: Session, transactions: list[tuple]
+    ) -> None:
         """Insert the transactions into the transactions db table
 
         Args:
@@ -389,5 +392,5 @@ class StatementProcessor:
             "MD5",
         ]
         insert_into_db(
-            self.db_path, "Transactions", columns, transactions, skip_duplicates=True
+            session, "Transactions", columns, transactions, skip_duplicates=True
         )

@@ -3,15 +3,16 @@ from pathlib import Path
 
 import pandas as pd
 
+from sqlalchemy.orm import Session
 from .query import shopping, transactions
-from .utils import open_file_in_os, read_config
+from .utils import open_file_in_os
 
 
-def shopping_report(db_path: Path, where=""):
+def shopping_report(session: Session, where=""):
     """
     Saves verbose shopping list as Excel for creating expense reports for wifey <3
     """
-    data, columns = shopping(db_path, where)
+    data, columns = shopping(session, where)
     df = pd.DataFrame(data, columns=columns)
 
     df["Date"] = pd.to_datetime(df["Date"])
@@ -20,15 +21,9 @@ def shopping_report(db_path: Path, where=""):
     df.to_excel("shopping.xlsx", index=False)
 
 
-def save_pivot_tables(df: pd.DataFrame, timestamp: str) -> None:
-    """
-    Gets all transactions, makes pivot tables, then saves them to Excel file.
-    """
-
-
-def report(db_path: Path, dpath: Path, where=""):
+def report(session: Session, dpath: Path, months: int = None):
     # Pull recent transactions and create reports
-    data, columns = transactions(db_path, where=where)
+    data, columns = transactions(session, months=months)
     df = pd.DataFrame(data, columns=columns)
     df["Date"] = pd.to_datetime(df["Date"])
     df["Month"] = df["Date"].dt.to_period("M").astype(str)

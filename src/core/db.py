@@ -24,17 +24,6 @@ def create_new_db(db_path: Path):
         cursor.executescript(query)
 
 
-def get_table_names(db_path: Path, table: str):
-    with open_sqlite3(db_path) as cursor:
-        result = cursor.execute('SELECT * FROM sqlite_master WHERE type= "table"')
-        tables = result.fetchall()
-    table_names = []
-    for table in tables:
-        name = table[1]
-        table_names.append(name)
-    return table_names
-
-
 def execute_sql_query(db_path: Path, query: str):
     with open_sqlite3(db_path) as cursor:
         cursor.execute(query)
@@ -43,12 +32,6 @@ def execute_sql_query(db_path: Path, query: str):
             columns = [desc[0] for desc in cursor.description]
         else:
             columns = []
-    return data, columns
-
-
-def get_sqltable(db_path: Path, table: str):
-    query = "SELECT * FROM %s" % table
-    data, columns = execute_sql_query(db_path, query)
     return data, columns
 
 

@@ -11,6 +11,7 @@ from .interfaces import IParser
 from .query import statement_types
 from .utils import PDFReader
 from .validation import Statement, ValidationError, validate_statement
+from sqlalchemy.orm import sessionmaker
 
 T = TypeVar("T")
 
@@ -22,11 +23,12 @@ class BaseRouter(Generic[T]):
         Generic (T): T adopts the type passed to it when a child class inherits this class
     """
 
-    def __init__(self, fpath: Path, hard_fail=True):
+    def __init__(self, Session: sessionmaker, fpath: Path, hard_fail=True):
+        self.Session = Session
         self.fpath = fpath
         self.hard_fail = hard_fail
 
-    def select_parser(self, db_path: Path, text: str, extension="") -> tuple[int, str]:
+    def select_parser(self, text: str, extension="") -> tuple[int, str]:
         """Pulls parser search strings from database, then does pattern matching to
         find the StatementTypeID and parser name for this statement.
 
@@ -41,7 +43,8 @@ class BaseRouter(Generic[T]):
         Returns:
             tuple[int, str]: StatementTypeID and Parser from StatementTypes
         """
-        data, _ = statement_types(db_path, extension=extension)
+        with self.Session() as session:
+            data, _ = statement_types(session, extension=extension)
         text_lower = text.lower()
         for stid, pattern, entry_point in data:
             assert isinstance(pattern, str)
@@ -144,10 +147,8 @@ class PDFRouter(BaseRouter[PDFReader]):
         BaseRouter (PDFReader): _description_
     """
 
-    def __init__(self, db_path: Path, fpath: Path, **kwargs):
-        super().__init__(fpath, **kwargs)
-        self.db_path = db_path
-        self.fpath = fpath
+    def __init__(self, Session: sessionmaker, fpath: Path, **kwargs):
+        super().__init__(Session, fpath, **kwargs)
 
     def parse(self) -> Statement:
         """Opens the PDF file, determines its type, and routes its reader
@@ -158,7 +159,7 @@ class PDFRouter(BaseRouter[PDFReader]):
         """
         with PDFReader(self.fpath) as reader:
             text = reader.extract_text()
-            stid, entry_point = self.select_parser(self.db_path, text, extension=".pdf")
+            stid, entry_point = self.select_parser(text, extension=".pdf")
             statement = self.extract_statement(stid, entry_point, reader)
         return statement
 
@@ -166,10 +167,8 @@ class PDFRouter(BaseRouter[PDFReader]):
 class CSVRouter(BaseRouter[list[list[str]]]):
     ENCODING = "utf-8-sig"
 
-    def __init__(self, db_path: Path, fpath: Path, **kwargs):
-        super().__init__(fpath, **kwargs)
-        self.db_path = db_path
-        self.fpath = fpath
+    def __init__(self, Session: sessionmaker, fpath: Path, **kwargs):
+        super().__init__(Session, fpath, **kwargs)
 
     def parse(self) -> Statement:
         """Opens the CSV file, determines its type, and routes its contents
@@ -183,7 +182,7 @@ class CSVRouter(BaseRouter[list[list[str]]]):
         array = self.read_csv_as_array()
 
         # Extract the statement data
-        stid, entry_point = self.select_parser(self.db_path, text, extension=".csv")
+        stid, entry_point = self.select_parser(text, extension=".csv")
         statement = self.extract_statement(stid, entry_point, array)
         return statement
 
@@ -204,10 +203,8 @@ class CSVRouter(BaseRouter[list[list[str]]]):
 
 
 class XLSXRouter(BaseRouter):
-    def __init__(self, db_path: Path, fpath: Path, **kwargs):
-        super().__init__(fpath, **kwargs)
-        self.db_path = db_path
-        self.fpath = fpath
+    def __init__(self, Session: sessionmaker, fpath: Path, **kwargs):
+        super().__init__(Session, fpath, **kwargs)
 
     def parse(self) -> Statement:
         """Opens the XLSX file, determines its type, and routes its contents
@@ -218,7 +215,7 @@ class XLSXRouter(BaseRouter):
         """
         sheets = self.read_xlsx()
         text = self.plain_text(sheets)
-        stid, entry_point = self.select_parser(self.db_path, text, extension=".xlsx")
+        stid, entry_point = self.select_parser(text, extension=".xlsx")
         statement = self.extract_statement(stid, entry_point, sheets)
         return statement
 
@@ -248,6 +245,7 @@ def register_router(extension: str, router_class: type[BaseRouter]):
     ROUTERS[extension] = router_class
 
 
+# Add more routers here as they are developed
 register_router(".pdf", PDFRouter)
 register_router(".csv", CSVRouter)
 register_router(".xlsx", XLSXRouter)

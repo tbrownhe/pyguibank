@@ -6,16 +6,16 @@ from matplotlib import pyplot as plt
 from matplotlib.ticker import MultipleLocator
 
 from . import query
-from .utils import read_config
+from sqlalchemy.orm import Session
 
 
-def get_balance_data(db_path: Path) -> None:
+def get_balance_data(session: Session) -> None:
     """
     Gets all transactions, makes a pivot table, then plots the result
     to display balance over time.
     """
     # Get all the transactions
-    data, columns = query.transactions(db_path)
+    data, columns = query.transactions(session)
     df = pd.DataFrame(data, columns=columns)
     df["Date"] = pd.to_datetime(df["Date"])
 
@@ -34,7 +34,7 @@ def get_balance_data(db_path: Path) -> None:
     # Determine which columns in the pivot table are assets and debts
     asset_cols = []
     debt_cols = []
-    asset_dict = query.asset_types(db_path)
+    asset_dict = query.asset_types(session)
     for nick_name in df_pivot.columns.values:
         match asset_dict[nick_name]:
             case "Asset":
@@ -53,8 +53,8 @@ def get_balance_data(db_path: Path) -> None:
     return df_pivot, debt_cols
 
 
-def plot_balance_history(db_path: Path):
-    df_pivot, debt_cols = get_balance_data(db_path)
+def plot_balance_history(session: Session):
+    df_pivot, debt_cols = get_balance_data(session)
 
     # Plot all balances on the same chart
     fig, ax1 = plt.subplots(figsize=(14, 8))
@@ -81,13 +81,13 @@ def plot_balance_history(db_path: Path):
     plt.show()
 
 
-def get_category_data(db_path: Path) -> None:
+def get_category_data(session: Session) -> None:
     """
     Gets all transactions, makes a pivot table, then plots the result
     to display categozied expenses over time.
     """
     # Get all the transactions
-    data, columns = query.transactions(db_path)
+    data, columns = query.transactions(session)
     df = pd.DataFrame(data, columns=columns)
 
     # Create month column for pivot tables
@@ -105,9 +105,9 @@ def get_category_data(db_path: Path) -> None:
     return df_pivot
 
 
-def plot_category_spending(db_path: Path):
+def plot_category_spending(session: Session):
     # Get data from db
-    df_pivot = get_category_data(db_path)
+    df_pivot = get_category_data(session)
 
     plt.figure(figsize=(14, 8))
     for category in df_pivot.columns.values:
@@ -123,11 +123,3 @@ def plot_category_spending(db_path: Path):
     plt.xticks(rotation=90)
     plt.ylabel("Amount ($)")
     plt.show()
-
-
-if __name__ == "__main__":
-    # Plot account balances over time
-    config = read_config(Path("") / "config.ini")
-    db_path = Path(config.get("DATABASE", "db_path")).resolve()
-    balances(db_path)
-    categories(db_path)
