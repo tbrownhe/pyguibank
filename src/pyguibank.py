@@ -391,7 +391,7 @@ class PyGuiBank(QMainWindow):
         msg_box.exec_()
 
     def show_accounts(self):
-        dialog = AddAccount(self.db_path)
+        dialog = AddAccount(self.Session)
         if dialog.exec_() == QDialog.Accepted:
             # Update all GUI elements
             self.update_main_gui()
@@ -562,8 +562,10 @@ class PyGuiBank(QMainWindow):
 
     def update_balances_table(self, session: Session):
         # Fetch data for the table
-        data, columns = query.latest_balances(session)
-        df_balances = pd.DataFrame(data, columns=columns)
+        data = query.latest_balances(session)
+        df_balances = pd.DataFrame(
+            data, columns=["AccountName", "LatestDate", "LatestBalance"]
+        )
 
         # Update the table contents
         table_model = PandasModel(df_balances)

@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, List, Optional
-
+from typing import Callable, List, Optional, Any
+import hashlib
 from loguru import logger
 
 
@@ -19,31 +19,29 @@ class Transaction:
     amount: float
     desc: str = ""
     balance: Optional[float] = None
+    md5: Optional[str] = None
 
     @classmethod
     def sort_and_compute_balances(
-        cls, transactions: List["Transaction"], start_balance: float
-    ) -> List["Transaction"]:
+        cls, transactions: list["Transaction"], start_balance: float
+    ) -> list["Transaction"]:
         """
         Sorts transactions by posting date and computes running balances.
 
         Args:
-            transactions (List[Transaction]): List of transactions to process.
+            transactions (list[Transaction]): List of transactions to process.
             start_balance (float): The starting balance for the account.
 
         Returns:
-            List[Transaction]: Transactions sorted by posting date with computed balances.
+            list[Transaction]: Transactions sorted by posting date with computed balances.
         """
-        if len(transactions) == 0:
+        if not transactions:
             return transactions
 
         sorted_transactions = sorted(transactions, key=lambda t: t.posting_date)
 
         # Check if all transactions already have balances
-        if all(
-            isinstance(transaction.balance, float)
-            for transaction in sorted_transactions
-        ):
+        if all(isinstance(t.balance, float) for t in sorted_transactions):
             logger.debug("Balances are already populated; skipping recalculation.")
             return sorted_transactions
 
@@ -55,11 +53,140 @@ class Transaction:
         return sorted_transactions
 
     @classmethod
-    def validate_balances(cls, transactions: List["Transaction"]) -> List[str]:
-        errors = []
+    def hash_transactions(
+        cls, account_id: int, transactions: List["Transaction"]
+    ) -> List["Transaction"]:
+        """
+        Generates and appends MD5 hashes for the transactions.
+        """
+        if any(not isinstance(t.balance, float) for t in transactions):
+            raise ValueError("All transactions must have valid balances to hash.")
+
+        md5_set = set()
         for transaction in transactions:
-            if not isinstance(transaction.balance, float):
-                errors.append(f"Invalid balance for transaction: {transaction.desc}")
+            attempt = 0
+            while True:
+                # Build the hash string
+                hash_str = "".join(
+                    [
+                        str(account_id),
+                        transaction.posting_date.strftime(r"%Y-%m-%d"),
+                        f"{transaction.amount:.2f}",
+                        f"{transaction.balance:.2f}",
+                        transaction.desc,
+                        str(attempt),
+                    ]
+                )
+                md5 = hashlib.md5(hash_str.encode()).hexdigest()
+
+                if md5 not in md5_set:
+                    md5_set.add(md5)
+                    break
+
+                logger.warning(
+                    f"Hash collision detected for transaction '{transaction.desc}'. Retrying..."
+                )
+                attempt += 1
+
+            transaction.md5 = md5
+
+        return transactions
+
+    @classmethod
+    def to_db_rows(
+        cls, statement_id: int, account_id: int, transactions: List["Transaction"]
+    ) -> list[dict[str, Any]]:
+        """
+        Converts the Transaction instance to a tuple compatible with database insertion.
+
+        Returns:
+            tuple: A tuple of the transaction's fields in the required order.
+        """
+        rows = []
+        for t in transactions:
+            if not t.balance:
+                raise ValueError(
+                    f"Transaction {t.desc} is missing a balance and cannot be inserted."
+                )
+            if not t.md5:
+                raise ValueError(
+                    f"Transaction {t.desc} is missing an MD5 hash and cannot be inserted."
+                )
+            rows.append(
+                {
+                    "StatementID": statement_id,
+                    "AccountID": account_id,
+                    "Date": t.posting_date.strftime(r"%Y-%m-%d"),
+                    "Amount": t.amount,
+                    "Balance": t.balance,
+                    "Description": t.desc,
+                    "MD5": t.md5,
+                }
+            )
+        return rows
+
+    @classmethod
+    def validate_balances(cls, transactions: list["Transaction"]) -> list[str]:
+        """
+        Validates that all transactions have valid balances.
+        """
+        errors = [
+            f"Invalid balance for transaction: {t.desc}"
+            for t in transactions
+            if not isinstance(t.balance, float)
+        ]
+        return errors
+
+    @classmethod
+    def validate_complete(cls, transactions: list["Transaction"]) -> list[str]:
+        """
+        Validates all attributes of a list of Transaction objects.
+
+        Args:
+            transactions (list[Transaction]): List of transactions to validate.
+
+        Returns:
+            list[str]: A list of validation error messages. Empty if all are valid.
+        """
+        errors = []
+
+        for i, t in enumerate(transactions):
+            # Validate transaction_date
+            if not isinstance(t.transaction_date, datetime):
+                errors.append(
+                    f"Transaction {i + 1}: 'transaction_date' must be a datetime, got {type(t.transaction_date).__name__}."
+                )
+
+            # Validate posting_date
+            if not isinstance(t.posting_date, datetime):
+                errors.append(
+                    f"Transaction {i + 1}: 'posting_date' must be a datetime, got {type(t.posting_date).__name__}."
+                )
+
+            # Validate amount
+            if not isinstance(t.amount, (int, float)):
+                errors.append(
+                    f"Transaction {i + 1}: 'amount' must be a number, got {type(t.amount).__name__}."
+                )
+
+            # Validate desc
+            if not isinstance(t.desc, str):
+                errors.append(
+                    f"Transaction {i + 1}: 'desc' must be a string, got {type(t.desc).__name__}."
+                )
+
+            # Validate balance
+            if t.balance is not None and not isinstance(t.balance, (int, float)):
+                errors.append(
+                    f"Transaction {i + 1}: 'balance' must be a number or None, got {type(t.balance).__name__}."
+                )
+
+            # Validate md5
+            if t.md5 is not None and not isinstance(t.md5, str):
+                errors.append(
+                    f"Transaction {i + 1}: 'md5' must be a string or None, got {type(t.md5).__name__}."
+                )
+
         return errors
 
 
@@ -68,7 +195,7 @@ class Account:
     account_num: str
     start_balance: float
     end_balance: float
-    transactions: List[Transaction]
+    transactions: list[Transaction]
     account_id: Optional[int] = None
     account_name: Optional[str] = None
     statement_id: Optional[int] = None
@@ -134,7 +261,7 @@ class Account:
 class Statement:
     start_date: datetime
     end_date: datetime
-    accounts: List[Account]
+    accounts: list[Account]
     stid: Optional[int] = None
     fpath: Optional[Path] = None
     dpath: Optional[Path] = None
@@ -166,10 +293,10 @@ class Statement:
 
 
 ### Validation framework
-VALIDATION_CHECKS: List[Callable[[Statement], List[str]]] = []
+VALIDATION_CHECKS: list[Callable[[Statement], list[str]]] = []
 
 
-def register_validation(check: Callable[[Statement], List[str]]):
+def register_validation(check: Callable[[Statement], list[str]]):
     VALIDATION_CHECKS.append(check)
 
 

@@ -8,6 +8,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QDialog, QMessageBox, QProgressDialog
 
 from sqlalchemy.orm import sessionmaker, Session
+from .orm import Statements
 from . import query
 from .db import insert_into_db
 from .dialog import AssignAccountNumber
@@ -282,33 +283,21 @@ class StatementProcessor:
             account.validate_account_info()
 
             # Assemble the metadata
-            columns = [
-                "StatementTypeID",
-                "AccountID",
-                "ImportDate",
-                "StartDate",
-                "EndDate",
-                "StartBalance",
-                "EndBalance",
-                "TransactionCount",
-                "Filename",
-                "MD5",
-            ]
-            metadata = (
-                self.statement.stid,
-                account.account_id,
-                datetime.now().strftime(r"%Y-%m-%d"),
-                self.statement.start_date.strftime(r"%Y-%m-%d"),
-                self.statement.end_date.strftime(r"%Y-%m-%d"),
-                account.start_balance,
-                account.end_balance,
-                len(account.transactions),
-                self.statement.dpath.name,
-                self.statement.md5hash,
-            )
+            metadata = {
+                "StatementTypeID": self.statement.stid,
+                "AccountID": account.account_id,
+                "ImportDate": datetime.now().strftime(r"%Y-%m-%d"),
+                "StartDate": self.statement.start_date.strftime(r"%Y-%m-%d"),
+                "EndDate": self.statement.end_date.strftime(r"%Y-%m-%d"),
+                "StartBalance": account.start_balance,
+                "EndBalance": account.end_balance,
+                "TransactionCount": len(account.transactions),
+                "Filename": self.statement.dpath.name,
+                "MD5": self.statement.md5hash,
+            }
 
             # Insert metadata into db
-            insert_into_db(session, "Statements", columns, [metadata])
+            insert_into_db(session, Statements, [metadata])
 
             # Get the new StatementID and attach it to account
             statement_id = query.statement_id(

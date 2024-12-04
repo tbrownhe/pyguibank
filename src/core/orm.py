@@ -12,9 +12,13 @@ from sqlalchemy import (
     create_engine,
 )
 from sqlalchemy.ext.declarative import declared_attr
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+from sqlalchemy.orm import DeclarativeMeta, declarative_base, relationship, sessionmaker
 
 Base = declarative_base()
+
+
+class BaseModel(metaclass=DeclarativeMeta):
+    __abstract__ = True
 
 
 class AccountTypes(Base):
@@ -110,7 +114,7 @@ class CardNumbers(Base):
     account = relationship("Account")
 
 
-class Shoppings(Base):
+class Shopping(Base):
     __tablename__ = "Shopping"
     ItemID = Column(Integer, primary_key=True, autoincrement=True, unique=True)
     AccountID = Column(Integer, ForeignKey("Accounts.AccountID"))

@@ -1,14 +1,21 @@
 from datetime import datetime
-from pathlib import Path
+from typing import Optional
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-from sqlalchemy.sql import asc, distinct, func, or_, select
+from sqlalchemy.sql import and_, asc, desc, distinct, func, or_, select
 
 from src.core.orm import Accounts, AccountTypes, Transactions
 
-from .orm import AccountNumbers, Accounts, AccountTypes, Statements, StatementTypes
+from .orm import (
+    AccountNumbers,
+    Accounts,
+    AccountTypes,
+    Shopping,
+    Statements,
+    StatementTypes,
+)
 
 
 def optimize_db(session: Session) -> None:
@@ -346,20 +353,39 @@ def transactions(session: Session, months: int = None) -> list[tuple]:
 
 def training_set(
     session: Session,
-    verified: bool = True,
+    verified: bool = False,
+    unverified: bool = False,
+    categorized: bool = False,
     uncategorized: bool = False,
 ) -> tuple[list[tuple], list[str]]:
     """
     Retrieves a training set of transaction data with flexible filtering options.
+    Returns all transactions if no flags are set.
 
     Args:
         session (Session): SQLAlchemy session object.
-        verified (bool, optional): Filter by verification status. If None, ignore this filter.
-        include_uncategorized (bool, optional): Include only uncategorized transactions.
+        verified (bool, optional): Include only verified transactions if True. Defaults to False.
+        unverified (bool, optional): Include only unverified transactions if True. Defaults to False.
+        categorized (bool, optional): Include only categorized transactions if True. Defaults to False.
+        uncategorized (bool, optional): Include only uncategorized transactions if True. Defaults to False.
+
+    Raises:
+        ValueError: If verified and unverified are both True.
+        ValueError: If categorized and uncategorized are both True.
 
     Returns:
         tuple[list[tuple], list[str]]: A list of training data and column names.
+
+    Notes:
+        By default, if no filters are applied, all transactions are returned.
+        Results are sorted by Date (ascending) and TransactionID (ascending).
     """
+    # Validate input
+    if verified and unverified:
+        raise ValueError("verified and unverified flags cannot both be True")
+    if categorized and uncategorized:
+        raise ValueError("categorized and uncategorized flags cannot both be True")
+
     # Base query
     query = (
         session.query(
@@ -375,18 +401,26 @@ def training_set(
         .order_by(asc(Transactions.Date), asc(Transactions.TransactionID))
     )
 
-    # Apply verified filter
-    query = query.filter(Transactions.Verified == (1 if verified else 0))
+    # Apply filters
+    if verified:
+        query = query.filter(Transactions.Verified == 1)
+    elif unverified:
+        query = query.filter(Transactions.Verified == 0)
 
-    # Apply uncategorized filter
-    if uncategorized:
-        query = query.filter(
-            or_(
-                Transactions.Category == "Uncategorized",
-                Transactions.Category == "",
-                Transactions.Category.is_(None),
-            )
+    if categorized:
+        uncategorized_filter = or_(
+            Transactions.Category == "Uncategorized",
+            Transactions.Category == "",
+            Transactions.Category.is_(None),
         )
+        query = query.filter(~uncategorized_filter)
+    elif uncategorized:
+        uncategorized_filter = or_(
+            Transactions.Category == "Uncategorized",
+            Transactions.Category == "",
+            Transactions.Category.is_(None),
+        )
+        query = query.filter(uncategorized_filter)
 
     # Execute query and fetch results
     data = query.all()
@@ -395,82 +429,143 @@ def training_set(
     return data, columns
 
 
-def shopping(db_path: Path, where="") -> tuple[list[tuple], list[str]]:
+def shopping(session: Session, months: int = 12) -> tuple[list[tuple], list[str]]:
     """
-    Returns all transactions as pd.DataFrame
-    """
-    sql_path = Path("") / "src" / "sql" / "shopping.sql"
-    with sql_path.open("r") as f:
-        query = f.read()
-    query = query.replace("{where}", where)
-    return execute_sql_query(db_path, query)
+    Retrieves a list of Shopping data for the last number of months.
 
+    Args:
+        session (Session): SQLAlchemy session object.
+        months (int, optional): Number of months to include in the report. Defaults to 12.
 
-def asset_types(db_path: Path) -> dict[str, str]:
+    Returns:
+        tuple[list[tuple], list[str]]: A list of training data and column names.
     """
-    Returns Asset Type of Accounts table as df
-    """
+    # Query shopping transactions
     query = (
-        "SELECT AccountName, AssetType"
-        " FROM Accounts"
-        " JOIN AccountTypes ON Accounts.AccountTypeID = AccountTypes.AccountTypeID"
+        session.query(
+            Shopping.ItemID,
+            Accounts.AccountName,
+            Shopping.Date,
+            Shopping.Amount,
+            Shopping.Description,
+            Shopping.Category,
+        )
+        .join(Accounts, Shopping.AccountID == Accounts.AccountID)
+        .filter(Shopping.Date >= func.date("now", f"-{months} months"))
+        .order_by(asc(Shopping.Date), asc(Shopping.ItemID))
     )
-    data, _ = execute_sql_query(db_path, query)
-    asset_dict = {}
-    for row in data:
-        asset_dict[row[0]] = row[1]
+
+    # Fetch results
+    data = query.all()
+    columns = [column.key for column in query.column_descriptions]
+
+    return data, columns
+
+
+def asset_types(session: Session) -> dict[str, str]:
+    """
+    Returns a dictionary mapping account names to their asset types.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        dict[str, str]: A dictionary where keys are account names and values are asset types.
+    """
+    # Query account names and asset types
+    query = session.query(Accounts.AccountName, AccountTypes.AssetType).join(
+        AccountTypes, Accounts.AccountTypeID == AccountTypes.AccountTypeID
+    )
+
+    # Build the dictionary from query results
+    asset_dict = {account_name: asset_type for account_name, asset_type in query.all()}
     return asset_dict
 
 
-def latest_balance(db_path: Path, account_id: int) -> dict[str, str]:
-    query = (
-        "SELECT Date, Balance FROM Transactions"
-        f" WHERE AccountID = {account_id}"
-        " ORDER BY Date DESC, TransactionID DESC"
-        " LIMIT 1"
-    )
-    return execute_sql_query(db_path, query)
-
-
-def latest_balances(db_path: Path):
-    """Returns the latest balance and transaction date for each account
+def latest_balance(session: Session, account_id: int) -> Optional[tuple[str, float]]:
+    """
+    Retrieves the most recent balance and transaction date for a given account.
 
     Args:
-        db_path (Path): Path to db file
+        session (Session): SQLAlchemy session object.
+        account_id (int): The AccountID to query.
 
     Returns:
-        tuple[list[tuple], list[str]]: data, columns
-            (AccountName, LatestBalance, LastTransactionDate)
+        Optional[tuple[str, float]]: A tuple containing the most recent transaction date
+        and balance, or None if no transactions exist for the account.
     """
-    query = """
-    WITH LatestTransaction AS (
-        SELECT 
-            AccountID,
-            MAX(Date) AS MaxDate
-        FROM Transactions
-        GROUP BY AccountID
-    ),
-    LatestTransactionID AS (
-        SELECT 
-            T.AccountID,
-            T.Balance,
-            T.TransactionID,
-            T.Date
-        FROM Transactions T
-        JOIN LatestTransaction LT 
-            ON T.AccountID = LT.AccountID 
-            AND T.Date = LT.MaxDate
-        WHERE T.TransactionID = (
-            SELECT MAX(TransactionID)
-            FROM Transactions T2
-            WHERE T2.AccountID = T.AccountID AND T2.Date = T.Date
-        )
+    result = (
+        session.query(Transactions.Date, Transactions.Balance)
+        .filter(Transactions.AccountID == account_id)
+        .order_by(Transactions.Date.desc(), Transactions.TransactionID.desc())
+        .first()
     )
-    SELECT 
-        A.AccountName AS AccountName,
-        T.Date AS LatestDate,
-        T.Balance AS LatestBalance
-    FROM Accounts A
-    JOIN LatestTransactionID T ON A.AccountID = T.AccountID;
+
+    return result
+
+
+def latest_balances(session: Session) -> list[tuple[str, str, float]]:
     """
-    return execute_sql_query(db_path, query)
+    Retrieves the latest balance and transaction date for each account.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        list[tuple[str, str, float]]: A list of tuples containing:
+            (AccountName, LatestDate, LatestBalance)
+    """
+    # Subquery: LatestTransaction
+    latest_transaction = (
+        session.query(
+            Transactions.AccountID,
+            func.max(Transactions.Date).label("MaxDate"),
+        )
+        .group_by(Transactions.AccountID)
+        .subquery("LatestTransaction")
+    )
+
+    # Subquery: LatestTransactionID
+    latest_transaction_id = (
+        session.query(
+            Transactions.AccountID,
+            Transactions.Balance,
+            Transactions.TransactionID,
+            Transactions.Date,
+        )
+        .join(
+            latest_transaction,
+            and_(
+                Transactions.AccountID == latest_transaction.c.AccountID,
+                Transactions.Date == latest_transaction.c.MaxDate,
+            ),
+        )
+        .filter(
+            Transactions.TransactionID
+            == session.query(func.max(Transactions.TransactionID))
+            .filter(
+                and_(
+                    Transactions.AccountID == latest_transaction.c.AccountID,
+                    Transactions.Date == latest_transaction.c.MaxDate,
+                )
+            )
+            .scalar_subquery()
+        )
+        .subquery("LatestTransactionID")
+    )
+
+    # Final Query
+    query = (
+        session.query(
+            Accounts.AccountName.label("AccountName"),
+            latest_transaction_id.c.Date.label("LatestDate"),
+            latest_transaction_id.c.Balance.label("LatestBalance"),
+        )
+        .join(
+            latest_transaction_id,
+            Accounts.AccountID == latest_transaction_id.c.AccountID,
+        )
+        .order_by(Accounts.AccountName.asc())
+    )
+
+    return query.all()

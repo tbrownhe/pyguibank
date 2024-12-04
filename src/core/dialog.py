@@ -27,9 +27,12 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
 )
 from sqlalchemy.orm import sessionmaker
+from src.core.validation import ValidationError
+from .orm import Accounts, AccountNumbers, Transactions
 
 from . import db, query
 from .utils import hash_transactions, open_file_in_os, read_config
+from validation import Transaction
 
 
 class PreferencesDialog(QDialog):
@@ -346,15 +349,15 @@ class AddAccount(QDialog):
             account_type_id = query.account_type_id(session, account_type)
 
         # Insert new account into Accounts Table
-        columns = ["AccountTypeID", "Company", "Description", "AccountName"]
-        row = (
-            account_type_id,
-            self.company_edit.text(),
-            self.description_edit.text(),
-            self.account_name_edit.text(),
-        )
+        row = {
+            "AccountTypeID": account_type_id,
+            "Company": self.company_edit.text(),
+            "Description": self.description_edit.text(),
+            "AccountName": self.account_name_edit.text(),
+        }
         try:
-            db.insert_into_db(self.db_path, "Accounts", columns, [row])
+            with self.Session() as session:
+                db.insert_rows_batched(session, Accounts, [row])
             QMessageBox.information(
                 self, "Success", "New account has been added successfully."
             )
@@ -483,12 +486,13 @@ class AssignAccountNumber(QDialog):
             )
         else:
             # Create the AccountNumber -> AccountID association in the db
-            db.insert_into_db(
-                self.db_path,
-                "AccountNumbers",
-                ["AccountID", "AccountNumber"],
-                [(self.account_id, self.account_num)],
-            )
+            row = {
+                "AccountID": self.account_id,
+                "AccountNumber": self.account_num,
+            }
+            with self.Session() as session:
+                db.insert_into_db(session, AccountNumbers, [row])
+
             self.accept()
 
     def get_account_id(self):
@@ -499,11 +503,11 @@ class AssignAccountNumber(QDialog):
 
 
 class InsertTransaction(QDialog):
-    def __init__(self, db_path: Path, parent=None):
+    def __init__(self, Session: sessionmaker, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Insert Transaction")
         self.setGeometry(100, 100, 400, 200)
-        self.db_path = db_path
+        self.Session = Session
 
         # Main layout
         layout = QVBoxLayout(self)
@@ -567,10 +571,9 @@ class InsertTransaction(QDialog):
         Load account names and IDs from the database and populate the dropdown.
         """
         try:
-            data, _ = db.execute_sql_query(
-                self.db_path, "SELECT AccountID, AccountName FROM Accounts"
-            )
-            for account_id, account_name in data:
+            with self.Session() as session:
+                data, _ = query.accounts(session)
+            for account_id, account_name, _, _ in data:
                 self.account_dropdown.addItem(
                     f"{account_name} (ID: {account_id})", account_id
                 )
@@ -581,29 +584,32 @@ class InsertTransaction(QDialog):
         account_id = self.account_dropdown.currentData()
         if account_id:
             # Query the database for the most recent balance for this account
-            data, _ = query.latest_balance(self.db_path, account_id)
-            if data:
+            with self.Session() as session:
+                result = query.latest_balance(session, account_id)
+            if result:
                 # Set latest balance fields
-                latest_date, latest_balance = data[0]
+                latest_date, latest_balance = result
                 self.latest_balance_value.setText(f"{latest_balance:.2f}")
                 self.latest_date_value.setText(f"{latest_date}")
             else:
                 # If no transactions found, assume balance is zero
                 self.latest_balance_value.setText("0.00")
+                self.latest_date_value.setText("N/A")
         else:
             # Clear balance display if no account is selected
             self.latest_balance_value.setText("0.00")
+            self.latest_date_value.setText("N/A")
 
-    def validate_input(self):
+    def validate_input(self) -> list[Transaction]:
         # Get inputs
         account_id = self.account_dropdown.currentData()
         date = self.date_selector.date().toString("yyyy-MM-dd")
         amount = self.amount_input.text()
         balance = self.latest_balance_value.text()
-        description = self.description_input.text()
+        desc = self.description_input.text()
 
         # Validate inputs
-        if not account_id or not amount or not balance or not description:
+        if not account_id or not amount or not balance or not desc:
             QMessageBox.warning(
                 self, "Missing Information", "Please fill in all fields."
             )
@@ -622,31 +628,46 @@ class InsertTransaction(QDialog):
             return
 
         # Traceability for manual entry
-        description = "Manual Entry: " + description
+        desc = "Manual Entry: " + desc
 
-        # Create MD5 hash
-        transaction = [(account_id, date, amount, balance, description)]
-        transaction = hash_transactions(transaction)
+        # Create transaction object
+        transactions = [
+            Transaction(
+                transaction_date=date,
+                posting_date=date,
+                amount=amount,
+                desc=desc,
+                balance=balance,
+            )
+        ]
 
-        return transaction
+        return transactions
 
     def submit(self):
         """
         Validate inputs and insert the transaction into the database.
         """
         try:
-            transaction = self.validate_input()
+            transactions = self.validate_input()
 
-            if transaction is None:
-                return
+            # Hash transaction
+            transactions = Transaction.hash_transactions(transactions)
+
+            # Validate transactions befoire insertion
+            errors = Transaction.validate_complete(transactions)
+            if errors:
+                raise ValidationError("\n".join(errors))
+
+            # Convert to list of dict for db insertion
+            rows = Transaction.to_db_rows(transactions)
 
             # Insert transaction into the database
-            db.insert_into_db(
-                self.db_path,
-                "Transactions",
-                ["AccountID", "Date", "Amount", "Balance", "Description", "MD5"],
-                transaction,
-            )
+            with self.Session() as session:
+                db.insert_rows_carefully(
+                    session,
+                    Transactions,
+                    rows,
+                )
 
             QMessageBox.information(
                 self, "Success", "Transaction has been added successfully."

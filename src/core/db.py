@@ -1,9 +1,11 @@
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Generator
+from typing import Generator, Any
 
 from loguru import logger
+from sqlalchemy.orm import Session
+from .orm import BaseModel
 
 
 @contextmanager
@@ -24,22 +26,67 @@ def create_new_db(db_path: Path):
         cursor.executescript(query)
 
 
-def execute_sql_query(db_path: Path, query: str):
-    with open_sqlite3(db_path) as cursor:
-        cursor.execute(query)
-        data = cursor.fetchall()
-        if cursor.description:
-            columns = [desc[0] for desc in cursor.description]
-        else:
-            columns = []
-    return data, columns
+def insert_rows_batched(session: Session, model: BaseModel, rows: list[dict]) -> None:
+    """
+    Performs batched insertion of rows, rolling back the transaction if any error occurs.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+        model (Type[Base]): SQLAlchemy model representing the table.
+        rows (list[dict]): List of dictionaries representing rows to insert.
+
+    Raises:
+        IntegrityError: If the insertion fails, the entire batch is rolled back.
+    """
+    try:
+        objects = [model(**row) for row in rows]
+        session.bulk_save_objects(objects)
+        session.commit()
+    except sqlite3.IntegrityError as e:
+        session.rollback()
+        raise RuntimeError(f"Batch insertion failed: {e}")
 
 
-def execute_sql_file(db_path: Path, sql_path: Path):
-    with sql_path.open("r") as f:
-        query = f.read()
-    data, columns = execute_sql_query(db_path, query)
-    return data, columns
+def insert_rows_carefully(
+    session: Session,
+    model: BaseModel,
+    data: list[dict[str, Any]],
+    skip_duplicates: bool = False,
+) -> None:
+    """
+    Insert rows into the database one by one, with optional duplicate handling.
+
+    Args:
+        session (Session): SQLAlchemy session.
+        model (Type[Base]): SQLAlchemy ORM model for the target table.
+        data (List[Dict[str, Any]]): List of data rows to insert as dictionaries.
+        skip_duplicates (bool): Whether to skip duplicate rows.
+
+    Returns:
+        None
+    """
+    # Initialize counters
+    skipped = 0
+    n_rows = len(data)
+
+    for row in data:
+        try:
+            session.add(model(**row))
+            session.commit()
+        except sqlite3.IntegrityError:
+            # Rollback the failed transaction
+            session.rollback()
+            if skip_duplicates:
+                skipped += 1
+            else:
+                # Re-raise if not skipping duplicates
+                raise
+
+    # Summary message
+    logger.info(
+        f"Skipped {skipped} duplicate rows while inserting {n_rows} rows"
+        f" into {model.__tablename__}. "
+    )
 
 
 def insert_into_db(
@@ -79,70 +126,38 @@ def insert_into_db(
         )
 
 
-def construct_update_query(
-    table: str, update_cols: list[str], where_cols: list[str]
-) -> str:
-    """
-    Constructs an SQL update query with placeholders for values.
-
-    Args:
-        table (str): The name of the table to update.
-        update_cols (List[str]): Columns to update.
-        where_cols (List[str]): Columns for the WHERE clause.
-
-    Returns:
-        str: The constructed SQL query with placeholders.
-    """
-    update_str = ", ".join([f"{col} = ?" for col in update_cols])
-    where_str = " AND ".join([f"{col} = ?" for col in where_cols])
-    return f"UPDATE {table} SET {update_str} WHERE {where_str}"
-
-
 def update_db_where(
-    db_path: Path,
-    table: str,
+    session: Session,
+    model: BaseModel,
     update_cols: list[str],
     update_list: list[tuple],
     where_cols: list[str],
     where_list: list[tuple],
 ) -> None:
     """
-    Updates rows of data in an SQLite3 database table.
+    Updates rows of data in an SQLAlchemy-managed database table.
 
     Args:
-        db_path (Path): Path to the SQLite database file.
-        table (str): Name of the table to update.
+        session (Session): SQLAlchemy session object.
+        model (Base): SQLAlchemy ORM model class representing the table.
         update_cols (List[str]): Columns to update.
         update_list (List[Tuple]): Values to update in the corresponding columns.
         where_cols (List[str]): Columns for the WHERE clause.
         where_list (List[Tuple]): Values for the WHERE clause.
-
-    Example:
-        table = "Transactions"
-        update_cols = ["Category", "Verified"]
-        update_list = [("Auto", 1), ("Restaurant", 1)]
-        where_cols = ["TransactionID", "AccountID"]
-        where_list = [(1, 6), (42, 6)]
     """
-    # Ensure data integrity
     if len(update_list) != len(where_list):
         raise ValueError("Length of update_list and where_list must be equal.")
-    if any(len(row) != len(update_cols) for row in update_list):
-        raise ValueError(
-            "Each tuple in update_list must match the number of update_cols."
-        )
-    if any(len(row) != len(where_cols) for row in where_list):
-        raise ValueError(
-            "Each tuple in where_list must match the number of where_cols."
+
+    for update_vals, where_vals in zip(update_list, where_list):
+        # Build the WHERE clause dynamically
+        conditions = {
+            getattr(model, col): val for col, val in zip(where_cols, where_vals)
+        }
+
+        # Update the rows matching the conditions
+        session.query(model).filter_by(**conditions).update(
+            {getattr(model, col): val for col, val in zip(update_cols, update_vals)},
+            synchronize_session="fetch",  # Ensures in-memory consistency
         )
 
-    # Construct the base query
-    query = construct_update_query(table, update_cols, where_cols)
-
-    # Execute updates
-    try:
-        with open_sqlite3(db_path) as cursor:
-            for update_vals, where_vals in zip(update_list, where_list):
-                cursor.execute(query, update_vals + where_vals)
-    except sqlite3.Error as e:
-        raise RuntimeError(f"Database update failed: {e}")
+    session.commit()
