@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -27,12 +27,11 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
 )
 from sqlalchemy.orm import sessionmaker
-from src.core.validation import ValidationError
-from .orm import Accounts, AccountNumbers, Transactions
 
 from . import db, query
-from .utils import hash_transactions, open_file_in_os, read_config
-from validation import Transaction
+from .orm import AccountNumbers, Accounts, Transactions
+from .utils import open_file_in_os, read_config
+from .validation import Transaction, ValidationError
 
 
 class PreferencesDialog(QDialog):
@@ -573,7 +572,7 @@ class InsertTransaction(QDialog):
         try:
             with self.Session() as session:
                 data, _ = query.accounts(session)
-            for account_id, account_name, _, _ in data:
+            for account_id, account_name, _, _, _ in data:
                 self.account_dropdown.addItem(
                     f"{account_name} (ID: {account_id})", account_id
                 )
@@ -600,10 +599,11 @@ class InsertTransaction(QDialog):
             self.latest_balance_value.setText("0.00")
             self.latest_date_value.setText("N/A")
 
-    def validate_input(self) -> list[Transaction]:
+    def validate_input(self) -> tuple[int, list[Transaction]]:
         # Get inputs
         account_id = self.account_dropdown.currentData()
-        date = self.date_selector.date().toString("yyyy-MM-dd")
+        q_date = self.date_selector.date()
+        date = datetime(q_date.year(), q_date.month(), q_date.day())
         amount = self.amount_input.text()
         balance = self.latest_balance_value.text()
         desc = self.description_input.text()
@@ -618,7 +618,7 @@ class InsertTransaction(QDialog):
         # Ensure the amount is a valid number
         try:
             amount = float(amount)
-            balance = float(balance) + amount
+            balance = round(float(balance) + amount, 2)
         except ValueError:
             QMessageBox.warning(
                 self,
@@ -641,33 +641,38 @@ class InsertTransaction(QDialog):
             )
         ]
 
-        return transactions
+        return account_id, transactions
+
+    def insert_transaction(self):
+        account_id, transactions = self.validate_input()
+
+        # Hash transaction
+        transactions = Transaction.hash_transactions(account_id, transactions)
+
+        # Validate transactions before insertion
+        errors = Transaction.validate_complete(transactions)
+        if errors:
+            raise ValidationError("\n".join(errors))
+
+            # Convert to list of dict for db insertion
+        statement_id = None
+        rows = Transaction.to_db_rows(statement_id, account_id, transactions)
+
+        # Insert transaction into the database
+        with self.Session() as session:
+            db.insert_rows_carefully(
+                session,
+                Transactions,
+                rows,
+                skip_duplicates=True,
+            )
 
     def submit(self):
         """
         Validate inputs and insert the transaction into the database.
         """
         try:
-            transactions = self.validate_input()
-
-            # Hash transaction
-            transactions = Transaction.hash_transactions(transactions)
-
-            # Validate transactions befoire insertion
-            errors = Transaction.validate_complete(transactions)
-            if errors:
-                raise ValidationError("\n".join(errors))
-
-            # Convert to list of dict for db insertion
-            rows = Transaction.to_db_rows(transactions)
-
-            # Insert transaction into the database
-            with self.Session() as session:
-                db.insert_rows_carefully(
-                    session,
-                    Transactions,
-                    rows,
-                )
+            self.insert_transaction()
 
             QMessageBox.information(
                 self, "Success", "Transaction has been added successfully."
@@ -718,7 +723,7 @@ def get_missing_coverage(Session: sessionmaker):
     )
 
     # Return the last 13 months as a transposed DataFrame
-    return df_pivot.tail(13).T
+    return df_pivot.tail(13).T.astype(str)
 
 
 class PandasModel(QAbstractTableModel):
@@ -767,7 +772,7 @@ class CompletenessDialog(QDialog):
         layout = QVBoxLayout()
 
         # Fetch DataFrame from the function
-        self.df = get_missing_coverage(Session).astype(str)
+        self.df = get_missing_coverage(Session)
 
         # Create a PandasModel and attach it to a QTableView
         self.table_model = PandasModel(self.df)

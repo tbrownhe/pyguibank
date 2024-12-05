@@ -4,9 +4,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-from sqlalchemy.sql import and_, asc, desc, distinct, func, or_, select
-
-from src.core.orm import Accounts, AccountTypes, Transactions
+from sqlalchemy.sql import asc, distinct, func, or_, select, text
 
 from .orm import (
     AccountNumbers,
@@ -15,6 +13,7 @@ from .orm import (
     Shopping,
     Statements,
     StatementTypes,
+    Transactions,
 )
 
 
@@ -25,8 +24,8 @@ def optimize_db(session: Session) -> None:
     Args:
         session (Session): The SQLAlchemy session to use for the operation.
     """
-    session.execute("VACUUM")
-    session.execute("ANALYZE")
+    session.execute(text("VACUUM"))
+    session.execute(text("ANALYZE"))
     session.commit()
 
 
@@ -124,6 +123,35 @@ def account_types(session: Session) -> list[str]:
     return [account_type for (account_type,) in account_types]
 
 
+def account_types_table(session: Session) -> list[dict]:
+    """
+    Fetches entire AccountTypes table.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        tuple[list[tuple], list[str]]: Data and column names.
+    """
+    # Perform the query
+    query = session.query(
+        AccountTypes.AccountTypeID,
+        AccountTypes.AccountType,
+        AccountTypes.AssetType,
+    )
+
+    # Fetch all data
+    data = [
+        {
+            column.get("name", "Unknown"): value
+            for column, value in zip(query.column_descriptions, row)
+        }
+        for row in query.all()
+    ]
+
+    return data
+
+
 def statement_types(
     session: Session, extension: str = ""
 ) -> list[tuple[int, str, str]]:
@@ -149,6 +177,39 @@ def statement_types(
     return session.execute(query).fetchall()
 
 
+def statement_types_table(session: Session) -> list[dict]:
+    """
+    Fetches entire StatementTypes table.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        tuple[list[tuple], list[str]]: Data and column names.
+    """
+    # Perform the query
+    query = session.query(
+        StatementTypes.AccountTypeID,
+        StatementTypes.Company,
+        StatementTypes.Description,
+        StatementTypes.Extension,
+        StatementTypes.SearchString,
+        StatementTypes.Parser,
+        StatementTypes.EntryPoint,
+    )
+
+    # Fetch all data
+    data = [
+        {
+            column.get("name", "Unknown"): value
+            for column, value in zip(query.column_descriptions, row)
+        }
+        for row in query.all()
+    ]
+
+    return data
+
+
 def statements(
     session: Session, months: int = 15
 ) -> tuple[list[tuple[str, datetime, datetime]], list[str]]:
@@ -170,7 +231,7 @@ def statements(
     )
 
     data = query.all()
-    columns = [column.key for column in query.column_descriptions]
+    columns = [column.get("name", "Unknown") for column in query.column_descriptions]
 
     return data, columns
 
@@ -289,7 +350,7 @@ def accounts(
     ).join(AccountTypes, Accounts.AccountTypeID == AccountTypes.AccountTypeID)
 
     data = query.all()
-    columns = [column.key for column in query.column_descriptions]
+    columns = [column.get("name", "Unknown") for column in query.column_descriptions]
 
     return data, columns
 
@@ -346,7 +407,7 @@ def transactions(session: Session, months: int = None) -> list[tuple]:
 
     # Execute the query and fetch results
     data = query.all()
-    columns = [column.key for column in query.column_descriptions]
+    columns = [column.get("name", "Unknown") for column in query.column_descriptions]
 
     return data, columns
 
@@ -424,7 +485,7 @@ def training_set(
 
     # Execute query and fetch results
     data = query.all()
-    columns = [column.key for column in query.column_descriptions]
+    columns = [column.get("name", "Unknown") for column in query.column_descriptions]
 
     return data, columns
 
@@ -457,7 +518,7 @@ def shopping(session: Session, months: int = 12) -> tuple[list[tuple], list[str]
 
     # Fetch results
     data = query.all()
-    columns = [column.key for column in query.column_descriptions]
+    columns = [column.get("name", "Unknown") for column in query.column_descriptions]
 
     return data, columns
 
@@ -516,56 +577,25 @@ def latest_balances(session: Session) -> list[tuple[str, str, float]]:
             (AccountName, LatestDate, LatestBalance)
     """
     # Subquery: LatestTransaction
-    latest_transaction = (
+    subquery = (
         session.query(
             Transactions.AccountID,
-            func.max(Transactions.Date).label("MaxDate"),
+            func.max(Transactions.Date).label("LatestDate"),
         )
         .group_by(Transactions.AccountID)
-        .subquery("LatestTransaction")
+        .subquery()
     )
 
     # Subquery: LatestTransactionID
-    latest_transaction_id = (
-        session.query(
-            Transactions.AccountID,
-            Transactions.Balance,
-            Transactions.TransactionID,
-            Transactions.Date,
-        )
-        .join(
-            latest_transaction,
-            and_(
-                Transactions.AccountID == latest_transaction.c.AccountID,
-                Transactions.Date == latest_transaction.c.MaxDate,
-            ),
-        )
-        .filter(
-            Transactions.TransactionID
-            == session.query(func.max(Transactions.TransactionID))
-            .filter(
-                and_(
-                    Transactions.AccountID == latest_transaction.c.AccountID,
-                    Transactions.Date == latest_transaction.c.MaxDate,
-                )
-            )
-            .scalar_subquery()
-        )
-        .subquery("LatestTransactionID")
-    )
-
-    # Final Query
     query = (
         session.query(
-            Accounts.AccountName.label("AccountName"),
-            latest_transaction_id.c.Date.label("LatestDate"),
-            latest_transaction_id.c.Balance.label("LatestBalance"),
+            Accounts.AccountName,
+            Transactions.Balance,
+            subquery.c.LatestDate,
         )
-        .join(
-            latest_transaction_id,
-            Accounts.AccountID == latest_transaction_id.c.AccountID,
-        )
-        .order_by(Accounts.AccountName.asc())
+        .join(Transactions, Transactions.AccountID == Accounts.AccountID)
+        .join(subquery, subquery.c.AccountID == Transactions.AccountID)
+        .filter(Transactions.Date == subquery.c.LatestDate)
     )
 
     return query.all()

@@ -1,8 +1,9 @@
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, List, Optional, Any
-import hashlib
+from typing import Any, Callable, List, Optional, Union
+
 from loguru import logger
 
 
@@ -94,7 +95,10 @@ class Transaction:
 
     @classmethod
     def to_db_rows(
-        cls, statement_id: int, account_id: int, transactions: List["Transaction"]
+        cls,
+        statement_id: Union[int, None],
+        account_id: int,
+        transactions: List["Transaction"],
     ) -> list[dict[str, Any]]:
         """
         Converts the Transaction instance to a tuple compatible with database insertion.

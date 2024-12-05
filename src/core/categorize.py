@@ -4,9 +4,9 @@ import pandas as pd
 from loguru import logger
 from sqlalchemy.orm import Session
 
-from .orm import Transactions
 from .db import update_db_where
 from .learn import predict
+from .orm import Transactions
 from .query import training_set
 
 
@@ -32,7 +32,7 @@ def update_db_categories(session: Session, df: pd.DataFrame) -> None:
     )
 
 
-def categorize_transactions(
+def transactions(
     session: Session,
     model_path: Path,
     unverified: bool = True,

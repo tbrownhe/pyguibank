@@ -6,12 +6,11 @@ from pathlib import Path
 from loguru import logger
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QDialog, QMessageBox, QProgressDialog
+from sqlalchemy.orm import Session, sessionmaker
 
-from sqlalchemy.orm import sessionmaker, Session
-from .orm import Statements
 from . import query
-from .db import insert_into_db
 from .dialog import AssignAccountNumber
+from .orm import Statements
 from .parse import parse_any
 from .utils import hash_file, hash_transactions
 from .validation import Statement

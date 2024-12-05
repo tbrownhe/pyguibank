@@ -1,3 +1,4 @@
+import json
 import sys
 import traceback
 from datetime import datetime, timedelta
@@ -9,7 +10,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 from PyQt5.QtCore import QAbstractTableModel, Qt
-from PyQt5.QtGui import QColor, QIcon
+from PyQt5.QtGui import QColor, QFontMetrics, QIcon
 from PyQt5.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -25,20 +26,19 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QPushButton,
     QTableView,
+    QTextEdit,
+    QVBoxLayout,
     QWidget,
 )
 from sqlalchemy.orm import Session
 
-from core import learn, plot, query, reports
-from core.categorize import categorize_uncategorized, categorize_unverified
-from core.db import create_new_db
+from core import categorize, db, learn, orm, plot, query, reports
 from core.dialog import (
     AddAccount,
     CompletenessDialog,
     InsertTransaction,
     PreferencesDialog,
 )
-from core.orm import create_database
 from core.statements import StatementProcessor
 from core.utils import open_file_in_os, read_config
 
@@ -129,6 +129,7 @@ class PyGuiBank(QMainWindow):
         file_menu = menubar.addMenu("File")
         file_menu.addAction("Open Database", self.open_db)
         file_menu.addAction("Preferences", self.preferences)
+        file_menu.addAction("Export Database Configuration", self.export_db_config)
 
         # Accounts Menu
         accounts_menu = menubar.addMenu("Accounts")
@@ -171,9 +172,6 @@ class PyGuiBank(QMainWindow):
 
         # INITIALIZE CONFIGURATION ################
         self.update_from_config()
-
-        # Make sure a database exists and initialize an empty one if it doesn't
-        self.ensure_db()
 
         ##################
         # CENTRAL WIDGET #
@@ -335,28 +333,77 @@ class PyGuiBank(QMainWindow):
         self.setCentralWidget(central_widget)
 
         # Initialize all tables, checklists, and graphs
-        self.update_main_gui()
+        with self.Session() as session:
+            self.update_main_gui(session)
 
     def exception_hook(self, exc_type, exc_value, exc_traceback):
         """
         Handle uncaught exceptions by displaying an error dialog with traceback.
         """
-        # Show the error in a message box
+        # Get screen dimensions
+        app = QApplication.instance() or QApplication([])
+        screen_geometry = app.primaryScreen().geometry()
+        max_width = screen_geometry.width() // 2
+        max_height = screen_geometry.height() // 2
+
+        # Create dialog
+        dialog = QDialog()
+        dialog.setWindowTitle("Unhandled Exception")
+        dialog.setWindowModality(Qt.ApplicationModal)
+        dialog.setWindowFlags(dialog.windowFlags() | Qt.WindowStaysOnTopHint)
+
+        # Create layout
+        layout = QVBoxLayout(dialog)
+        label = QLabel(
+            "An unexpected error occurred. You can review the details below:"
+        )
+        layout.addWidget(label)
+
+        # Create text edit for exception traceback
         tb = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Critical)
-        msg_box.setWindowTitle("Unhandled Exception")
-        msg_box.setText("An unexpected error occurred:\n" + tb)
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowStaysOnTopHint)
-        msg_box.exec_()
+        # print(tb)
+        text_edit = QTextEdit()
+        text_edit.setPlainText(tb)
+        text_edit.setReadOnly(True)
+
+        # Compute window size
+        font_metrics = QFontMetrics(text_edit.font())
+        tb_lines = tb.splitlines()
+        max_line_width = max(font_metrics.horizontalAdvance(line) for line in tb_lines)
+        max_line_height = len(tb_lines) * font_metrics.lineSpacing()
+        max_width = min(max_width, max_line_width) + 50
+        max_height = min(max_height, max_line_height) + 100
+
+        text_edit.document().setTextWidth(max_width)
+
+        # Add "Close" button
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(dialog.accept)
+
+        # Add widgets to layout
+        layout.addWidget(text_edit)
+        layout.addWidget(close_button)
+
+        # Set layout and display
+        dialog.setLayout(layout)
+        dialog.resize(max_width, max_height)
+        dialog.exec_()
+
+    def update_from_config(self):
+        self.config_path = Path("") / "config.ini"
+        self.config = read_config(self.config_path)
+        self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
+        self.ensure_db()
 
     def ensure_db(self):
         # Ensure db file exists
         if self.db_path.exists():
-            query.optimize_db(self.db_path)
+            self.Session = orm.create_database(self.db_path)
+            with self.Session() as session:
+                query.optimize_db(session)
         else:
-            create_new_db(self.db_path)
+            self.Session = orm.create_database(self.db_path)
+            self.import_db_config()
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Information)
             msg_box.setWindowTitle("New Database Created")
@@ -370,17 +417,33 @@ class PyGuiBank(QMainWindow):
     def open_db(self):
         open_file_in_os(self.db_path)
 
-    def update_from_config(self):
-        self.config_path = Path("") / "config.ini"
-        self.config = read_config(self.config_path)
-        db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
-        self.Session = create_database(db_path)
-
     def preferences(self):
         dialog = PreferencesDialog(self.config_path)
         if dialog.exec_() == QDialog.Accepted:
             self.update_from_config()
-            self.update_main_gui()
+            with self.Session() as session:
+                self.update_main_gui(session)
+
+    def export_db_config(self):
+        with self.Session() as session:
+            account_types = query.account_types_table(session)
+            statement_types = query.statement_types_table(session)
+
+        data = {"AccountTypes": account_types, "StatementTypes": statement_types}
+        dpath = Path("") / "init_db.json"
+        with dpath.open("w") as f:
+            json.dump(data, f, indent=2)
+
+    def import_db_config(self):
+        dpath = Path("") / "init_db.json"
+        with dpath.open("r") as f:
+            data = json.load(f)
+
+        account_types = data["AccountTypes"]
+        statement_types = data["StatementTypes"]
+        with self.Session() as session:
+            db.insert_rows_batched(session, orm.AccountTypes, account_types)
+            db.insert_rows_batched(session, orm.StatementTypes, statement_types)
 
     def about(self):
         msg_box = QMessageBox()
@@ -394,13 +457,15 @@ class PyGuiBank(QMainWindow):
         dialog = AddAccount(self.Session)
         if dialog.exec_() == QDialog.Accepted:
             # Update all GUI elements
-            self.update_main_gui()
+            with self.Session() as session:
+                self.update_main_gui(session)
 
     def insert_transaction(self):
-        dialog = InsertTransaction(self.db_path)
+        dialog = InsertTransaction(self.Session)
         if dialog.exec_() == QDialog.Accepted:
             # Update all GUI elements
-            self.update_main_gui()
+            with self.Session() as session:
+                self.update_main_gui(session)
 
     def import_all_statements(self):
         # Import everything
@@ -408,7 +473,8 @@ class PyGuiBank(QMainWindow):
         processor.import_all(parent=self)
 
         # Update all GUI elements
-        self.update_main_gui()
+        with self.Session() as session:
+            self.update_main_gui(session)
 
     def import_one_statement(self):
         # Show file selection dialog
@@ -439,7 +505,8 @@ class PyGuiBank(QMainWindow):
         processor.import_one(fpath)
 
         # Update all GUI elements
-        self.update_main_gui()
+        with self.Session() as session:
+            self.update_main_gui(session)
 
     def statement_matrix(self):
         dialog = CompletenessDialog(self.Session)
@@ -476,7 +543,8 @@ class PyGuiBank(QMainWindow):
             reports.report(session, dpath, months=3)
 
     def train_pipeline_test(self):
-        data, columns = query.training_set(self.db_path, where="WHERE Verified=1")
+        with self.Session() as session:
+            data, columns = query.training_set(session, verified=True)
         if len(data) == 0:
             QMessageBox.information(
                 self,
@@ -511,7 +579,8 @@ class PyGuiBank(QMainWindow):
         model_path = Path(save_path).resolve()
 
         # Retrieve verified transactions
-        data, columns = query.training_set(self.db_path, where="WHERE Verified=1")
+        with self.Session() as session:
+            data, columns = query.training_set(session, verified=True)
         if len(data) == 0:
             QMessageBox.information(
                 self,
@@ -539,26 +608,27 @@ class PyGuiBank(QMainWindow):
 
     def categorize_uncategorized(self):
         model_path = Path(self.config.get("CLASSIFIER", "model_path")).resolve()
-        categorize_uncategorized(self.db_path, model_path)
-        self.update_main_gui()
+        with self.Session() as session:
+            categorize.transactions(session, model_path, uncategorized=True)
+            self.update_main_gui(session)
 
     def categorize_unverified(self):
         model_path = Path(self.config.get("CLASSIFIER", "model_path")).resolve()
-        categorize_unverified(self.db_path, model_path)
-        self.update_main_gui()
+        with self.Session() as session:
+            categorize.transactions(session, model_path, unverified=True)
+            self.update_main_gui(session)
 
     ################################
     ### CENTRAL WIDGET FUNCTIONS ###
     ################################
-    def update_main_gui(self):
+    def update_main_gui(self, session: Session):
         """Update all tables, checklists, and charts in the main GUI window"""
         self.setWindowTitle(f"PyGuiBank - {self.db_path.name}")
-        with self.Session() as session:
-            self.update_balances_table(session)
-            self.update_accounts_checklist(session)
-            self.update_category_checklist(session)
-            self.update_balance_history_chart(session)
-            self.update_category_spending_chart(session)
+        self.update_balances_table(session)
+        self.update_accounts_checklist(session)
+        self.update_category_checklist(session)
+        self.update_balance_history_chart(session)
+        self.update_category_spending_chart(session)
 
     def update_balances_table(self, session: Session):
         # Fetch data for the table
