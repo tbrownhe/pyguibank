@@ -1,6 +1,8 @@
+import sqlite3
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
+from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -10,6 +12,7 @@ from .orm import (
     AccountNumbers,
     Accounts,
     AccountTypes,
+    BaseModel,
     Shopping,
     Statements,
     StatementTypes,
@@ -29,89 +32,128 @@ def optimize_db(session: Session) -> None:
     session.commit()
 
 
-def statements_containing_hash(session: Session, md5hash: str) -> list[tuple]:
+def account_id_of_account_number(session: Session, account_num: str) -> int:
     """
-    Retrieves StatementID and Filename based on the md5hash using SQLAlchemy ORM.
+    Retrieves an AccountID based on an account_num string found in a statement.
 
     Args:
-        session (Session): SQLAlchemy session for database interaction.
-        md5hash (str): The MD5 hash to filter by.
+        session (Session): SQLAlchemy session object.
+        account_num (str): Account number to look up.
 
     Returns:
-        list[tuple]: A list of tuples containing StatementID and Filename.
-    """
-    try:
-        results = (
-            session.query(Statements.StatementID, Statements.Filename)
-            .filter(Statements.MD5 == md5hash)
-            .all()
-        )
-        return results
-    except SQLAlchemyError as e:
-        session.rollback()
-        raise RuntimeError(f"Database query failed: {e}")
-
-
-def statements_containing_filename(session: Session, filename: str) -> list[tuple]:
-    """
-    Retrieves StatementID and Filename based on the filename.
-
-    Args:
-        session (Session): The SQLAlchemy session to use for the query.
-        filename (str): The filename to search for.
-
-    Returns:
-        list[tuple]: A list of (StatementID, Filename) tuples.
-    """
-    results = session.execute(
-        select(Statements.StatementID, Statements.Filename).where(
-            Statements.Filename == filename
-        )
-    ).all()
-    return results
-
-
-def statement_id(session: Session, account_id: int, md5hash: str) -> int:
-    """
-    Retrieves unique StatementID based on account_id and md5hash.
-
-    Args:
-        session (Session): The SQLAlchemy session to use for the query.
-        account_id (int): The ID of the account.
-        md5hash (str): The MD5 hash of the statement.
+        int: AccountID corresponding to the provided account number.
 
     Raises:
-        KeyError: If no matching StatementID is found or if multiple matches are found.
-
-    Returns:
-        int: The unique StatementID.
+        KeyError: If the account number is not found.
     """
-    results = (
-        session.execute(
-            select(Statements.StatementID).where(
-                Statements.AccountID == account_id, Statements.MD5 == md5hash
-            )
-        )
-        .scalars()
-        .all()
+    account_number = (
+        session.query(AccountNumbers.AccountID)
+        .filter(AccountNumbers.AccountNumber == account_num)
+        .one_or_none()
     )
 
-    if len(results) == 0:
-        raise KeyError(
-            "StatementID could not be found for AccountID"
-            f" = {account_id} and MD5 = '{md5hash}'"
-        )
-    if len(results) > 1:
-        raise KeyError(
-            "StatementID is not unique for"
-            f" AccountID = {account_id} and MD5 = '{md5hash}'"
-        )
-    return results[0]
+    if account_number is None:
+        raise KeyError(f"{account_num} not found in AccountNumbers.AccountNumber")
+
+    return account_number[0]
+
+
+def account_type_id(session: Session, account_type: str) -> int:
+    """
+    Retrieves an AccountTypeID based on the AccountType name.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+        account_type (str): The name of the account type to look up.
+
+    Returns:
+        int: The AccountTypeID corresponding to the provided account type.
+
+    Raises:
+        KeyError: If no account type is found with the given name.
+    """
+    account_type_entry = (
+        session.query(AccountTypes.AccountTypeID)
+        .filter(AccountTypes.AccountType == account_type)
+        .one_or_none()
+    )
+
+    if account_type_entry is None:
+        raise KeyError(f"{account_type} not found in AccountTypes.AccountType")
+
+    return account_type_entry[0]
+
+
+def accounts_details(
+    session: Session,
+) -> tuple[list[tuple[int, str, str, str, str]], list[str]]:
+    """
+    Retrieves all account details, including the account type name.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        tuple[list[tuple[int, str, str, str, str]], list[str]]:
+            Data and column names.
+    """
+    query = session.query(
+        Accounts.AccountID,
+        Accounts.AccountName,
+        Accounts.Company,
+        Accounts.Description,
+        AccountTypes.AccountType,
+    ).join(AccountTypes, Accounts.AccountTypeID == AccountTypes.AccountTypeID)
+
+    data = query.all()
+    columns = [column.get("name", "Unknown") for column in query.column_descriptions]
+
+    return data, columns
+
+
+def account_name_of_account_id(session: Session, account_id: int) -> str:
+    """
+    Retrieves an AccountName based on an AccountID.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+        account_id (int): The AccountID to look up.
+
+    Returns:
+        str: The AccountName corresponding to the provided AccountID.
+
+    Raises:
+        ValueError: If no account is found with the given AccountID.
+    """
+    account = (
+        session.query(Accounts.AccountName)
+        .filter(Accounts.AccountID == account_id)
+        .one_or_none()
+    )
+
+    if account is None:
+        raise ValueError(f"No Account with AccountID = {account_id}")
+
+    return account[0]
+
+
+def account_names(session: Session) -> list[str]:
+    """
+    Retrieves a list of all Account Names.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        list[str]: List of account names.
+    """
+    account_names = session.query(Accounts.AccountName).all()
+    return [name for (name,) in account_names]
 
 
 def account_types(session: Session) -> list[str]:
     """
-    Retrieves a list of all AccountType names.
+    Retrieves a list of all AccountTypes names.
 
     Args:
         session (Session): SQLAlchemy session object.
@@ -152,7 +194,140 @@ def account_types_table(session: Session) -> list[dict]:
     return data
 
 
-def statement_types(
+def asset_types(session: Session) -> dict[str, str]:
+    """
+    Returns a dictionary mapping account names to their asset types.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        dict[str, str]: A dictionary where keys are account names and values are asset types.
+    """
+    # Query account names and asset types
+    query = session.query(Accounts.AccountName, AccountTypes.AssetType).join(
+        AccountTypes, Accounts.AccountTypeID == AccountTypes.AccountTypeID
+    )
+
+    # Build the dictionary from query results
+    asset_dict = {account_name: asset_type for account_name, asset_type in query.all()}
+    return asset_dict
+
+
+def statement_id_unique(session: Session, account_id: int, md5hash: str) -> int:
+    """
+    Retrieves unique StatementID based on account_id and md5hash.
+    Some statements contain data for multiple accounts, and each account
+    within statement gets a line in the Statements table, so the statement
+    md5hash alone is not unique.
+
+    Args:
+        session (Session): The SQLAlchemy session to use for the query.
+        account_id (int): The ID of the account.
+        md5hash (str): The MD5 hash of the statement.
+
+    Raises:
+        KeyError: If no matching StatementID is found or if multiple matches are found.
+
+    Returns:
+        int: The unique StatementID.
+    """
+    results = (
+        session.execute(
+            select(Statements.StatementID).where(
+                Statements.AccountID == account_id, Statements.MD5 == md5hash
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if len(results) == 0:
+        raise KeyError(
+            "StatementID could not be found for AccountID"
+            f" = {account_id} and MD5 = '{md5hash}'"
+        )
+    if len(results) > 1:
+        raise KeyError(
+            "StatementID is not unique for"
+            f" AccountID = {account_id} and MD5 = '{md5hash}'"
+        )
+    return results[0]
+
+
+def statement_date_ranges(
+    session: Session, months: int = 15
+) -> tuple[list[tuple[str, datetime, datetime]], list[str]]:
+    """
+    Get the list of statement dates joined with account names.
+
+    Args:
+        session (Session): The SQLAlchemy session object.
+        months (int): Number of months to filter from the current date.
+
+    Returns:
+        tuple[list[tuple[str, datetime, datetime]], list[str]]: Data and column names
+    """
+    query = (
+        session.query(Accounts.AccountName, Statements.StartDate, Statements.EndDate)
+        .join(Accounts, Statements.AccountID == Accounts.AccountID)
+        .filter(Statements.StartDate >= func.date("now", f"-{months} months"))
+        .order_by(Accounts.AccountName.asc(), Statements.StartDate.asc())
+    )
+
+    data = query.all()
+    columns = [column.get("name", "Unknown") for column in query.column_descriptions]
+
+    return data, columns
+
+
+def statements_with_hash(session: Session, md5hash: str) -> list[tuple]:
+    """
+    Retrieves StatementID and Filename based on the md5hash.
+
+    Args:
+        session (Session): SQLAlchemy session for database interaction.
+        md5hash (str): The MD5 hash to filter by.
+
+    Returns:
+        list[tuple]: A list of tuples containing StatementID and Filename.
+    """
+    try:
+        results = (
+            session.query(Statements.StatementID, Statements.Filename)
+            .filter(Statements.MD5 == md5hash)
+            .all()
+        )
+        return results
+    except SQLAlchemyError as e:
+        session.rollback()
+        raise RuntimeError(f"Database query failed: {e}")
+
+
+def statements_with_filename(session: Session, filename: str) -> list[tuple]:
+    """
+    Retrieves StatementID and Filename based on the filename.
+
+    Args:
+        session (Session): The SQLAlchemy session to use for the query.
+        filename (str): The filename to search for.
+
+    Returns:
+        list[tuple]: A list of (StatementID, Filename) tuples.
+    """
+    try:
+        results = session.execute(
+            select(Statements.StatementID, Statements.Filename).where(
+                Statements.Filename == filename
+            )
+        ).all()
+        return results
+    except SQLAlchemyError as e:
+        session.rollback()
+        raise RuntimeError(f"Database query failed: {e}")
+
+
+def statement_type_routing(
     session: Session, extension: str = ""
 ) -> list[tuple[int, str, str]]:
     """
@@ -210,169 +385,7 @@ def statement_types_table(session: Session) -> list[dict]:
     return data
 
 
-def statements(
-    session: Session, months: int = 15
-) -> tuple[list[tuple[str, datetime, datetime]], list[str]]:
-    """
-    Get the list of statement dates joined with account names.
-
-    Args:
-        session (Session): The SQLAlchemy session object.
-        months (int): Number of months to filter from the current date.
-
-    Returns:
-        tuple[list[tuple[str, datetime, datetime]], list[str]]: Data and column names
-    """
-    query = (
-        session.query(Accounts.AccountName, Statements.StartDate, Statements.EndDate)
-        .join(Accounts, Statements.AccountID == Accounts.AccountID)
-        .filter(Statements.StartDate >= func.date("now", f"-{months} months"))
-        .order_by(Accounts.AccountName.asc(), Statements.StartDate.asc())
-    )
-
-    data = query.all()
-    columns = [column.get("name", "Unknown") for column in query.column_descriptions]
-
-    return data, columns
-
-
-def account_id(session: Session, account_num: str) -> int:
-    """
-    Retrieves an AccountID based on an account_num string found in a statement.
-
-    Args:
-        session (Session): SQLAlchemy session object.
-        account_num (str): Account number to look up.
-
-    Returns:
-        int: AccountID corresponding to the provided account number.
-
-    Raises:
-        KeyError: If the account number is not found.
-    """
-    account_number = (
-        session.query(AccountNumbers.AccountID)
-        .filter(AccountNumbers.AccountNumber == account_num)
-        .one_or_none()
-    )
-
-    if account_number is None:
-        raise KeyError(f"{account_num} not found in AccountNumbers.AccountNumber")
-
-    return account_number[0]
-
-
-def account_name(session: Session, account_id: int) -> str:
-    """
-    Retrieves an AccountName based on an AccountID.
-
-    Args:
-        session (Session): SQLAlchemy session object.
-        account_id (int): The AccountID to look up.
-
-    Returns:
-        str: The AccountName corresponding to the provided AccountID.
-
-    Raises:
-        ValueError: If no account is found with the given AccountID.
-    """
-    account = (
-        session.query(Accounts.AccountName)
-        .filter(Accounts.AccountID == account_id)
-        .one_or_none()
-    )
-
-    if account is None:
-        raise ValueError(f"No Account with AccountID = {account_id}")
-
-    return account[0]
-
-
-def account_type_id(session: Session, account_type: str) -> int:
-    """
-    Retrieves an AccountTypeID based on the AccountType name.
-
-    Args:
-        session (Session): SQLAlchemy session object.
-        account_type (str): The name of the account type to look up.
-
-    Returns:
-        int: The AccountTypeID corresponding to the provided account type.
-
-    Raises:
-        KeyError: If no account type is found with the given name.
-    """
-    account_type_entry = (
-        session.query(AccountTypes.AccountTypeID)
-        .filter(AccountTypes.AccountType == account_type)
-        .one_or_none()
-    )
-
-    if account_type_entry is None:
-        raise KeyError(f"{account_type} not found in AccountTypes.AccountType")
-
-    return account_type_entry[0]
-
-
-def account_names(session: Session) -> list[str]:
-    """
-    Retrieves a list of all Account Names.
-
-    Args:
-        session (Session): SQLAlchemy session object.
-
-    Returns:
-        list[str]: List of account names.
-    """
-    account_names = session.query(Accounts.AccountName).all()
-    return [name for (name,) in account_names]
-
-
-def accounts(
-    session: Session,
-) -> tuple[list[tuple[int, str, str, str, str]], list[str]]:
-    """
-    Retrieves all account details, including the account type name.
-
-    Args:
-        session (Session): SQLAlchemy session object.
-
-    Returns:
-        tuple[list[tuple[int, str, str, str, str]], list[str]]:
-            Data and column names.
-    """
-    query = session.query(
-        Accounts.AccountID,
-        Accounts.AccountName,
-        Accounts.Company,
-        Accounts.Description,
-        AccountTypes.AccountType,
-    ).join(AccountTypes, Accounts.AccountTypeID == AccountTypes.AccountTypeID)
-
-    data = query.all()
-    columns = [column.get("name", "Unknown") for column in query.column_descriptions]
-
-    return data, columns
-
-
-def distinct_categories(session: Session) -> list[str]:
-    """
-    Retrieves a list of distinct transaction categories.
-
-    Args:
-        session (Session): SQLAlchemy session object.
-
-    Returns:
-        list[str]: A sorted list of distinct transaction categories.
-    """
-    query = session.query(distinct(Transactions.Category)).order_by(
-        asc(Transactions.Category)
-    )
-    data = query.all()
-    return [category[0] for category in data]
-
-
-def transactions(session: Session, months: int = None) -> list[tuple]:
+def transactions(session: Session, months: int = None) -> tuple[list[tuple], list[str]]:
     """
     Retrieves all transactions with associated account and account type details.
 
@@ -410,6 +423,64 @@ def transactions(session: Session, months: int = None) -> list[tuple]:
     columns = [column.get("name", "Unknown") for column in query.column_descriptions]
 
     return data, columns
+
+
+def latest_balance(session: Session, account_id: int) -> Optional[tuple[str, float]]:
+    """
+    Retrieves the most recent balance and transaction date for a given account.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+        account_id (int): The AccountID to query.
+
+    Returns:
+        Optional[tuple[str, float]]: A tuple containing the most recent transaction date
+        and balance, or None if no transactions exist for the account.
+    """
+    result = (
+        session.query(Transactions.Date, Transactions.Balance)
+        .filter(Transactions.AccountID == account_id)
+        .order_by(Transactions.Date.desc(), Transactions.TransactionID.desc())
+        .first()
+    )
+
+    return result
+
+
+def latest_balances(session: Session) -> list[tuple[str, str, float]]:
+    """
+    Retrieves the latest balance and transaction date for each account.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        list[tuple[str, str, float]]: A list of tuples containing:
+            (AccountName, LatestDate, LatestBalance)
+    """
+    # Subquery: LatestTransaction
+    subquery = (
+        session.query(
+            Transactions.AccountID,
+            func.max(Transactions.Date).label("LatestDate"),
+        )
+        .group_by(Transactions.AccountID)
+        .subquery()
+    )
+
+    # Subquery: LatestTransactionID
+    query = (
+        session.query(
+            Accounts.AccountName,
+            Transactions.Balance,
+            subquery.c.LatestDate,
+        )
+        .join(Transactions, Transactions.AccountID == Accounts.AccountID)
+        .join(subquery, subquery.c.AccountID == Transactions.AccountID)
+        .filter(Transactions.Date == subquery.c.LatestDate)
+    )
+
+    return query.all()
 
 
 def training_set(
@@ -490,6 +561,23 @@ def training_set(
     return data, columns
 
 
+def distinct_categories(session: Session) -> list[str]:
+    """
+    Retrieves a list of distinct transaction categories.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        list[str]: A sorted list of distinct transaction categories.
+    """
+    query = session.query(distinct(Transactions.Category)).order_by(
+        asc(Transactions.Category)
+    )
+    data = query.all()
+    return [category[0] for category in data]
+
+
 def shopping(session: Session, months: int = 12) -> tuple[list[tuple], list[str]]:
     """
     Retrieves a list of Shopping data for the last number of months.
@@ -523,79 +611,102 @@ def shopping(session: Session, months: int = 12) -> tuple[list[tuple], list[str]
     return data, columns
 
 
-def asset_types(session: Session) -> dict[str, str]:
+def insert_rows_batched(session: Session, model: BaseModel, rows: list[dict]) -> None:
     """
-    Returns a dictionary mapping account names to their asset types.
+    Performs batched insertion of rows, rolling back the transaction if any error occurs.
 
     Args:
         session (Session): SQLAlchemy session object.
+        model (BaseModel): SQLAlchemy model representing the table.
+        rows (list[dict]): List of dictionaries representing rows to insert.
 
-    Returns:
-        dict[str, str]: A dictionary where keys are account names and values are asset types.
+    Raises:
+        IntegrityError: If the insertion fails, the entire batch is rolled back.
     """
-    # Query account names and asset types
-    query = session.query(Accounts.AccountName, AccountTypes.AssetType).join(
-        AccountTypes, Accounts.AccountTypeID == AccountTypes.AccountTypeID
-    )
+    try:
+        objects = [model(**row) for row in rows]
+        session.bulk_save_objects(objects)
+        session.commit()
+    except sqlite3.IntegrityError as e:
+        session.rollback()
+        raise RuntimeError(f"Batch insertion failed: {e}")
 
-    # Build the dictionary from query results
-    asset_dict = {account_name: asset_type for account_name, asset_type in query.all()}
-    return asset_dict
 
-
-def latest_balance(session: Session, account_id: int) -> Optional[tuple[str, float]]:
+def insert_rows_carefully(
+    session: Session,
+    model: BaseModel,
+    data: list[dict[str, Any]],
+    skip_duplicates: bool = False,
+) -> None:
     """
-    Retrieves the most recent balance and transaction date for a given account.
+    Insert rows into the database one by one, with optional duplicate handling.
 
     Args:
-        session (Session): SQLAlchemy session object.
-        account_id (int): The AccountID to query.
+        session (Session): SQLAlchemy session.
+        model (Type[Base]): SQLAlchemy ORM model for the target table.
+        data (List[Dict[str, Any]]): List of data rows to insert as dictionaries.
+        skip_duplicates (bool): Whether to skip duplicate rows.
 
     Returns:
-        Optional[tuple[str, float]]: A tuple containing the most recent transaction date
-        and balance, or None if no transactions exist for the account.
+        None
     """
-    result = (
-        session.query(Transactions.Date, Transactions.Balance)
-        .filter(Transactions.AccountID == account_id)
-        .order_by(Transactions.Date.desc(), Transactions.TransactionID.desc())
-        .first()
-    )
+    # Initialize counters
+    skipped = 0
+    n_rows = len(data)
 
-    return result
+    for row in data:
+        try:
+            session.add(model(**row))
+            session.commit()
+        except sqlite3.IntegrityError:
+            # Rollback the failed transaction
+            session.rollback()
+            if skip_duplicates:
+                skipped += 1
+            else:
+                # Re-raise if not skipping duplicates
+                raise
 
-
-def latest_balances(session: Session) -> list[tuple[str, str, float]]:
-    """
-    Retrieves the latest balance and transaction date for each account.
-
-    Args:
-        session (Session): SQLAlchemy session object.
-
-    Returns:
-        list[tuple[str, str, float]]: A list of tuples containing:
-            (AccountName, LatestDate, LatestBalance)
-    """
-    # Subquery: LatestTransaction
-    subquery = (
-        session.query(
-            Transactions.AccountID,
-            func.max(Transactions.Date).label("LatestDate"),
+    # Summary message
+    if skipped > 0:
+        logger.info(
+            f"Skipped {skipped} duplicate rows while inserting {n_rows} rows"
+            f" into {model.__tablename__}. "
         )
-        .group_by(Transactions.AccountID)
-        .subquery()
-    )
 
-    # Subquery: LatestTransactionID
-    query = (
-        session.query(
-            Accounts.AccountName,
-            Transactions.Balance,
-            subquery.c.LatestDate,
+
+def update_db_where(
+    session: Session,
+    model: BaseModel,
+    update_cols: list[str],
+    update_list: list[tuple],
+    where_cols: list[str],
+    where_list: list[tuple],
+) -> None:
+    """
+    Updates rows of data in an SQLAlchemy-managed database table.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+        model (BaseModel): SQLAlchemy ORM model class representing the table.
+        update_cols (list[str]): Columns to update.
+        update_list (list[tuple]): Values to update in the corresponding columns.
+        where_cols (list[str]): Columns for the WHERE clause.
+        where_list (list[tuple]): Values for the WHERE clause.
+    """
+    if len(update_list) != len(where_list):
+        raise ValueError("Length of update_list and where_list must be equal.")
+
+    for update_vals, where_vals in zip(update_list, where_list):
+        # Build the WHERE clause dynamically
+        conditions = [
+            getattr(model, col) == val for col, val in zip(where_cols, where_vals)
+        ]
+
+        # Update the rows matching the conditions
+        session.query(model).filter(*conditions).update(
+            {getattr(model, col): val for col, val in zip(update_cols, update_vals)},
+            synchronize_session="fetch",  # Ensures in-memory consistency
         )
-        .join(Transactions, Transactions.AccountID == Accounts.AccountID)
-        .join(subquery, subquery.c.AccountID == Transactions.AccountID)
-        .filter(Transactions.Date == subquery.c.LatestDate)
-    )
 
-    return query.all()
+    session.commit()

@@ -212,7 +212,7 @@ def update_accounts_table(
     accounts_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     with Session() as session:
-        data, columns = query.accounts(session)
+        data, columns = query.accounts_details(session)
     accounts_table.setRowCount(len(data))
     accounts_table.setColumnCount(len(columns))
     accounts_table.setHorizontalHeaderLabels(columns)
@@ -571,7 +571,7 @@ class InsertTransaction(QDialog):
         """
         try:
             with self.Session() as session:
-                data, _ = query.accounts(session)
+                data, _ = query.accounts_details(session)
             for account_id, account_name, _, _, _ in data:
                 self.account_dropdown.addItem(
                     f"{account_name} (ID: {account_id})", account_id
@@ -689,7 +689,7 @@ def get_missing_coverage(Session: sessionmaker):
     Returns a DataFrame showing coverage for the first of the month for each account.
     """
     with Session() as session:
-        data, columns = query.statements(session)
+        data, columns = query.statement_date_ranges(session)
     df = pd.DataFrame(data, columns=columns)
     df["StartDate"] = pd.to_datetime(df["StartDate"])
     df["EndDate"] = pd.to_datetime(df["EndDate"])

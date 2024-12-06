@@ -12,7 +12,7 @@ from . import query
 from .dialog import AssignAccountNumber
 from .orm import Statements
 from .parse import parse_any
-from .utils import hash_file, hash_transactions
+from .utils import hash_file
 from .validation import Statement
 
 
@@ -125,7 +125,9 @@ class StatementProcessor:
             raise TypeError("Parsing module must return a Statement dataclass")
 
         # Attach metadata
-        self.attach_metadata(md5hash)
+        self.statement.add_md5hash(md5hash)
+        self.attach_account_info()
+        self.statement.set_standard_dpath(self.success_dir)
 
         # Abort if a statement with similar metadata has been imported
         if self.statement_already_imported(self.statement.dpath.name):
@@ -143,15 +145,44 @@ class StatementProcessor:
 
         return 1, 0
 
-    def attach_metadata(self, md5hash: str) -> None:
-        # Add the statement file hash
-        self.statement.add_md5hash(md5hash)
+    def file_already_imported(self, md5hash: str) -> bool:
+        """Check if the file has already been saved to the db
 
-        # Attach the account_id and account_name
-        self.attach_account_info()
+        Args:
+            md5hash (str): Byte hash of passed file
 
-        # Create a destination path based on the statement metadata
-        self.attach_standard_dpath()
+        Returns:
+            bool: Whether md5hash exists in the db already
+        """
+        with self.Session() as session:
+            data = query.statements_with_hash(session, md5hash)
+        if len(data) == 0:
+            return False
+
+        for statement_id, filename in data:
+            logger.info(
+                f"Previously imported {filename} (StatementID: {statement_id})"
+                f" has identical hash {md5hash}"
+            )
+        return True
+
+    def statement_already_imported(self, filename: Path) -> bool:
+        """Check if the file has already been saved to the db
+
+        Args:
+            filename (str): Name of statement file after standardization
+
+        Returns:
+            bool: Whether md56hash exists in the db already
+        """
+        with self.Session() as session:
+            data = query.statements_with_filename(session, filename)
+        if len(data) == 0:
+            return False
+
+        for statement_id, filename in data:
+            logger.info(f"Previously imported {filename} (StatementID: {statement_id})")
+        return True
 
     def handle_duplicate(self, fpath):
         dpath = self.duplicate_dir / fpath.name
@@ -182,45 +213,6 @@ class StatementProcessor:
                 msg_box.setStandardButtons(QMessageBox.Ok)
                 msg_box.exec_()
 
-    def file_already_imported(self, md5hash: str) -> bool:
-        """Check if the file has already been saved to the db
-
-        Args:
-            md5hash (str): Byte hash of passed file
-
-        Returns:
-            bool: Whether md5hash exists in the db already
-        """
-        with self.Session() as session:
-            data = query.statements_containing_hash(session, md5hash)
-        if len(data) == 0:
-            return False
-
-        for statement_id, filename in data:
-            logger.info(
-                f"Previously imported {filename} (StatementID: {statement_id})"
-                f" has identical hash {md5hash}"
-            )
-        return True
-
-    def statement_already_imported(self, filename: Path) -> bool:
-        """Check if the file has already been saved to the db
-
-        Args:
-            filename (str): Name of statement file after standardization
-
-        Returns:
-            bool: Whether md56hash exists in the db already
-        """
-        with self.Session() as session:
-            data = query.statements_containing_filename(session, filename)
-        if len(data) == 0:
-            return False
-
-        for statement_id, filename in data:
-            logger.info(f"Previously imported {filename} (StatementID: {statement_id})")
-        return True
-
     def attach_account_info(self) -> None:
         """
         Makes sure all accounts in the statement have an entry in the lookup table.
@@ -231,14 +223,16 @@ class StatementProcessor:
             try:
                 # Lookup existing account
                 with self.Session() as session:
-                    account_id = query.account_id(session, account.account_num)
+                    account_id = query.account_id_of_account_number(
+                        session, account.account_num
+                    )
             except KeyError:
                 # Prompt user to select account to associate with this account_num
                 account_id = self.prompt_account_num(account.account_num)
 
             # Get the account_name for this account_id
             with self.Session() as session:
-                account_name = query.account_name(session, account_id)
+                account_name = query.account_name_of_account_id(session, account_id)
 
             # Add the new data to the account
             account.add_account_info(account_id, account_name)
@@ -253,27 +247,6 @@ class StatementProcessor:
         if dialog.exec_() == QDialog.Accepted:
             return dialog.get_account_id()
         raise ValueError("No AccountID selected.")
-
-    def attach_standard_dpath(self) -> None:
-        """
-        Creates consistent destination path.
-        Uses first account as the main account.
-        """
-        # Validate optional fields that must be present by now
-        self.statement.accounts[0].validate_account_info()
-
-        dname = (
-            "_".join(
-                [
-                    self.statement.accounts[0].account_name,
-                    self.statement.start_date.strftime(r"%Y-%m-%d"),
-                    self.statement.end_date.strftime(r"%Y-%m-%d"),
-                ]
-            )
-            + self.statement.fpath.suffix.lower()
-        )
-        dpath = self.success_dir / dname
-        self.statement.add_dpath(dpath)
 
     def insert_statement_metadata(self, session: Session) -> None:
         """Updates db with information about this statement file."""
@@ -299,7 +272,7 @@ class StatementProcessor:
             insert_into_db(session, Statements, [metadata])
 
             # Get the new StatementID and attach it to account
-            statement_id = query.statement_id(
+            statement_id = query.statement_id_unique(
                 session, account.account_id, self.statement.md5hash
             )
             account.add_statement_id(statement_id)

@@ -8,7 +8,7 @@ import openpyxl
 from loguru import logger
 
 from .interfaces import IParser
-from .query import statement_types
+from .query import statement_type_routing
 from .utils import PDFReader
 from .validation import Statement, ValidationError, validate_statement
 from sqlalchemy.orm import sessionmaker
@@ -41,12 +41,12 @@ class BaseRouter(Generic[T]):
             ValueError: Statement is not recognized. A parser likely needs to be built.
 
         Returns:
-            tuple[int, str]: StatementTypeID and Parser from StatementTypes
+            tuple[int, str]: StatementTypeID and EntryPoint from StatementTypes
         """
         with self.Session() as session:
-            data, _ = statement_types(session, extension=extension)
+            routing_info = statement_type_routing(session, extension=extension)
         text_lower = text.lower()
-        for stid, pattern, entry_point in data:
+        for stid, pattern, entry_point in routing_info:
             assert isinstance(pattern, str)
             if all(
                 re.search(re.escape(search_str), text_lower)
