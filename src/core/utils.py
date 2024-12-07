@@ -41,13 +41,13 @@ def open_file_in_os(fpath: Path):
         print(f"{fpath} could not be opened. It may be open already.")
 
 
-def find_line_startswith(lines: list[str], search_str: str) -> tuple[int, str]:
+def find_line_startswith(lines: list[str], search_str: str, start=0) -> tuple[int, str]:
     """
     Uses str.startswith method to return the first line containing the search string.
     """
-    for i, line in enumerate(lines):
+    for i, line in enumerate(lines[start:]):
         if line.startswith(search_str):
-            return i, line
+            return i + start, line
     raise ValueError("Parameter %s not found in lines." % search_str)
 
 
@@ -65,20 +65,20 @@ def find_regex_in_line(lines: list[str], search_str: str) -> tuple[int, str, str
 
 
 def find_param_in_line(
-    lines: list[str], search_str: str, case_sensitive=True
+    lines: list[str], search_str: str, start=0, case_sensitive=True
 ) -> tuple[int, str]:
     """
     Uses 'in' method to return the first line containing the search string.
     """
     if case_sensitive:
-        for i, line in enumerate(lines):
+        for i, line in enumerate(lines[start:]):
             if search_str in line:
-                return i, line
+                return i + start, line
         raise ValueError("Parameter %s not found in lines." % search_str)
     else:
-        for i, line in enumerate(lines):
+        for i, line in enumerate(lines[start:]):
             if search_str.lower() in line.lower():
-                return i, line
+                return i + start, line
         raise ValueError("Parameter %s not found in lines." % search_str)
 
 
@@ -209,7 +209,7 @@ def hash_file(fpath: Path) -> str:
 class PDFReader:
     def __init__(self, fpath: Path):
         self.fpath = fpath
-        self.doc = None
+        self.PDF = None
         self.pages = None
         self.text = None
         self.lines_raw = None
@@ -219,23 +219,23 @@ class PDFReader:
         """
         Open the PDF document using context manager.
         """
-        self.doc = pdfplumber.open(self.fpath)
+        self.PDF = pdfplumber.open(self.fpath)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         """
         Close the PDF document upon exiting the context.
         """
-        if self.doc:
-            self.doc.close()
-            self.doc = None
+        if self.PDF:
+            self.PDF.close()
+            self.PDF = None
 
     def __del__(self):
         """
         Ensure the PDF document is closed when the object is deleted.
         """
-        if self.doc:
-            self.doc.close()
+        if self.PDF:
+            self.PDF.close()
 
     def extract_text_simple(self) -> str:
         """Extracts text using a fast algoritm for all pages of the pdf.
@@ -249,12 +249,31 @@ class PDFReader:
         Notes:
             Text is stored as self.text_simple
         """
-        if self.doc is None:
+        if self.PDF is None:
             raise ValueError("PDF not opened properly")
         self.text_simple = "\n".join(
-            [page.extract_text_simple() or "" for page in self.doc.pages]
+            [page.extract_text_simple() or "" for page in self.PDF.pages]
         )
         return self.text_simple
+
+    def extract_lines_simple(self) -> list[str]:
+        """Extracts lines of whitespace-normalized text extracted via simple algoritm.
+
+        Returns:
+            list[str]: Lines of text with normalized whitespace
+
+        Notes:
+            Text is stored as self.text_simple
+            Lines are stored as self.lines_simple
+        """
+        if self.pages is None:
+            self.extract_text_simple()
+        self.lines_simple = [
+            " ".join(word for word in line.split())
+            for line in self.text_simple.splitlines()
+            if line.strip()
+        ]
+        return self.lines_simple
 
     def extract_layout_pages(self) -> list[str]:
         """Extracts all pages of text of the PDF using a slower layout-based algorithm.
@@ -268,9 +287,9 @@ class PDFReader:
         Notes:
             Pages of layout format text are stored as self.pages
         """
-        if self.doc is None:
+        if self.PDF is None:
             raise ValueError("PDF not opened properly")
-        self.pages = [page.extract_text(layout=True) or "" for page in self.doc.pages]
+        self.pages = [page.extract_text(layout=True) or "" for page in self.PDF.pages]
         return self.pages
 
     def extract_text(self) -> str:
