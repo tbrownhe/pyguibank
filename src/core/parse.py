@@ -248,7 +248,7 @@ register_router(".csv", CSVRouter)
 register_router(".xlsx", XLSXRouter)
 
 
-def parse_any(db_path: Path, fpath: Path, **kwargs) -> Statement:
+def parse_any(Session: sessionmaker, fpath: Path, **kwargs) -> Statement:
     """Routes the file to the appropriate parser based on its extension.
 
     Args:
@@ -263,6 +263,6 @@ def parse_any(db_path: Path, fpath: Path, **kwargs) -> Statement:
     """
     suffix = fpath.suffix.lower()
     if suffix in ROUTERS:
-        router = ROUTERS[suffix](db_path, fpath, **kwargs)
+        router = ROUTERS[suffix](Session, fpath, **kwargs)
         return router.parse()
     raise ValueError(f"Unsupported file extension: {suffix}")

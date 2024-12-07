@@ -451,11 +451,11 @@ class AssignAccountNumber(QDialog):
             row, 0
         )  # Assuming AccountID is in the first column
         if account_id_item:
-            self.account_id = account_id_item.text()
+            self.account_id = int(account_id_item.text())
 
     def new_account(self):
         dialog = AddAccount(
-            self.db_path, self.company, self.description, self.account_type
+            self.Session, self.company, self.description, self.account_type
         )
         if dialog.exec_() == QDialog.Accepted:
             with self.Session() as session:
@@ -463,9 +463,9 @@ class AssignAccountNumber(QDialog):
 
             # Auto-select the newly created account (assuming it's added to the last row)
             self.accounts_table.selectRow(self.accounts_table.rowCount() - 1)
-            self.account_id = self.accounts_table.item(
-                self.accounts_table.rowCount() - 1, 0
-            ).text()
+            self.account_id = int(
+                self.accounts_table.item(self.accounts_table.rowCount() - 1, 0).text()
+            )
 
     def submit(self):
         """
