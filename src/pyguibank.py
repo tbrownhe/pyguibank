@@ -238,7 +238,7 @@ class PyGuiBank(QMainWindow):
 
         # Add Update Balance Plot button
         balance_filter_button = QPushButton("Update Balance Plot")
-        balance_filter_button.clicked.connect(self.update_balance_history_chart)
+        balance_filter_button.clicked.connect(self.update_balance_history_button)
         balance_controls_layout.addWidget(balance_filter_button, row, 0, 1, 2)
 
         # Place the QGridLayout in a GroupBox so its max size can be set
@@ -303,7 +303,7 @@ class PyGuiBank(QMainWindow):
 
         # Add Update Balance Plot button
         category_filter_button = QPushButton("Update Category Plot")
-        category_filter_button.clicked.connect(self.update_category_spending_chart)
+        category_filter_button.clicked.connect(self.update_category_spending_button)
         category_controls_layout.addWidget(category_filter_button, row, 0, 1, 2)
 
         # Place the QGridLayout in a GroupBox so its max size can be set
@@ -621,6 +621,14 @@ class PyGuiBank(QMainWindow):
     ################################
     ### CENTRAL WIDGET FUNCTIONS ###
     ################################
+    def update_balance_history_button(self):
+        with self.Session() as session:
+            self.update_balance_history_chart(session)
+
+    def update_category_spending_button(self):
+        with self.Session() as session:
+            self.update_category_spending_chart(session)
+
     def update_main_gui(self, session: Session):
         """Update all tables, checklists, and charts in the main GUI window"""
         self.setWindowTitle(f"PyGuiBank - {self.db_path.name}")
