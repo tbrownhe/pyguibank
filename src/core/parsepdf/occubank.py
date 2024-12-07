@@ -54,14 +54,31 @@ class OCCUParser(IParser):
         Raises:
             ValueError: If dates cannot be parsed or are invalid.
         """
-
         try:
-            self.dates_from_annotations()
-        except KeyError:
+            self.dates_from_text()
+        except Exception as e1:
             try:
-                self.dates_from_text()
-            except Exception as e:
-                raise ValueError(f"Failed to parse statement dates: {e}")
+                self.dates_from_annotations()
+            except Exception as e2:
+                errors = "\n".join([e1, e2])
+                raise ValueError(f"Failed to parse statement dates:\n{errors}")
+
+    def dates_from_text(self):
+        """
+        MEMBER STATEMENT
+        MEMBERNUMBER501462
+        PAGE 1 of 9
+        FROM 03/01/21
+        TO 03/31/21
+        """
+        _, from_line = find_line_re_search(self.lines, r"FROM \d{2}/\d{2}/\d{2}")
+        _, to_line = find_line_re_search(self.lines, r"TO \d{2}/\d{2}/\d{2}")
+
+        # Parse the lines into datetime and return variable sdates
+        start_date_str = from_line.split()[1]
+        end_date_str = to_line.split()[1]
+        self.start_date = datetime.strptime(start_date_str, self.HEADER_DATE)
+        self.end_date = datetime.strptime(end_date_str, self.HEADER_DATE)
 
     def dates_from_annotations(self):
         """Statements before 2021-03-01 store dates in annotations"""
@@ -90,23 +107,6 @@ class OCCUParser(IParser):
             if title and title.startswith(pattern):
                 return annot["data"]["V"].decode("utf-8")
         raise KeyError(f"Unable to find {pattern} in page annotations.")
-
-    def dates_from_text(self):
-        """
-        MEMBER STATEMENT
-        MEMBERNUMBER501462
-        PAGE 1 of 9
-        FROM 03/01/21
-        TO 03/31/21
-        """
-        _, from_line = find_line_re_search(self.lines, r"FROM \d{2}/\d{2}/\d{2}")
-        _, to_line = find_line_re_search(self.lines, r"TO \d{2}/\d{2}/\d{2}")
-
-        # Parse the lines into datetime and return variable sdates
-        start_date_str = from_line.split()[1]
-        end_date_str = to_line.split()[1]
-        self.start_date = datetime.strptime(start_date_str, self.HEADER_DATE)
-        self.end_date = datetime.strptime(end_date_str, self.HEADER_DATE)
 
     def extract_accounts(self) -> list[Account]:
         """Split the statement text into account sections
@@ -139,7 +139,7 @@ class OCCUParser(IParser):
         account_chk = chk_line.split()[0]
 
         # Create a dictionary of each account
-        account_dict = {account_sav: lines_sav, account_chk: lines_chk}
+        account_dict = {account_chk: lines_chk, account_sav: lines_sav}
 
         # For each account, create an Account class and return list[Account]
         accounts = []
