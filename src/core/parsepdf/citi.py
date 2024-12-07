@@ -30,7 +30,9 @@ class CitiParser(IParser):
             Statement: Statement dataclass
         """
         logger.trace("Parsing Citi statement")
-        reader.remove_white_space()
+
+        # Extract pages, lines_raw, lines_clean
+        reader.extract_lines_clean()
         self.reader = reader
         return self.extract_statement()
 
@@ -50,7 +52,7 @@ class CitiParser(IParser):
         """Extract the start and end dates from the statement.
         `Billing Period:12/04/20-01/05/21 TTY-hearing-impaired services..`
         """
-        _, dateline = find_line_startswith(self.reader.lines, "Billing Period:")
+        _, dateline = find_line_startswith(self.reader.lines_clean, "Billing Period:")
         parts = dateline.split(":")[1].split()[0]
         self.start_date, self.end_date = [
             datetime.strptime(date, self.HEADER_DATE) for date in parts.split("-")
@@ -88,7 +90,7 @@ class CitiParser(IParser):
             str: Account number
         """
         search_str = "Account number ending in:"
-        _, line = find_param_in_line(self.reader.lines, search_str)
+        _, line = find_param_in_line(self.reader.lines_clean, search_str)
         account_num = line.split(search_str)[-1].split()[0].strip()
         return account_num
 
@@ -106,7 +108,7 @@ class CitiParser(IParser):
 
         for pattern in patterns:
             try:
-                _, balance_line = find_param_in_line(self.reader.lines, pattern)
+                _, balance_line = find_param_in_line(self.reader.lines_clean, pattern)
                 balance_str = balance_line.split()[-1]
                 balance = -convert_amount_to_float(balance_str)
                 balances.append(balance)
