@@ -13,8 +13,9 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from core.parse import parse
+from core.parse import parse_any
 from core.utils import PDFReader, read_config
+from core.orm import create_database
 
 
 class TestImportApp(QMainWindow):
@@ -87,17 +88,35 @@ class TestImportApp(QMainWindow):
 
     def display_raw_output(self, fpath: Path, reader: PDFReader):
         # Display parsed data in the output display
-        reader.remove_white_space()
+        reader.extract_lines_simple()
+        reader.extract_lines_clean()
         self.output_display.clear()
+
         self.output_display.append(f"File: {fpath}")
-        self.output_display.append("Page Layout Text:\n" + 60 * "=")
+        self.output_display.append(f"Metadata:")
+        for key, value in reader.PDF.metadata.items():
+            self.output_display.append(f"  {key}: {value}")
+
+        self.output_display.append(f"Annotations:")
+        for page in reader.PDF.pages:
+            for annot in page.annots:
+                title = annot.get("title")
+                value = annot["data"]["V"].decode("utf-8") if annot["data"]["V"] else ""
+                self.output_display.append(f"  {title}: {value}")
+
+        self.output_display.append("\n\nSimple Extraction Lines:\n" + 60 * "=")
+        self.output_display.append("\n".join(reader.lines_simple))
+
+        self.output_display.append("\n\nPage Layout Text:\n" + 60 * "=")
         for page_no, page in enumerate(reader.pages):
             self.output_display.append(f"Page No:{page_no}")
             self.output_display.append(f"{page}")
-        self.output_display.append("\n\nRaw Lines:\n" + 60 * "=")
+
+        self.output_display.append("\n\nLayout Lines:\n" + 60 * "=")
         self.output_display.append("\n".join(reader.lines_raw))
-        self.output_display.append("\n\nCleaned Lines:\n" + 60 * "=")
-        self.output_display.append("\n".join(reader.lines))
+
+        self.output_display.append("\n\nWhitespace Normalized Lines:\n" + 60 * "=")
+        self.output_display.append("\n".join(reader.lines_clean))
 
     def extract_tables(self):
         try:
@@ -142,7 +161,8 @@ class TestImportApp(QMainWindow):
             fpath = Path(fpath).resolve()
 
             # Parse the selected file
-            statement = parse(self.db_path, fpath, hard_fail=False)
+            Session = create_database(self.db_path)
+            statement = parse_any(Session, fpath, hard_fail=False)
 
             # Display parsed data in the output display
             self.output_display.clear()
