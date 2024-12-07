@@ -240,9 +240,8 @@ class CitiParser(IParser):
                 mmdd = words.pop(0)
                 posting_date = get_absolute_date(mmdd, self.start_date, self.end_date)
             else:
-                # The leading date is the posting date
+                # The single date is the posting date
                 posting_date = transaction_date
-                transaction_date = None
 
             # Extract the first amount-like string
             i_amount, amount_str = [

@@ -10,10 +10,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from . import query
 from .dialog import AssignAccountNumber
-from .orm import Statements
+from .orm import Statements, Transactions
 from .parse import parse_any
 from .utils import hash_file
-from .validation import Statement
+from .validation import Statement, Transaction
 
 
 class StatementProcessor:
@@ -79,6 +79,7 @@ class StatementProcessor:
                 fail += 1
                 logger.exception("Import failed: ")
                 if self.hard_fail:
+                    progress.close()
                     raise
                 else:
                     dpath = self.fail_dir / fpath.name
@@ -86,6 +87,7 @@ class StatementProcessor:
 
             # Update progress dialog
             progress.setValue(idx + 1)
+        progress.close()
 
         # Show summary
         total = len(fpaths)
@@ -127,6 +129,8 @@ class StatementProcessor:
         # Attach metadata
         self.statement.add_md5hash(md5hash)
         self.attach_account_info()
+        for account in self.statement.accounts:
+            account.hash_transactions()
         self.statement.set_standard_dpath(self.success_dir)
 
         # Abort if a statement with similar metadata has been imported
@@ -134,11 +138,9 @@ class StatementProcessor:
             self.handle_duplicate(fpath)
             return 0, 1
 
-        # Insert statement metadata into db
-        self.insert_statement_metadata()
-
         # Insert transactions into db
-        self.insert_statement_data()
+        with self.Session() as session:
+            self.insert_statement_data(session)
 
         # Rename and move the statement file to the success directory
         self.move_file_safely(self.statement.fpath, self.statement.dpath)
@@ -248,110 +250,38 @@ class StatementProcessor:
             return dialog.get_account_id()
         raise ValueError("No AccountID selected.")
 
-    def insert_statement_metadata(self, session: Session) -> None:
-        """Updates db with information about this statement file."""
-        for account in self.statement.accounts:
-            # Account should have account_id and account_name by now
-            account.validate_account_info()
-
-            # Assemble the metadata
-            metadata = {
-                "StatementTypeID": self.statement.stid,
-                "AccountID": account.account_id,
-                "ImportDate": datetime.now().strftime(r"%Y-%m-%d"),
-                "StartDate": self.statement.start_date.strftime(r"%Y-%m-%d"),
-                "EndDate": self.statement.end_date.strftime(r"%Y-%m-%d"),
-                "StartBalance": account.start_balance,
-                "EndBalance": account.end_balance,
-                "TransactionCount": len(account.transactions),
-                "Filename": self.statement.dpath.name,
-                "MD5": self.statement.md5hash,
-            }
-
-            # Insert metadata into db
-            insert_into_db(session, Statements, [metadata])
-
-            # Get the new StatementID and attach it to account
-            statement_id = query.statement_id_unique(
-                session, account.account_id, self.statement.md5hash
-            )
-            account.add_statement_id(statement_id)
-
     def insert_statement_data(self, session: Session) -> None:
-        """Convert Statement dataclass to list of tuple for insertion into SQLite"""
-        # Save transaction data for each account to the db
-        for account in self.statement.accounts:
-            # All optional account fields should be populated by now
-            account.validate_complete()
+        """
+        Inserts statement metadata and associated transactions into the database.
+        Rolls back the entire operation if any error occurs.
 
-            if len(account.transactions) == 0:
-                # Skip. There will still be metadata in Statements table
-                continue
-
-            # Construct list of tuple containing transaction data
-            transactions = []
-            for transaction in account.transactions:
-                transactions.append(
-                    (
-                        account.account_id,
-                        transaction.posting_date.strftime(r"%Y-%m-%d"),
-                        transaction.amount,
-                        transaction.balance,
-                        transaction.desc,
+        Args:
+            session (Session): session instance
+        """
+        with session.begin():
+            for account in self.statement.accounts:
+                # Validate account information
+                if not account.account_id or not account.account_name:
+                    raise ValueError(
+                        f"Account {account.account_num} must have"
+                        " account_id and account_name set."
                     )
+
+                # Prepare and insert statement metadata
+                metadata = self.statement.to_db_row(account)
+                statement = Statements(**metadata)
+                session.add(statement)
+
+                # Flush to get autogenerated StatementID
+                session.flush()
+                statement_id = statement.StatementID
+
+                # Prepare transactions for insertion
+                transactions = Transaction.to_db_rows(
+                    statement_id, account.account_id, account.transactions
                 )
 
-            # Hash each transaction
-            transactions = hash_transactions(transactions)
-
-            # Prepend the StatementID to each transaction row
-            transactions = [(account.statement_id,) + row for row in transactions]
-
-            match account.account_name:
-                case "amazonper":
-                    self.insert_into_shopping(session, transactions)
-                case "amazonbus":
-                    self.insert_into_shopping(session, transactions)
-                case _:
-                    self.insert_into_transactions(session, transactions)
-
-    def insert_into_shopping(self, session: Session, transactions: list[tuple]) -> None:
-        """Insert the transactions into the shopping db table
-
-        Args:
-            transactions (list[tuple]): List of transactions ready for insertion
-        """
-        # Insert rows into database
-        columns = [
-            "StatementID",
-            "AccountID",
-            "CardID",
-            "OrderID",
-            "Date",
-            "Amount",
-            "Description",
-            "MD5",
-        ]
-        insert_into_db(session, "Shopping", columns, transactions, skip_duplicates=True)
-
-    def insert_into_transactions(
-        self, session: Session, transactions: list[tuple]
-    ) -> None:
-        """Insert the transactions into the transactions db table
-
-        Args:
-            transactions (list[tuple]): List of transactions ready for insertion
-        """
-        # Insert rows into database
-        columns = [
-            "StatementID",
-            "AccountID",
-            "Date",
-            "Amount",
-            "Balance",
-            "Description",
-            "MD5",
-        ]
-        insert_into_db(
-            session, "Transactions", columns, transactions, skip_duplicates=True
-        )
+                # Insert transactions using insert_rows_carefully
+                query.insert_rows_carefully(
+                    session, Transactions, transactions, skip_duplicates=True
+                )

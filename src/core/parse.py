@@ -6,12 +6,12 @@ from typing import Any, Callable, Generic, TypeVar
 
 import openpyxl
 from loguru import logger
+from sqlalchemy.orm import sessionmaker
 
 from .interfaces import IParser
 from .query import statement_type_routing
 from .utils import PDFReader
 from .validation import Statement, ValidationError, validate_statement
-from sqlalchemy.orm import sessionmaker
 
 T = TypeVar("T")
 
@@ -69,13 +69,20 @@ class BaseRouter(Generic[T]):
 
         # Make sure all balances are populated
         for account in statement.accounts:
-            account.process_transactions()
+            account.sort_and_compute_balances()
 
-        # Attach additional metadata
+        # Attach parser metadata
         statement.add_metadata(self.fpath, stid)
 
         # Validate and return statement data
-        self.validate_statement(statement, parser)
+        errors = validate_statement(statement)
+        if errors:
+            err = "\n".join(errors)
+            logger.error(
+                f"Validation failed for statement imported using"
+                f" parser '{parser}':\n{err}"
+            )
+            raise ValidationError(err)
         return statement
 
     def load_parser(self, entry_point: str) -> Callable[[T], Statement]:
@@ -129,16 +136,6 @@ class BaseRouter(Generic[T]):
             )
         return result
 
-    def validate_statement(self, statement: Statement, parser: str) -> None:
-        try:
-            validate_statement(statement, self.hard_fail)
-        except ValidationError as e:
-            logger.error(
-                f"Validation failed for statement imported using"
-                f" parser '{parser}': {e}"
-            )
-            raise
-
 
 class PDFRouter(BaseRouter[PDFReader]):
     """_summary_
@@ -158,7 +155,7 @@ class PDFRouter(BaseRouter[PDFReader]):
             Statement: Statement contents in the dataclass
         """
         with PDFReader(self.fpath) as reader:
-            text = reader.extract_text()
+            text = reader.extract_text_simple()
             stid, entry_point = self.select_parser(text, extension=".pdf")
             statement = self.extract_statement(stid, entry_point, reader)
         return statement

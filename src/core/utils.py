@@ -7,9 +7,6 @@ from datetime import datetime
 from pathlib import Path
 
 import pdfplumber
-from loguru import logger
-
-# import pdftotext
 
 
 def read_config(config_path: Path):
@@ -198,30 +195,6 @@ def convert_amount_to_float(amount_str: str) -> float:
     return amount
 
 
-def hash_transactions(transactions: list[tuple]) -> list[tuple]:
-    """
-    Appends the MD5 hash of the transaction contents to the last element of each row.
-    This statement is only called for transactions within one statement.
-    Assume statements do not contain duplicate transactions.
-    If a duplicate md5 is found, modify the description and rehash.
-    Description is always the last item in the row.
-
-    transactions = (account_id, date, amount, balance, description)
-    """
-    md5_list = []
-    hashed_transactions = []
-    for row in transactions:
-        md5 = hashlib.md5(str(row).encode()).hexdigest()
-        while md5 in md5_list:
-            logger.debug("Modifying description to ensure unique hash.")
-            description = row[-1] + " "
-            row = row[:-1] + (description,)
-            md5 = hashlib.md5(str(row).encode()).hexdigest()
-        md5_list.append(md5)
-        hashed_transactions.append(row + (md5,))
-    return hashed_transactions
-
-
 def hash_file(fpath: Path) -> str:
     """
     Hashes the byte contents of a file to compare to db values
@@ -264,44 +237,86 @@ class PDFReader:
         if self.doc:
             self.doc.close()
 
-    def extract_pages(self) -> list[str]:
+    def extract_text_simple(self) -> str:
+        """Extracts text using a fast algoritm for all pages of the pdf.
+
+        Raises:
+            ValueError: Error while reading PDF
+
+        Returns:
+            str: Entire pdf extracted with simple algorithm
+
+        Notes:
+            Text is stored as self.text_simple
+        """
+        if self.doc is None:
+            raise ValueError("PDF not opened properly")
+        self.text_simple = "\n".join(
+            [page.extract_text_simple() or "" for page in self.doc.pages]
+        )
+        return self.text_simple
+
+    def extract_layout_pages(self) -> list[str]:
+        """Extracts all pages of text of the PDF using a slower layout-based algorithm.
+
+        Raises:
+            ValueError: Error while reading PDF
+
+        Returns:
+            list[str]: Pages of layout formatted text
+
+        Notes:
+            Pages of layout format text are stored as self.pages
+        """
         if self.doc is None:
             raise ValueError("PDF not opened properly")
         self.pages = [page.extract_text(layout=True) or "" for page in self.doc.pages]
         return self.pages
 
     def extract_text(self) -> str:
+        """Extracts pages carefully then joins them into a single string.
+
+        Returns:
+            str: Joined text in layout format
+
+        Notes:
+            Pages of layout format text are stored as self.pages
+            Joined text is stored as self.text
+        """
         if self.pages is None:
-            self.extract_pages()
+            self.extract_layout_pages()
         self.text = "\n".join(self.pages)
         return self.text
 
-    def remove_empty_lines(self) -> list[str]:
+    def extract_lines_raw(self) -> list[str]:
+        """Extracts non-empty lines of text while maintaining layout format.
+
+        Returns:
+            list[str]: Non-empty lines of text in layout format
+
+        Notes:
+            Pages of layout format text are stored as self.pages
+            Joined text is stored as self.text
+            Raw lines are stored as self.lines_raw
+        """
         if self.text is None:
             self.extract_text()
         self.lines_raw = [line for line in self.text.splitlines() if line.strip()]
         return self.lines_raw
 
-    def remove_white_space(self) -> list[str]:
+    def extract_lines_clean(self) -> list[str]:
+        """Extracts lines of text with normalized whitespace.
+
+        Returns:
+            list[str]: Lines of text with normalized whitespace
+
+        Notes:
+            Pages of layout format text are stored as self.pages
+            Joined text is stored as self.text
+            Raw lines are stored as self.lines_raw
+            Cleaned lines are stored as self.lines_clean
+        """
         if self.lines_raw is None:
-            self.remove_empty_lines()
-        self.lines = [" ".join(line.split()) for line in self.lines_raw]
-        return self.lines
-
-
-"""
-class PDFReader:
-    def __init__(self, fpath: Path):
-        self.fpath = fpath
-        self.text = None
-        self.lines_raw = None
-        self.lines = None
-        self.read_pdf()
-
-    def read_pdf(self):
-        with self.fpath.open("rb") as f:
-            self.doc = pdftotext.PDF(f, physical=True)
-        self.text = "\n".join(self.doc)
-        self.lines_raw = [line for line in self.text.splitlines() if line.strip()]
-        self.lines = [" ".join(line.split()) for line in self.lines_raw]
-"""
+            self.extract_lines_raw()
+        self.lines_clean = [" ".join(line.split()) for line in self.lines_raw]
+        return self.lines_clean

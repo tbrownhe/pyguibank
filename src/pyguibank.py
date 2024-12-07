@@ -32,7 +32,7 @@ from PyQt5.QtWidgets import (
 )
 from sqlalchemy.orm import Session
 
-from core import categorize, db, learn, orm, plot, query, reports
+from core import categorize, learn, orm, plot, query, reports
 from core.dialog import (
     AddAccount,
     CompletenessDialog,
@@ -442,8 +442,8 @@ class PyGuiBank(QMainWindow):
         account_types = data["AccountTypes"]
         statement_types = data["StatementTypes"]
         with self.Session() as session:
-            db.insert_rows_batched(session, orm.AccountTypes, account_types)
-            db.insert_rows_batched(session, orm.StatementTypes, statement_types)
+            query.insert_rows_batched(session, orm.AccountTypes, account_types)
+            query.insert_rows_batched(session, orm.StatementTypes, statement_types)
 
     def about(self):
         msg_box = QMessageBox()
@@ -469,7 +469,7 @@ class PyGuiBank(QMainWindow):
 
     def import_all_statements(self):
         # Import everything
-        processor = StatementProcessor(self.config)
+        processor = StatementProcessor(self.Session, self.config)
         processor.import_all(parent=self)
 
         # Update all GUI elements

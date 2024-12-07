@@ -385,6 +385,32 @@ def statement_types_table(session: Session) -> list[dict]:
     return data
 
 
+def statement_type_details(session: Session, stid: int) -> tuple[str, str, str]:
+    """
+    Fetches company, description, and account type for a given StatementTypeID.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+        statement_type_id (int): The StatementTypeID to filter on.
+
+    Returns:
+        dict: A dictionary containing Company, Description, and AccountType.
+    """
+    result = (
+        session.query(
+            StatementTypes.Company,
+            StatementTypes.Description,
+            AccountTypes.AccountType,
+        )
+        .join(AccountTypes, StatementTypes.AccountTypeID == AccountTypes.AccountTypeID)
+        .filter(StatementTypes.StatementTypeID == stid)
+        .one_or_none()
+    )
+    if not result:
+        raise ValueError(f"StatementTypeID {stid} not found in StatementTypes.")
+    return result
+
+
 def transactions(session: Session, months: int = None) -> tuple[list[tuple], list[str]]:
     """
     Retrieves all transactions with associated account and account type details.
@@ -639,7 +665,7 @@ def insert_rows_carefully(
     skip_duplicates: bool = False,
 ) -> None:
     """
-    Insert rows into the database one by one, with optional duplicate handling.
+    Insert rows into the database with optional duplicate handling.
 
     Args:
         session (Session): SQLAlchemy session.
@@ -650,27 +676,20 @@ def insert_rows_carefully(
     Returns:
         None
     """
-    # Initialize counters
     skipped = 0
-    n_rows = len(data)
 
     for row in data:
         try:
             session.add(model(**row))
-            session.commit()
         except sqlite3.IntegrityError:
-            # Rollback the failed transaction
-            session.rollback()
             if skip_duplicates:
                 skipped += 1
             else:
-                # Re-raise if not skipping duplicates
                 raise
 
-    # Summary message
-    if skipped > 0:
+    if skip_duplicates and skipped > 0:
         logger.info(
-            f"Skipped {skipped} duplicate rows while inserting {n_rows} rows"
+            f"Skipped {skipped} duplicate rows while inserting {len(data)} rows"
             f" into {model.__tablename__}. "
         )
 

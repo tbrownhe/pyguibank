@@ -26,9 +26,9 @@ from PyQt5.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
 )
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
-from . import db, query
+from . import query
 from .orm import AccountNumbers, Accounts, Transactions
 from .utils import open_file_in_os, read_config
 from .validation import Transaction, ValidationError
@@ -204,15 +204,14 @@ class PreferencesDialog(QDialog):
 
 def update_accounts_table(
     dialog: QDialog,
-    Session: sessionmaker,
+    session: Session,
     accounts_table: QTableWidget,
 ):
     accounts_table.setSortingEnabled(True)
     accounts_table.setSelectionBehavior(QAbstractItemView.SelectRows)
     accounts_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-    with Session() as session:
-        data, columns = query.accounts_details(session)
+    data, columns = query.accounts_details(session)
     accounts_table.setRowCount(len(data))
     accounts_table.setColumnCount(len(columns))
     accounts_table.setHorizontalHeaderLabels(columns)
@@ -264,7 +263,8 @@ class AddAccount(QDialog):
         # Display Accounts table
         self.accounts_table = QTableWidget(self)
         layout.addWidget(self.accounts_table)
-        update_accounts_table(self, self.Session, self.accounts_table)
+        with self.Session() as session:
+            update_accounts_table(self, session, self.accounts_table)
 
         # Descriptive text
         desc2_text = "To add an account, please fill out the following information:"
@@ -356,7 +356,7 @@ class AddAccount(QDialog):
         }
         try:
             with self.Session() as session:
-                db.insert_rows_batched(session, Accounts, [row])
+                query.insert_rows_batched(session, Accounts, [row])
             QMessageBox.information(
                 self, "Success", "New account has been added successfully."
             )
@@ -371,7 +371,7 @@ class AssignAccountNumber(QDialog):
         self,
         Session: sessionmaker,
         fpath: Path,
-        STID: int,
+        stid: int,
         account_num: str,
         parent=None,
     ):
@@ -394,43 +394,37 @@ class AssignAccountNumber(QDialog):
         layout = QVBoxLayout()
 
         # Grab StatementType info for the new account number
-        query = (
-            "SELECT Company, Description, AccountType"
-            " FROM StatementTypes"
-            " JOIN AccountTypes"
-            " ON StatementTypes.AccountTypeID = AccountTypes.AccountTypeID"
-            f" WHERE StatementTypeID = {STID}"
-        )
-        data, _ = db.execute_sql_query(self.db_path, query)
-        self.company = data[0][0]
-        self.description = data[0][1]
-        self.account_type = data[0][2]
-        account_description = (" ".join(data[0][1:])).strip()
+        with self.Session() as session:
+            result = query.statement_type_details(session, stid)
+            self.company, self.description, self.account_type = result
+            account_description = " ".join(
+                [self.description, self.account_type]
+            ).strip()
 
-        # Display info to user
-        desc1 = (
-            f"A {self.company} {account_description} statement with an unknown "
-            "account number was found.\n"
-            f"New Account Number: {account_num}"
-        )
-        desc1_label = QLabel(desc1)
-        layout.addWidget(desc1_label)
+            # Display info to user
+            desc1 = (
+                f"A {self.company} {account_description} statement with an unknown "
+                "account number was found.\n"
+                f"New Account Number: {account_num}"
+            )
+            desc1_label = QLabel(desc1)
+            layout.addWidget(desc1_label)
 
-        # View statement button
-        view_statement_button = QPushButton("View Statement")
-        view_statement_button.clicked.connect(self.open_statement)
-        layout.addWidget(view_statement_button)
+            # View statement button
+            view_statement_button = QPushButton("View Statement")
+            view_statement_button.clicked.connect(self.open_statement)
+            layout.addWidget(view_statement_button)
 
-        # Display info to user
-        desc2 = "Which of the Accounts below does this account number belong to?"
-        desc2_label = QLabel(desc2)
-        layout.addWidget(desc2_label)
+            # Display info to user
+            desc2 = "Which of the Accounts below does this account number belong to?"
+            desc2_label = QLabel(desc2)
+            layout.addWidget(desc2_label)
 
-        # Display Accounts table
-        self.accounts_table = QTableWidget(self)
-        self.accounts_table.cellClicked.connect(self.handle_cell_click)
-        layout.addWidget(self.accounts_table)
-        update_accounts_table(self, self.Session, self.accounts_table)
+            # Display Accounts table
+            self.accounts_table = QTableWidget(self)
+            self.accounts_table.cellClicked.connect(self.handle_cell_click)
+            layout.addWidget(self.accounts_table)
+            update_accounts_table(self, session, self.accounts_table)
 
         # Add New Account button
         new_account_button = QPushButton("Create New Account")
@@ -464,7 +458,8 @@ class AssignAccountNumber(QDialog):
             self.db_path, self.company, self.description, self.account_type
         )
         if dialog.exec_() == QDialog.Accepted:
-            update_accounts_table(self, self.Session, self.accounts_table)
+            with self.Session() as session:
+                update_accounts_table(self, session, self.accounts_table)
 
             # Auto-select the newly created account (assuming it's added to the last row)
             self.accounts_table.selectRow(self.accounts_table.rowCount() - 1)
@@ -490,7 +485,7 @@ class AssignAccountNumber(QDialog):
                 "AccountNumber": self.account_num,
             }
             with self.Session() as session:
-                db.insert_into_db(session, AccountNumbers, [row])
+                query.insert_rows_batched(session, AccountNumbers, [row])
 
             self.accept()
 
@@ -660,7 +655,7 @@ class InsertTransaction(QDialog):
 
         # Insert transaction into the database
         with self.Session() as session:
-            db.insert_rows_carefully(
+            query.insert_rows_carefully(
                 session,
                 Transactions,
                 rows,
