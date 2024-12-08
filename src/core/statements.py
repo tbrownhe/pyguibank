@@ -1,6 +1,5 @@
 import shutil
 from configparser import ConfigParser
-from datetime import datetime
 from pathlib import Path
 
 from loguru import logger
@@ -162,7 +161,7 @@ class StatementProcessor:
             return False
 
         for statement_id, filename in data:
-            logger.info(
+            logger.debug(
                 f"Previously imported {filename} (StatementID: {statement_id})"
                 f" has identical hash {md5hash}"
             )
@@ -183,13 +182,15 @@ class StatementProcessor:
             return False
 
         for statement_id, filename in data:
-            logger.info(f"Previously imported {filename} (StatementID: {statement_id})")
+            logger.debug(
+                f"Previously imported {filename} (StatementID: {statement_id})"
+            )
         return True
 
     def handle_duplicate(self, fpath):
         dpath = self.duplicate_dir / fpath.name
         self.move_file_safely(fpath, dpath)
-        logger.info("Duplicate statement moved to {d}", d=dpath)
+        logger.debug("Duplicate statement moved to {d}", d=dpath)
 
     def move_file_safely(self, fpath: Path, dpath: Path):
         """Make sure destination parent dir exists

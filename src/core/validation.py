@@ -77,7 +77,7 @@ class Transaction:
 
         # Check if all transactions already have balances
         if all(isinstance(t.balance, float) for t in sorted_transactions):
-            logger.debug("Balances are already populated; skipping recalculation.")
+            logger.trace("Balances are already populated; skipping recalculation.")
             return sorted_transactions
 
         current_balance = start_balance
