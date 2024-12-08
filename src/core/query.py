@@ -494,7 +494,20 @@ def latest_balances(session: Session) -> list[tuple[str, str, float]]:
         .subquery()
     )
 
-    # Subquery: LatestTransactionID
+    # Subquery: LatestTransactionWithID
+    latest_transaction = (
+        session.query(
+            Transactions.AccountID,
+            Transactions.TransactionID,
+        )
+        .join(subquery, subquery.c.AccountID == Transactions.AccountID)
+        .filter(Transactions.Date == subquery.c.LatestDate)
+        .group_by(Transactions.AccountID)
+        .having(func.max(Transactions.TransactionID))
+        .subquery()
+    )
+
+    # Main query: Join with Accounts and get the latest balance
     query = (
         session.query(
             Accounts.AccountName,
@@ -503,7 +516,10 @@ def latest_balances(session: Session) -> list[tuple[str, str, float]]:
         )
         .join(Transactions, Transactions.AccountID == Accounts.AccountID)
         .join(subquery, subquery.c.AccountID == Transactions.AccountID)
-        .filter(Transactions.Date == subquery.c.LatestDate)
+        .join(
+            latest_transaction,
+            latest_transaction.c.TransactionID == Transactions.TransactionID,
+        )
     )
 
     return query.all()
