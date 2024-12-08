@@ -1,29 +1,19 @@
 from datetime import datetime
 
-from ..utils import convert_amount_to_float, find_line_startswith, find_param_in_line
-
-import re
-from datetime import datetime
-
 from loguru import logger
 
 from ..interfaces import IParser
 from ..utils import (
     PDFReader,
     convert_amount_to_float,
-    find_line_re_search,
     find_line_startswith,
     find_param_in_line,
-    get_absolute_date,
 )
 from ..validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
-    # FROM_DATE = re.compile(r"FROM \d{2}/\d{2}/\d{2}")
-    # TO_DATE = re.compile(r"TO \d{2}/\d{2}/\d{2}")
-    # HEADER_DATE = r"%m/%d/%y"
-    # LEADING_DATE = re.compile(r"^\d{2}/\d{2}\s")
+    HEADER_DATE = r"%m/%d/%Y"
 
     def parse(self, reader: PDFReader) -> Statement:
         """Entry point
@@ -78,14 +68,13 @@ class Parser(IParser):
             logger.trace("Attempting to parse dates from text.")
             # Declare the search pattern and dateformat
             search_str = "Statement Period: "
-            date_format = r"%m/%d/%Y"
 
             _, date_line = find_param_in_line(self.lines, search_str)
             date_line_r = date_line.split(search_str)[-1]
 
             date_strs = [word for word in date_line_r.split() if "/" in word]
-            self.start_date = datetime.strptime(date_strs[0], date_format)
-            self.end_date = datetime.strptime(date_strs[1], date_format)
+            self.start_date = datetime.strptime(date_strs[0], self.HEADER_DATE)
+            self.end_date = datetime.strptime(date_strs[1], self.HEADER_DATE)
         except Exception as e:
             logger.trace(f"Failed to parse dates from text: {e}")
             raise ValueError(f"Failed to parse statement dates: {e}")
