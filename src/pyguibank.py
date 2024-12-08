@@ -47,7 +47,7 @@ from core.utils import open_file_in_os, read_config
 
 class MatplotlibCanvas(FigureCanvas):
     def __init__(self, parent=None, width=5, height=4, dpi=100):
-        self.fig = Figure(figsize=(width, height), dpi=dpi)
+        self.fig = Figure(figsize=(width, height), dpi=dpi, constrained_layout=True)
         self.axes = self.fig.add_subplot(111)
         super().__init__(self.fig)
         self.setParent(parent)
@@ -186,7 +186,7 @@ class PyGuiBank(QMainWindow):
         ### Create the latest balances table view
         self.table_view = QTableView()
         self.table_view.setSortingEnabled(True)
-        self.grid_layout.addWidget(self.table_view, 0, 0, 4, 1)
+        self.grid_layout.addWidget(self.table_view, 0, 0, 6, 1)
 
         ### Create balance history control group
         balance_controls_layout = QGridLayout()
@@ -250,7 +250,7 @@ class PyGuiBank(QMainWindow):
         max_width = int(0.7 * balance_controls_group.sizeHint().width())
         balance_controls_group.setMaximumWidth(max_width)
         self.grid_layout.addWidget(
-            balance_controls_group, 0, 1, 2, 1, alignment=Qt.AlignTop
+            balance_controls_group, 0, 1, 3, 1, alignment=Qt.AlignTop
         )
 
         ### Create Category Spending control group
@@ -315,22 +315,36 @@ class PyGuiBank(QMainWindow):
         max_width = int(0.7 * category_controls_group.sizeHint().width())
         category_controls_group.setMaximumWidth(max_width)
         self.grid_layout.addWidget(
-            category_controls_group, 2, 1, 2, 1, alignment=Qt.AlignTop
+            category_controls_group, 3, 1, 3, 1, alignment=Qt.AlignTop
         )
 
         ### Add balance history chart
         balance_canvas = MatplotlibCanvas(self, width=7, height=5)
         self.balance_ax = balance_canvas.axes
-        self.grid_layout.addWidget(balance_canvas, 1, 2, 1, 1)
         balance_toolbar = NavigationToolbar(balance_canvas, self)
-        self.grid_layout.addWidget(balance_toolbar, 0, 2, 1, 1)
+
+        balance_chart_layout = QVBoxLayout()
+        balance_chart_layout.addWidget(balance_toolbar)
+        balance_chart_layout.addWidget(balance_canvas)
+
+        balance_chart_group = QGroupBox("Balance History Chart")
+        balance_chart_group.setLayout(balance_chart_layout)
+        balance_chart_group.adjustSize()
+        self.grid_layout.addWidget(balance_chart_group, 0, 2, 3, 1)
 
         ### Add category spending chart
         category_canvas = MatplotlibCanvas(self, width=7, height=5)
         self.category_ax = category_canvas.axes
-        self.grid_layout.addWidget(category_canvas, 3, 2, 1, 1)
         category_toolbar = NavigationToolbar(category_canvas, self)
-        self.grid_layout.addWidget(category_toolbar, 2, 2, 1, 1)
+
+        category_chart_layout = QVBoxLayout()
+        category_chart_layout.addWidget(category_toolbar)
+        category_chart_layout.addWidget(category_canvas)
+
+        category_chart_group = QGroupBox("Category Spending Chart")
+        category_chart_group.setLayout(category_chart_layout)
+        category_chart_group.adjustSize()
+        self.grid_layout.addWidget(category_chart_group, 3, 2, 3, 1)
 
         self.setCentralWidget(central_widget)
 
@@ -672,7 +686,7 @@ class PyGuiBank(QMainWindow):
         # Fetch data for the table
         data = query.latest_balances(session)
         df_balances = pd.DataFrame(
-            data, columns=["AccountName", "LatestDate", "LatestBalance"]
+            data, columns=["AccountName", "LatestBalance", "LatestDate"]
         )
 
         # Update the table contents
@@ -681,7 +695,7 @@ class PyGuiBank(QMainWindow):
         self.table_view.resizeColumnsToContents()
 
         # Set default sorting
-        self.table_view.sortByColumn(2, Qt.DescendingOrder)
+        self.table_view.sortByColumn(1, Qt.DescendingOrder)
 
         # Fix the table width
         total_width = sum(
