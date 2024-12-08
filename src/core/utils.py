@@ -307,9 +307,11 @@ class PDFReader:
         self.fpath = fpath
         self.PDF = None
         self.pages = None
+        self.text_simple = None
+        self.lines_simple = None
         self.text = None
         self.lines_raw = None
-        self.lines = None
+        self.lines_clean = None
 
     def __enter__(self):
         """
@@ -345,6 +347,8 @@ class PDFReader:
         Notes:
             Text is stored as self.text_simple
         """
+        if self.text_simple:
+            return self.text_simple
         if self.PDF is None:
             raise ValueError("PDF not opened properly")
         self.text_simple = "\n".join(
@@ -362,6 +366,8 @@ class PDFReader:
             Text is stored as self.text_simple
             Lines are stored as self.lines_simple
         """
+        if self.lines_simple:
+            return self.lines_simple
         if self.pages is None:
             self.extract_text_simple()
         self.lines_simple = [
@@ -383,6 +389,8 @@ class PDFReader:
         Notes:
             Pages of layout format text are stored as self.pages
         """
+        if self.pages:
+            return self.pages
         if self.PDF is None:
             raise ValueError("PDF not opened properly")
         self.pages = [page.extract_text(layout=True) or "" for page in self.PDF.pages]
@@ -398,6 +406,8 @@ class PDFReader:
             Pages of layout format text are stored as self.pages
             Joined text is stored as self.text
         """
+        if self.text:
+            return self.text
         if self.pages is None:
             self.extract_layout_pages()
         self.text = "\n".join(self.pages)
@@ -414,6 +424,8 @@ class PDFReader:
             Joined text is stored as self.text
             Raw lines are stored as self.lines_raw
         """
+        if self.lines_raw:
+            return self.lines_raw
         if self.text is None:
             self.extract_text()
         self.lines_raw = [line for line in self.text.splitlines() if line.strip()]
@@ -431,6 +443,8 @@ class PDFReader:
             Raw lines are stored as self.lines_raw
             Cleaned lines are stored as self.lines_clean
         """
+        if self.lines_clean:
+            return self.lines_clean
         if self.lines_raw is None:
             self.extract_lines_raw()
         self.lines_clean = [" ".join(line.split()) for line in self.lines_raw]
