@@ -1,104 +1,244 @@
 from datetime import datetime
 
+from loguru import logger
+
+from ..interfaces import IParser
 from ..utils import (
+    PDFReader,
     convert_amount_to_float,
     find_line_startswith,
     find_param_in_line,
     find_regex_in_line,
 )
+from ..validation import Account, Statement, Transaction
 
 
-def get_account_number(lines: list[str]) -> str:
-    """
-    Retrieve the account  number from the statement
-    Envelope #aksdjfhaklsdjfh Account Number: NNN-NNNNNN
-    """
-    search_str = "Account Number: "
-    _, line = find_param_in_line(lines, search_str)
-    rline = line.split(search_str)[-1]
-    account = rline.split()[0]
-    return account
+class Parser(IParser):
+    HEADER_DATE = r"%B %d, %Y"
+    DATE_REGEX = r"[ADFJMNOS]\w*\s\d{1,2}\,\s\d{4}\s-\s"
 
+    def parse(self, reader: PDFReader) -> Statement:
+        """Entry point
 
-def get_statement_dates(lines: list[str]) -> list[datetime]:
-    """
-    Parse the lines into datetime and return variable date_range
-    December 1, 2021 - December 31, 2021
-    """
-    # Declare the search pattern and dateformat
-    date_format = r"%B %d, %Y"
-    wordy_date_pattern = r"[ADFJMNOS]\w*\s\d{1,2}\,\s\d{4}\s-\s"
-    _, date_line, _ = find_regex_in_line(lines, wordy_date_pattern)
-    date_strs = [word.strip() for word in date_line.split("-")]
+        Args:
+            reader (PDFReader): pdfplumber child class
 
-    start_date = datetime.strptime(date_strs[0], date_format)
-    end_date = datetime.strptime(date_strs[1], date_format)
-
-    date_range = [start_date, end_date]
-
-    return date_range
-
-
-def get_starting_balance(lines: list[str]) -> float:
-    """
-    Get the starting balance, which looks like:
-    Beginning Account Value $7,531.16 $6,607.91
-    """
-    search_str = "Beginning Account Value "
-    _, balance_line = find_line_startswith(lines, search_str)
-    balance_line = balance_line.replace("-", "0")
-    balance_line_r = balance_line.split(search_str)[-1]
-    balance_str = balance_line_r.split()[0]
-    balance = convert_amount_to_float(balance_str)
-    return balance
-
-
-def parse_transactions(
-    date_range: list[datetime], balance: float, lines: list[str]
-) -> list[tuple]:
-    """
-    Converts the raw transaction text into an organized list of transactions.
-    Note that dashes indicate zero for this period. Second value is for YTD.
-    Additions - 900.00
-    Subtractions - -471.10
-    Change in Investment Value * 224.30 718.65
-    """
-    date = date_range[-1].strftime(r"%Y-%m-%d")
-
-    search_strs = ["Additions", "Subtractions", "Change in Investment Value"]
-    transactions = []
-    for search_str in search_strs:
-        # Get the line and convert the value for this month to an amount
+        Returns:
+            Statement: Statement dataclass
+        """
+        logger.trace("Parsing OCCU Bank statement")
         try:
-            _, line = find_line_startswith(lines, search_str)
-        except Exception:
-            continue
-        line = line.replace(" - ", " 0.00 ").replace("*", "")
-        line_r = line.split(search_str)[-1]
-        amount_str = line_r.split()[0]
-        amount = convert_amount_to_float(amount_str)
+            self.lines = reader.extract_lines_simple()
+            if not self.lines:
+                raise ValueError("No lines extracted from the PDF.")
 
-        # Skip this transaction if the amount is zero
-        if amount == 0:
-            continue
+            self.reader = reader
+            return self.extract_statement()
+        except Exception as e:
+            logger.error(f"Error parsing OCCU Bank statement: {e}")
+            raise
 
-        balance = round(balance + amount, 2)
-        description = search_str
+    def extract_statement(self) -> Statement:
+        """Extracts all statement data
 
-        transaction = (date, amount, balance, description)
-        transactions.append(transaction)
+        Returns:
+            Statement: Statement dataclass
+        """
+        self.get_statement_dates()
+        accounts = self.extract_accounts()
+        if not accounts:
+            raise ValueError("No accounts were extracted from the statement.")
 
-    return transactions
+        return Statement(
+            start_date=self.start_date,
+            end_date=self.end_date,
+            accounts=accounts,
+        )
 
+    def get_statement_dates(self) -> None:
+        """
+        Parse the statement date range into datetime.
 
-def parse(lines: list[str]) -> tuple[list[datetime], dict[str, list[tuple]]]:
-    """
-    Parse lines of Fidelity HSA PDF.
-    """
-    account = get_account_number(lines)
-    date_range = get_statement_dates(lines)
-    balance = get_starting_balance(lines)
-    # Skip get_transaction_lines() and go directly to parsing
-    transactions = parse_transactions(date_range, balance, lines)
-    data = {account: transactions}
-    return date_range, data
+        Example:
+        Your Account Summary Statement Period: 10/01/2018 to 10/31/2018
+
+        Raises:
+            ValueError: If dates cannot be parsed or are invalid.
+        """
+        try:
+            logger.trace("Attempting to parse dates from text.")
+
+            _, date_line, _ = find_regex_in_line(self.lines, self.DATE_REGEX)
+            date_strs = [word.strip() for word in date_line.split("-")]
+            self.start_date = datetime.strptime(date_strs[0], self.HEADER_DATE)
+            self.end_date = datetime.strptime(date_strs[1], self.HEADER_DATE)
+        except Exception as e:
+            logger.trace(f"Failed to parse dates from text: {e}")
+            raise ValueError(f"Failed to parse statement dates: {e}")
+
+    def extract_accounts(self) -> list[Account]:
+        """
+        One account per Fidelity HSA statement
+
+        Returns:
+            list[Account]: List of accounts for this statement.
+        """
+        return [self.extract_account()]
+
+    def extract_account(self) -> Account:
+        """
+        Extracts account-level data, including balances and transactions.
+
+        Args:
+            account_num (str): The account number.
+            lines (list[str]): The lines of text corresponding to the account section.
+
+        Returns:
+            Account: The extracted account as a dataclass instance.
+
+        Raises:
+            ValueError: If account number is invalid or data extraction fails.
+        """
+        # Extract account number
+        try:
+            account_num = self.extract_account_number()
+        except Exception as e:
+            raise ValueError(f"Failed to extract account number: {e}")
+
+        # Extract statement balances
+        try:
+            start_balance, end_balance, i_start, i_end = self.get_statement_balances()
+        except Exception as e:
+            raise ValueError(
+                f"Failed to extract balances for account {account_num}: {e}"
+            )
+
+        # Extract transaction lines
+        try:
+            transaction_lines = self.get_transaction_lines(i_start, i_end)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to extract transactions for account {account_num}: {e}"
+            )
+
+        # Parse transactions
+        try:
+            transactions = self.parse_transaction_lines(transaction_lines)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to parse transactions for account {account_num}: {e}"
+            )
+
+        # Return the Account dataclass
+        return Account(
+            account_num=account_num,
+            start_balance=start_balance,
+            end_balance=end_balance,
+            transactions=transactions,
+        )
+
+    def extract_account_number(self) -> str:
+        """
+        Fidelity 401k statements don't have an account number.
+        Instead retrieve the statement description (e.g. "Company 401k").
+        First line that contains the word '401(k)' is assumed as account number.
+        """
+        search_str = "Account Number:"
+        _, line = find_param_in_line(self.lines, search_str)
+        rline = line.split(search_str)[-1]
+        account_num = rline.split()[0]
+        return account_num
+
+    def get_statement_balances(self) -> tuple[float, float]:
+        """
+        Extract the starting and ending balance from the statement.
+
+        Raises:
+            ValueError: Unable to extract both balances.
+        """
+        patterns = ["Beginning Account Value", "Ending Account Value"]
+        balances = {}
+        indices = {}
+
+        for pattern in patterns:
+            try:
+                i_line, balance_line = find_line_startswith(self.lines, pattern)
+                balance_str = balance_line.split()[-2]
+                balance_str = "0" if balance_str == "-" else balance_str
+                indices[pattern] = i_line
+                balances[pattern] = convert_amount_to_float(balance_str)
+                logger.trace(f"Extracted {pattern}: {balances[pattern]}")
+            except ValueError as e:
+                logger.warning(
+                    f"Failed to extract balance for pattern '{pattern}': {e}"
+                )
+
+        # Ensure both balances are found
+        missing = [p for p in patterns if p not in balances]
+        if missing:
+            raise ValueError(
+                f"Could not extract balances for patterns: {', '.join(missing)}"
+            )
+
+        return (
+            balances[patterns[0]],
+            balances[patterns[1]],
+            indices[patterns[0]],
+            indices[patterns[1]],
+        )
+
+    def get_transaction_lines(self, i_start: int, i_end: int) -> list[str]:
+        """
+        Extract lines containing transaction information.
+
+        Returns:
+            list[str]: Processed lines containing dates and amounts for this statement.
+        """
+        return self.lines[i_start + 1 : i_end]
+
+    def parse_transaction_lines(
+        self, transaction_lines: list[str]
+    ) -> list[Transaction]:
+        """
+        Converts the raw transaction text into an organized list of Transaction objects.
+
+        Args:
+            transaction_list (list[str]): List of raw transaction strings.
+
+        Returns:
+            list[Transaction]: Parsed transaction objects.
+        """
+        transactions = []
+
+        for line in transaction_lines:
+            # Split the line into words
+            words = line.split()
+
+            if len(words) < 3:
+                raise ValueError(f"Invalid transaction line: {line}")
+
+            # Extract amount
+            amount_str = "0" if words[-2] == "-" else words[-2]
+            try:
+                amount = convert_amount_to_float(amount_str)
+            except ValueError as e:
+                raise ValueError(f"Error parsing amounts in line '{line}': {e}")
+
+            # Extract description
+            desc = " ".join(words[:-2]).replace("*", "")
+
+            # Validate description
+            if not desc:
+                raise ValueError(f"Missing description in transaction line: {line}")
+
+            # Create the Transaction object
+            transaction = Transaction(
+                transaction_date=self.end_date,
+                posting_date=self.end_date,
+                amount=amount,
+                desc=desc,
+            )
+
+            transactions.append(transaction)
+
+        return transactions
