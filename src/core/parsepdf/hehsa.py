@@ -15,6 +15,7 @@ from ..validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
+    STATEMENT_TYPE = "HealthEquity Health Savings Account"
     HEADER_DATE = r"%m/%d/%y"
     TRANSACTION_DATE = r"%m/%d/%Y"
     DATE_REGEX = re.compile(r"Period:\d{2}/\d{2}/\d{2}")
@@ -29,7 +30,8 @@ class Parser(IParser):
         Returns:
             Statement: Statement dataclass
         """
-        logger.trace("Parsing OCCU Bank statement")
+        logger.trace(f"Parsing {self.STATEMENT_TYPE} statement")
+
         try:
             self.lines = reader.extract_lines_simple()
             if not self.lines:
@@ -38,7 +40,7 @@ class Parser(IParser):
             self.reader = reader
             return self.extract_statement()
         except Exception as e:
-            logger.error(f"Error parsing OCCU Bank statement: {e}")
+            logger.error(f"Error parsing {self.STATEMENT_TYPE} statement: {e}")
             raise
 
     def extract_statement(self) -> Statement:

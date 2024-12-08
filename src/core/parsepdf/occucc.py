@@ -14,6 +14,7 @@ from ..validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
+    STATEMENT_TYPE = "OCCU NICE Credit Card"
     HEADER_DATE = r"%m/%d/%y"
     DATE_REGEX = re.compile(r"\d{2}/\d{2}")
     LEADING_DATE = re.compile(r"^\d{2}/\d{2}\s")
@@ -27,7 +28,8 @@ class Parser(IParser):
         Returns:
             Statement: Statement dataclass
         """
-        logger.trace("Parsing OCCU Bank statement")
+        logger.trace(f"Parsing {self.STATEMENT_TYPE} statement")
+
         try:
             # OCCU NICE statements require layout text extraction
             self.lines = reader.extract_lines_clean()
@@ -37,7 +39,7 @@ class Parser(IParser):
             self.reader = reader
             return self.extract_statement()
         except Exception as e:
-            logger.error(f"Error parsing OCCU Bank statement: {e}")
+            logger.error(f"Error parsing {self.STATEMENT_TYPE} statement: {e}")
             raise
 
     def extract_statement(self) -> Statement:

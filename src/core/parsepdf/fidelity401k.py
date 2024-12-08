@@ -13,6 +13,7 @@ from ..validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
+    STATEMENT_TYPE = "Fidelity 401(k)"
     HEADER_DATE = r"%m/%d/%Y"
 
     def parse(self, reader: PDFReader) -> Statement:
@@ -24,17 +25,16 @@ class Parser(IParser):
         Returns:
             Statement: Statement dataclass
         """
-        logger.trace("Parsing OCCU Bank statement")
+        logger.trace(f"Parsing {self.STATEMENT_TYPE} statement")
         try:
             self.lines = reader.extract_lines_simple()
-            # self.text = reader.text_simple
             if not self.lines:
                 raise ValueError("No lines extracted from the PDF.")
 
             self.reader = reader
             return self.extract_statement()
         except Exception as e:
-            logger.error(f"Error parsing OCCU Bank statement: {e}")
+            logger.error(f"Error parsing {self.STATEMENT_TYPE} statement: {e}")
             raise
 
     def extract_statement(self) -> Statement:

@@ -15,6 +15,7 @@ from ..validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
+    STATEMENT_TYPE = "CitiBank Credit Card"
     HEADER_DATE = r"%m/%d/%y"
     LEADING_DATE = re.compile(r"^\d{2}/\d{2}\s")
     TRANSACTION_DATE = re.compile(r"\d{2}/\d{2}")
@@ -29,12 +30,17 @@ class Parser(IParser):
         Returns:
             Statement: Statement dataclass
         """
-        logger.trace("Parsing Citi statement")
+        logger.trace(f"Parsing {self.STATEMENT_TYPE} statement")
 
-        # Extract pages, lines_raw, lines_clean
-        reader.extract_lines_clean()
-        self.reader = reader
-        return self.extract_statement()
+        try:
+            lines = reader.extract_lines_clean()
+            if not lines:
+                raise ValueError("No lines extracted from the PDF.")
+            self.reader = reader
+            return self.extract_statement()
+        except Exception as e:
+            logger.error(f"Error parsing {self.STATEMENT_TYPE} statement: {e}")
+            raise
 
     def extract_statement(self) -> Statement:
         """Extracts all statement data
