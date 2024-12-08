@@ -14,7 +14,7 @@ from ..utils import (
 from ..validation import Account, Statement, Transaction
 
 
-class CitiParser(IParser):
+class Parser(IParser):
     HEADER_DATE = r"%m/%d/%y"
     LEADING_DATE = re.compile(r"^\d{2}/\d{2}\s")
     TRANSACTION_DATE = re.compile(r"\d{2}/\d{2}")
