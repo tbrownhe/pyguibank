@@ -50,38 +50,84 @@ class Parser(IParser):
         """
         self.get_statement_dates()
         accounts = self.extract_accounts()
+        if not accounts:
+            raise ValueError("No accounts were extracted from the statement.")
+
         return Statement(
-            start_date=self.start_date, end_date=self.end_date, accounts=accounts
+            start_date=self.start_date,
+            end_date=self.end_date,
+            accounts=accounts,
         )
 
     def get_statement_dates(self) -> None:
-        """Extract the start and end dates from the statement.
-        `Billing Period:12/04/20-01/05/21 TTY-hearing-impaired services..`
         """
-        _, dateline = find_line_startswith(self.reader.lines_clean, "Billing Period:")
-        parts = dateline.split(":")[1].split()[0]
-        self.start_date, self.end_date = [
-            datetime.strptime(date, self.HEADER_DATE) for date in parts.split("-")
-        ]
+        Parse the statement date range into datetime.
+
+        Raises:
+            ValueError: If dates cannot be parsed or are invalid.
+        """
+        logger.trace("Attempting to parse dates from text.")
+        try:
+            _, dateline = find_line_startswith(
+                self.reader.lines_clean, "Billing Period:"
+            )
+            parts = dateline.split(":")[1].split()[0]
+            self.start_date, self.end_date = [
+                datetime.strptime(date, self.HEADER_DATE) for date in parts.split("-")
+            ]
+        except Exception as e:
+            logger.trace(f"Failed to parse dates from text: {e}")
+            raise ValueError(f"Failed to parse statement dates: {e}")
 
     def extract_accounts(self) -> list[Account]:
-        """One account per Citi statement
+        """
+        One account per statement
 
         Returns:
-            list[Account]: List of accounts for this statement
+            list[Account]: List of accounts for this statement.
         """
         return [self.extract_account()]
 
     def extract_account(self) -> Account:
-        """Extract account level data
+        """
+        Extracts account-level data, including balances and transactions.
 
         Returns:
-            Account: Account dataclass
+            Account: The extracted account as a dataclass instance.
+
+        Raises:
+            ValueError: If account number is invalid or data extraction fails.
         """
-        account_num = self.get_account_number()
-        self.get_statement_balances()
-        transaction_lines = self.get_transaction_lines()
-        transactions = self.parse_transaction_lines(transaction_lines)
+        # Extract account number
+        try:
+            account_num = self.get_account_number()
+        except Exception as e:
+            raise ValueError(f"Failed to extract account number: {e}")
+
+        # Extract statement balances
+        try:
+            self.get_statement_balances()
+        except Exception as e:
+            raise ValueError(
+                f"Failed to extract balances for account {account_num}: {e}"
+            )
+
+        # Extract transaction lines
+        try:
+            transaction_lines = self.get_transaction_lines()
+        except Exception as e:
+            raise ValueError(
+                f"Failed to extract transactions for account {account_num}: {e}"
+            )
+
+        # Parse transactions
+        try:
+            transactions = self.parse_transaction_lines(transaction_lines)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to parse transactions for account {account_num}: {e}"
+            )
+
         return Account(
             account_num=account_num,
             start_balance=self.start_balance,
@@ -102,12 +148,9 @@ class Parser(IParser):
 
     def get_statement_balances(self) -> None:
         """Extract the starting balance from the statement.
-        `Previous balance $0.00`
-        `New balance as of 01/05/21: $123.45
 
         Raises:
-            ValueError: Unable to extract a balance
-            ValueError: Unable to extract both balances
+            ValueError: Unable to extract balances
         """
         patterns = ["Previous balance ", "New balance "]
         balances = []
@@ -135,8 +178,11 @@ class Parser(IParser):
             list[str]: Processed lines containing dates and amounts for this statement
         """
         transaction_lines = []
-        for page in self.reader.pages:
-            transaction_lines.extend(self.get_transactions_from_page(page))
+        for i, page in enumerate(self.reader.pages):
+            try:
+                transaction_lines.extend(self.get_transactions_from_page(page))
+            except Exception as e:
+                raise ValueError(f"Failed to extract transactions from page {i}: {e}")
         return transaction_lines
 
     def get_transactions_from_page(self, page: str) -> list[str]:
