@@ -112,29 +112,41 @@ class TestImportApp(QMainWindow):
         self.output_display.clear()
 
         self.output_display.append(f"File: {fpath}")
-        self.output_display.append(f"Metadata:")
+
+        # Metadata
+        self.output_display.append("\n\nMetadata:\n" + 60 * "=")
         for key, value in reader.PDF.metadata.items():
-            self.output_display.append(f"  {key}: {value}")
+            self.output_display.append(f"{key}: {value}")
 
         # Annotations
         self.output_display.append("\n\nAnnotations:\n" + 60 * "=")
+        i = 0
         for page in reader.PDF.pages:
             for annot in page.annots:
+                self.output_display.append(f"annot: {i}")
                 display_nested_dict(self.output_display, annot)
+                i += 1
 
+        # Simple text extraction
         self.output_display.append("\n\nSimple Extraction Lines:\n" + 60 * "=")
         self.output_display.append("\n".join(reader.lines_simple))
 
+        # Layout page extraction
         self.output_display.append("\n\nPage Layout Text:\n" + 60 * "=")
         for page_no, page in enumerate(reader.pages):
             self.output_display.append(f"Page No:{page_no}")
             self.output_display.append(f"{page}")
 
+        # Split lines after layout extraction
         self.output_display.append("\n\nLayout Lines:\n" + 60 * "=")
         self.output_display.append("\n".join(reader.lines_raw))
 
+        # Whitespace normalized after layout extraction
         self.output_display.append("\n\nWhitespace Normalized Lines:\n" + 60 * "=")
         self.output_display.append("\n".join(reader.lines_clean))
+
+        # Show top of text
+        self.output_display.verticalScrollBar().setValue(0)
 
     def extract_tables(self):
         try:
