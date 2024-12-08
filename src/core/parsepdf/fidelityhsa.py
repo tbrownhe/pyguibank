@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 
 from loguru import logger
@@ -15,7 +16,7 @@ from ..validation import Account, Statement, Transaction
 
 class Parser(IParser):
     HEADER_DATE = r"%B %d, %Y"
-    DATE_REGEX = r"[ADFJMNOS]\w*\s\d{1,2}\,\s\d{4}\s-\s"
+    DATE_REGEX = re.compile(r"[ADFJMNOS]\w*\s\d{1,2}\,\s\d{4}\s-\s")
 
     def parse(self, reader: PDFReader) -> Statement:
         """Entry point
