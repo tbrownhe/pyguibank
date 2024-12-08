@@ -653,13 +653,17 @@ class PyGuiBank(QMainWindow):
     def categorize_uncategorized(self):
         model_path = Path(self.config.get("CLASSIFIER", "model_path")).resolve()
         with self.Session() as session:
-            categorize.transactions(session, model_path, uncategorized=True)
+            categorize.transactions(
+                session, model_path, unverified=True, uncategorized=True
+            )
             self.update_main_gui(session)
 
     def categorize_unverified(self):
         model_path = Path(self.config.get("CLASSIFIER", "model_path")).resolve()
         with self.Session() as session:
-            categorize.transactions(session, model_path, unverified=True)
+            categorize.transactions(
+                session, model_path, unverified=True, uncategorized=False
+            )
             self.update_main_gui(session)
 
     ################################

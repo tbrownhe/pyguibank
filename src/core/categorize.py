@@ -35,7 +35,7 @@ def transactions(
     session: Session,
     model_path: Path,
     unverified: bool = True,
-    uncategorized: bool = True,
+    uncategorized: bool = False,
 ) -> None:
     """
     Categorize transactions based on specified flags and update the database.
@@ -63,3 +63,5 @@ def transactions(
 
     # Update the categorized transactions in the database
     update_db_categories(session, df)
+
+    logger.success("Transactions categorized")
