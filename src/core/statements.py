@@ -204,16 +204,28 @@ class StatementProcessor:
             try:
                 shutil.move(fpath, dpath)
                 return
-            except PermissionError:
-                msg_box = QMessageBox(self)
+            except PermissionError as e:
+                # File is likely open in another program
+                msg_box = QMessageBox()
                 msg_box.setIcon(QMessageBox.Warning)
                 msg_box.setText(
-                    f"The statement {fpath.name} could not be moved."
-                    " If it's open in another program, please close it and click OK"
+                    f"The file {fpath.name} could not be moved. "
+                    "It might be open in another program. Please close it and try again."
                 )
                 msg_box.setWindowTitle("Unable to Move File")
-                msg_box.setStandardButtons(QMessageBox.Ok)
-                msg_box.exec_()
+                msg_box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+
+                response = msg_box.exec_()
+
+                if response == QMessageBox.Cancel:
+                    raise RuntimeError(
+                        f"File move operation for {fpath} was cancelled by the user."
+                    ) from e
+            except Exception as e:
+                # Handle other exceptions gracefully
+                raise RuntimeError(
+                    f"An unexpected error occurred while moving {fpath}: {e}"
+                ) from e
 
     def attach_account_info(self) -> None:
         """
