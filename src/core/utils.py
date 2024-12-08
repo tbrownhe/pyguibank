@@ -5,6 +5,7 @@ import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from typing import Union
 
 import pdfplumber
 
@@ -41,56 +42,146 @@ def open_file_in_os(fpath: Path):
         print(f"{fpath} could not be opened. It may be open already.")
 
 
-def find_line_startswith(lines: list[str], search_str: str, start=0) -> tuple[int, str]:
+def find_line_startswith(
+    lines: list[str], search_str: str, start: int = 0
+) -> tuple[int, str]:
     """
-    Uses str.startswith method to return the first line containing the search string.
+    Finds the first line in the list that starts with the given search string.
+
+    Args:
+        lines (list[str]): List of lines to search through.
+        search_str (str): String to match at the start of the line.
+        start (int, optional): Index to start the search from. Defaults to 0.
+
+    Returns:
+        tuple[int, str]: A tuple containing the line index and the line content.
+
+    Raises:
+        ValueError: If no line starting with the search string is found.
     """
-    for i, line in enumerate(lines[start:]):
+    if not isinstance(lines, list) or not all(isinstance(line, str) for line in lines):
+        raise TypeError("Input 'lines' must be a list of strings.")
+    if not isinstance(search_str, str):
+        raise TypeError("Input 'search_str' must be a string.")
+    if not isinstance(start, int) or start < 0:
+        raise ValueError("Input 'start' must be a non-negative integer.")
+
+    for i, line in enumerate(lines[start:], start=start):
         if line.startswith(search_str):
-            return i + start, line
-    raise ValueError("Parameter %s not found in lines." % search_str)
+            return i, line
+
+    raise ValueError(f"Search string '{search_str}' not found in lines.")
 
 
-def find_regex_in_line(lines: list[str], search_str: str) -> tuple[int, str, str]:
+def find_regex_in_line(
+    lines: list[str], search_str: Union[str, re.Pattern]
+) -> tuple[int, str, str]:
     """
-    Uses re.search method to return the first line containing the search string.
-    Also returns the pattern match.
+    Finds the first line in the list that matches the given regular expression.
+
+    Args:
+        lines (list[str]): List of lines to search through.
+        search_str (Union[str, re.Pattern]): Regex pattern (string or compiled) to search for.
+
+    Returns:
+        Tuple[int, str, str]: A tuple containing the line index, the line content,
+                              and the matched pattern.
+
+    Raises:
+        ValueError: If no line matches the search string.
+        TypeError: If inputs are of incorrect types.
     """
-    search_re = re.compile(search_str)
+    # Input validation
+    if not isinstance(lines, list) or not all(isinstance(line, str) for line in lines):
+        raise TypeError("Input 'lines' must be a list of strings.")
+    if not isinstance(search_str, (str, re.Pattern)):
+        raise TypeError(
+            "Input 'search_str' must be a string or a compiled regex pattern."
+        )
+
+    # Compile search_str if it's a string
+    regex = search_str if isinstance(search_str, re.Pattern) else re.compile(search_str)
+
     for i, line in enumerate(lines):
-        result = re.search(search_re, line)
-        if result:
-            return i, line, result[0]
-    raise ValueError("Parameter %s not found in lines." % search_str)
+        match = regex.search(line)
+        if match:
+            return i, line, match.group(0)
+
+    raise ValueError(f"Regex pattern '{search_str}' not found in lines.")
+
+
+from typing import Tuple
 
 
 def find_param_in_line(
-    lines: list[str], search_str: str, start=0, case_sensitive=True
+    lines: list[str], search_str: str, start: int = 0, case_sensitive: bool = True
+) -> Tuple[int, str]:
+    """
+    Finds the first line in the list that contains the search string.
+
+    Args:
+        lines (list[str]): List of lines to search through.
+        search_str (str): The string to search for.
+        start (int, optional): The starting index for the search. Defaults to 0.
+        case_sensitive (bool, optional): Whether the search is case-sensitive. Defaults to True.
+
+    Returns:
+        Tuple[int, str]: A tuple containing the line index and the matching line.
+
+    Raises:
+        ValueError: If the search string is not found in any line.
+        TypeError: If inputs are of incorrect types.
+    """
+    # Input validation
+    if not isinstance(lines, list) or not all(isinstance(line, str) for line in lines):
+        raise TypeError("Input 'lines' must be a list of strings.")
+    if not isinstance(search_str, str):
+        raise TypeError("Input 'search_str' must be a string.")
+    if not isinstance(start, int) or start < 0:
+        raise TypeError("Input 'start' must be a non-negative integer.")
+    if not isinstance(case_sensitive, bool):
+        raise TypeError("Input 'case_sensitive' must be a boolean.")
+
+    for i, line in enumerate(lines[start:], start=start):
+        if search_str in line if case_sensitive else search_str.lower() in line.lower():
+            return i, line
+
+    raise ValueError(f"Parameter '{search_str}' not found in lines.")
+
+
+def find_line_re_search(
+    lines: list[str], search_str: Union[str, re.Pattern]
 ) -> tuple[int, str]:
     """
-    Uses 'in' method to return the first line containing the search string.
-    """
-    if case_sensitive:
-        for i, line in enumerate(lines[start:]):
-            if search_str in line:
-                return i + start, line
-        raise ValueError("Parameter %s not found in lines." % search_str)
-    else:
-        for i, line in enumerate(lines[start:]):
-            if search_str.lower() in line.lower():
-                return i + start, line
-        raise ValueError("Parameter %s not found in lines." % search_str)
+    Finds the first line matching the given regex pattern.
 
+    Args:
+        lines (list[str]): List of lines to search through.
+        search_str (Union[str, re.Pattern]): Regex pattern (string or compiled) to search for.
 
-def find_line_re_search(lines: list[str], search_str: str) -> tuple[int, str]:
+    Returns:
+        tuple[int, str]: A tuple containing the line index and the matching line.
+
+    Raises:
+        ValueError: If the regex pattern is not found in any line.
+        TypeError: If inputs are of incorrect types.
     """
-    Uses re.search to return the first line containing the search string.
-    """
+    # Input validation
+    if not isinstance(lines, list) or not all(isinstance(line, str) for line in lines):
+        raise TypeError("Input 'lines' must be a list of strings.")
+    if not isinstance(search_str, (str, re.Pattern)):
+        raise TypeError(
+            "Input 'search_str' must be a string or a compiled regex pattern."
+        )
+
+    # Compile search_str if it's a string
+    regex = search_str if isinstance(search_str, re.Pattern) else re.compile(search_str)
+
     regex = re.compile(search_str)
     for i, line in enumerate(lines):
-        if re.search(regex, line):
+        if regex.search(line):
             return i, line
-    raise ValueError("Regex %s not found in lines." % search_str)
+    raise ValueError(f"Regex '{search_str}' not found in lines.")
 
 
 def get_absolute_date(mmdd: str, start_date: datetime, end_date: datetime) -> datetime:
@@ -165,45 +256,50 @@ def remove_stop_words(description: str, stop_words=None) -> str:
 def convert_amount_to_float(amount_str: str) -> float:
     """
     Parses USD amount strings of various formats into positive or negative float.
-    $12.34   -> +12.34
-    -$12.34  -> -12.34
-    ($12.34) -> -12.34
-    $12.34CR -> -12.34
-    """
-    # Remove commas, dollar signs, and spaces
-    amount_str = amount_str.replace(",", "")
-    amount_str = amount_str.replace("$", "")
-    amount_str = amount_str.replace(" ", "")
 
-    # Find whether the amount is negative
-    parens = all([paren in amount_str for paren in ["(", ")"]])
-    minus = "-" in amount_str
-    credit = "CR" in amount_str
-    negative = any([parens, minus, credit])
+    Examples:
+        $12.34   -> +12.34
+        -$12.34  -> -12.34
+        ($12.34) -> -12.34
+        $12.34CR -> -12.34
+    """
+    # Remove common characters and normalize string
+    normalized_str = (
+        amount_str.replace(",", "").replace("$", "").replace(" ", "").upper()
+    )
+
+    # Determine negativity from indicators
+    negative = (
+        normalized_str.startswith("-")
+        or normalized_str.endswith("CR")
+        or (normalized_str.startswith("(") and normalized_str.endswith(")"))
+    )
 
     # Remove negative indicators
-    amount_str = amount_str.replace("(", "")
-    amount_str = amount_str.replace(")", "")
-    amount_str = amount_str.replace("-", "")
-    amount_str = amount_str.replace("CR", "")
+    cleaned_str = (
+        normalized_str.replace("-", "")
+        .replace("CR", "")
+        .replace("(", "")
+        .replace(")", "")
+    )
 
-    # Get the final amount
-    amount = float(amount_str)
-    if negative:
-        amount = -amount
-
-    return amount
+    # Convert to float and apply negativity if applicable
+    amount = float(cleaned_str)
+    return -amount if negative else amount
 
 
 def hash_file(fpath: Path) -> str:
     """
-    Hashes the byte contents of a file to compare to db values
-    and prevent duplicate import.
+    Hashes the byte contents of a file to prevent duplicate imports.
+
+    Args:
+        fpath (Path): The path to the file.
+
+    Returns:
+        str: The MD5 hash of the file contents.
     """
     with fpath.open("rb") as f:
-        contents = f.read()
-    md5hash = hashlib.md5(contents).hexdigest()
-    return md5hash
+        return hashlib.md5(f.read()).hexdigest()
 
 
 class PDFReader:
