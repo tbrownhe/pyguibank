@@ -73,10 +73,6 @@ class Parser(IParser):
             _, date_line, _ = find_regex_in_line(self.lines, self.DATE_REGEX)
             date_line_r = date_line.split("Period:")[-1]
             dates = [d.strip() for d in date_line_r.split("through")]
-        except Exception as e:
-            logger.trace(f"Failed to find date string in statement: {e}")
-            raise ValueError(f"Failed to find date string in statement: {e}")
-        try:
             self.start_date = datetime.strptime(dates[0], self.HEADER_DATE)
             self.end_date = datetime.strptime(dates[1], self.HEADER_DATE)
         except Exception as e:
