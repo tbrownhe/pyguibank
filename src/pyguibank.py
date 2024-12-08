@@ -6,6 +6,8 @@ from pathlib import Path
 
 import matplotlib.dates as mdates
 import pandas as pd
+from jsonschema import ValidationError
+from jsonschema import validate as validate_json
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -434,16 +436,44 @@ class PyGuiBank(QMainWindow):
         with dpath.open("w") as f:
             json.dump(data, f, indent=2)
 
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.setText("Successfully exported database configuration.")
+        msg_box.setWindowTitle("Configuration Saved")
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec_()
+
+    def validate_config(self, data: dict):
+        DB_CONFIG_SCHEMA = {
+            "type": "object",
+            "properties": {
+                "AccountTypes": {"type": "array"},
+                "StatementTypes": {"type": "array"},
+            },
+            "required": ["AccountTypes", "StatementTypes"],
+        }
+        try:
+            validate_json(instance=data, schema=DB_CONFIG_SCHEMA)
+        except ValidationError as e:
+            raise ValueError(f"Invalid configuration format: {e}")
+
     def import_db_config(self):
         dpath = Path("") / "init_db.json"
         with dpath.open("r") as f:
             data = json.load(f)
 
-        account_types = data["AccountTypes"]
-        statement_types = data["StatementTypes"]
+        self.validate_config(data)
         with self.Session() as session:
-            query.insert_rows_batched(session, orm.AccountTypes, account_types)
-            query.insert_rows_batched(session, orm.StatementTypes, statement_types)
+            query.insert_rows_batched(
+                session,
+                orm.AccountTypes,
+                data["AccountTypes"],
+            )
+            query.insert_rows_batched(
+                session,
+                orm.StatementTypes,
+                data["StatementTypes"],
+            )
 
     def about(self):
         msg_box = QMessageBox()
