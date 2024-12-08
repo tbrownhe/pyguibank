@@ -18,6 +18,25 @@ from core.utils import PDFReader, read_config
 from core.orm import create_database
 
 
+def display_nested_dict(output_display: QTextEdit, nested_dict: dict, level=0):
+    """
+    Recursively displays a nested dictionary in an indented format.
+
+    Args:
+        output_display: A callable (e.g., self.output_display.append) for displaying output.
+        nested_dict (dict): The dictionary to display.
+        level (int): Current level of indentation.
+    """
+    for key, value in nested_dict.items():
+        if isinstance(value, dict):
+            # If the value is a dictionary, recurse
+            output_display.append("  " * (level + 1) + f"{key}:")
+            display_nested_dict(output_display, value, level + 1)
+        else:
+            # Otherwise, display the key-value pair
+            output_display.append("  " * (level + 1) + f"{key}: {value}")
+
+
 class TestImportApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -36,7 +55,7 @@ class TestImportApp(QMainWindow):
         self.import_button.clicked.connect(self.read_pdf)
         layout.addWidget(self.import_button)
 
-        # Add Import button
+        # Add extract tables button
         self.extract_tables_button = QPushButton("Extract Tables")
         self.extract_tables_button.clicked.connect(self.extract_tables)
         layout.addWidget(self.extract_tables_button)
@@ -97,12 +116,11 @@ class TestImportApp(QMainWindow):
         for key, value in reader.PDF.metadata.items():
             self.output_display.append(f"  {key}: {value}")
 
-        self.output_display.append(f"Annotations:")
+        # Annotations
+        self.output_display.append("\n\nAnnotations:\n" + 60 * "=")
         for page in reader.PDF.pages:
             for annot in page.annots:
-                title = annot.get("title")
-                value = annot["data"]["V"].decode("utf-8") if annot["data"]["V"] else ""
-                self.output_display.append(f"  {title}: {value}")
+                display_nested_dict(self.output_display, annot)
 
         self.output_display.append("\n\nSimple Extraction Lines:\n" + 60 * "=")
         self.output_display.append("\n".join(reader.lines_simple))
