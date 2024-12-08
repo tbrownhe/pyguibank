@@ -98,10 +98,6 @@ class Parser(IParser):
         """
         Extracts account-level data, including balances and transactions.
 
-        Args:
-            account_num (str): The account number.
-            lines (list[str]): The lines of text corresponding to the account section.
-
         Returns:
             Account: The extracted account as a dataclass instance.
 

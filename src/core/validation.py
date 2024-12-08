@@ -458,17 +458,18 @@ def validate_transactions(statement: Statement) -> list[str]:
                     f" date range {statement.start_date} - {statement.end_date}"
                 )
 
-            # Transaction date (if available) must be within 30 days of the posting date
-            # `04/17 05/05 ROSAN JAMAICA LIMITED MONTEGO BAY`
+            # Transaction date (if available) must be within 60 days of the posting date
+            # Foreign transactions in particular can take over a month to post
+            posting_days = 60
             if transaction.transaction_date:
                 if not isinstance(transaction.transaction_date, datetime):
                     errors.append(f"Invalid date: {transaction.transaction_date}")
                 if (
                     abs((transaction.transaction_date - transaction.posting_date).days)
-                    > 30
+                    > posting_days
                 ):
                     errors.append(
-                        f"Transaction date {transaction.transaction_date} is more than 7 days"
+                        f"Transaction date {transaction.transaction_date} is more than {posting_days} days"
                         f" from posting date {transaction.posting_date}"
                     )
 
