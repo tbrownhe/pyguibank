@@ -8,6 +8,7 @@ import openpyxl
 from loguru import logger
 from sqlalchemy.orm import sessionmaker
 
+from .dialog import ValidationErrorDialog
 from .interfaces import IParser
 from .query import statement_type_routing
 from .utils import PDFReader
@@ -82,6 +83,11 @@ class BaseRouter(Generic[T]):
                 f"Validation failed for statement imported using"
                 f" parser '{parser}':\n{err}"
             )
+
+            # Show validation error dialog
+            dialog = ValidationErrorDialog(statement, errors)
+            dialog.exec_()
+
             raise ValidationError(err)
         return statement
 

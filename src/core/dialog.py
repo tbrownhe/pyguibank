@@ -1,3 +1,4 @@
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from PyQt5.QtWidgets import (
     QTableView,
     QTableWidget,
     QTableWidgetItem,
+    QTextEdit,
     QVBoxLayout,
 )
 from sqlalchemy.orm import Session, sessionmaker
@@ -31,7 +33,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from . import query
 from .orm import AccountNumbers, Accounts, Transactions
 from .utils import open_file_in_os, read_config
-from .validation import Transaction, ValidationError
+from .validation import Statement, Transaction, ValidationError
 
 
 class PreferencesDialog(QDialog):
@@ -837,3 +839,83 @@ class CompletenessDialog(QDialog):
 
         # Resize the dialog
         self.resize(final_width, final_height)
+
+
+class ValidationErrorDialog(QDialog):
+    def __init__(self, statement: Statement, errors: str, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle("Validation Error")
+        self.resize(600, 400)
+
+        layout = QVBoxLayout(self)
+
+        # Text display for errors
+        error_display = QTextEdit(self)
+        error_display.setReadOnly(True)
+
+        # Generate the full display text
+        statement_data = self.format_statement(statement)
+        display_text = f"Errors:\n{errors}\n\n{statement_data}"
+        error_display.setPlainText(display_text)
+        layout.addWidget(error_display)
+
+        # Close button
+        close_button = QPushButton("Close", self)
+        close_button.clicked.connect(self.close)
+        layout.addWidget(close_button)
+
+    def format_statement(self, statement) -> str:
+        """
+        Format the Statement data for display, handling up to three levels:
+        Statement > Account > Transaction.
+        """
+        if not is_dataclass(statement):
+            raise ValueError("Expected a dataclass instance.")
+
+        output = []
+
+        # Format the top-level Statement fields
+        output.append("Statement Data:")
+        for field, value in asdict(statement).items():
+            if field == "accounts":  # Handle nested accounts separately
+                output.append("  accounts:")
+                for account in value:  # value is a list of Account
+                    output.append(self.format_account(account, level=2))
+            else:
+                output.append(f"  {field}: {value}")
+
+        return "\n".join(output)
+
+    def format_account(self, account, level=2) -> str:
+        """
+        Format an Account dataclass, including nested Transactions.
+        """
+        indent = "  " * level
+        output = []
+
+        # Format Account fields
+        output.append(f"{indent}Account:")
+        for field, value in account.items():
+            if field == "transactions":  # Handle nested transactions separately
+                output.append(f"{indent}  transactions:")
+                for transaction in value:  # value is a list of Transaction
+                    output.append(self.format_transaction(transaction, level + 2))
+            else:
+                output.append(f"{indent}  {field}: {value}")
+
+        return "\n".join(output)
+
+    def format_transaction(self, transaction, level=3) -> str:
+        """
+        Format a Transaction dataclass.
+        """
+        indent = "  " * level
+        output = []
+
+        # Format Transaction fields
+        output.append(f"{indent}Transaction:")
+        for field, value in transaction.items():
+            output.append(f"{indent}  {field}: {value}")
+
+        return "\n".join(output)
