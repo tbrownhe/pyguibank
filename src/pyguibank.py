@@ -802,6 +802,7 @@ class PyGuiBank(QMainWindow):
         # Customize plot
         self.balance_ax.set_xlim(left=cutoff_date, right=now)
         self.balance_ax.axhline(0, color="black", linewidth=1.5, linestyle="-")
+        self.balance_ax.axvline(now, color="red", linewidth=1.5, linestyle="-")
         self.balance_ax.set_title("Balance History")
         self.balance_ax.set_xlabel("Date")
         self.balance_ax.set_ylabel("Balance ($)")
@@ -842,8 +843,9 @@ class PyGuiBank(QMainWindow):
             self.category_ax.plot(df.index, df[category])
 
         # Customize plot
-        self.balance_ax.set_xlim(left=cutoff_date, right=now)
+        self.category_ax.set_xlim(left=cutoff_date, right=now)
         self.category_ax.axhline(0, color="black", linewidth=1.5, linestyle="-")
+        self.category_ax.axvline(now, color="red", linewidth=1.5, linestyle="-")
         self.category_ax.set_title("Monthly Spending by Category")
         self.category_ax.set_xlabel("Date")
         self.category_ax.set_ylabel("Amount ($)")
