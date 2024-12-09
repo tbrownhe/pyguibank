@@ -681,12 +681,12 @@ class InsertTransaction(QDialog):
             )
 
 
-def get_missing_coverage(Session: sessionmaker):
+def get_missing_coverage(Session: sessionmaker, months=12):
     """
     Returns a DataFrame showing coverage for the first of the month for each account.
     """
     with Session() as session:
-        data, columns = query.statement_date_ranges(session)
+        data, columns = query.statement_date_ranges(session, months=months + 3)
     df = pd.DataFrame(data, columns=columns)
     df["StartDate"] = pd.to_datetime(df["StartDate"])
     df["EndDate"] = pd.to_datetime(df["EndDate"])
@@ -720,7 +720,7 @@ def get_missing_coverage(Session: sessionmaker):
     )
 
     # Return the last 13 months as a transposed DataFrame
-    return df_pivot.tail(13).T.astype(str)
+    return df_pivot.tail(months).T.astype(str)
 
 
 class PandasModel(QAbstractTableModel):
@@ -748,7 +748,7 @@ class PandasModel(QAbstractTableModel):
             elif value == "Missing":
                 return QColor(225, 160, 160)  # Light red
         elif role == Qt.TextAlignmentRole:
-            return Qt.AlignCenter  # Center-align the text
+            return Qt.AlignCenter
         return None
 
     def headerData(self, section, orientation, role=Qt.DisplayRole):
@@ -769,7 +769,7 @@ class CompletenessDialog(QDialog):
         layout = QVBoxLayout()
 
         # Fetch DataFrame from the function
-        self.df = get_missing_coverage(Session)
+        self.df = get_missing_coverage(Session, months=60)
 
         # Create a PandasModel and attach it to a QTableView
         self.table_model = PandasModel(self.df)
@@ -823,8 +823,8 @@ class CompletenessDialog(QDialog):
 
         # Get the available screen size
         screen = QApplication.primaryScreen().availableGeometry()
-        max_width = int(screen.width() * 0.9)  # 90% of screen width
-        max_height = int(screen.height() * 0.9)  # 90% of screen height
+        max_width = int(screen.width() * 0.95)
+        max_height = int(screen.height() * 0.95)
 
         # Constrain the dialog size to the screen size
         final_width = min(table_width, max_width)
@@ -832,10 +832,6 @@ class CompletenessDialog(QDialog):
 
         # Fix the table's width
         self.table_view.setMaximumWidth(final_width)
-        self.table_view.setMinimumWidth(final_width)
-
-        # Fix the layout width (optional)
-        self.setFixedWidth(final_width)
 
         # Resize the dialog
         self.resize(final_width, final_height)
@@ -878,9 +874,9 @@ class ValidationErrorDialog(QDialog):
         # Format the top-level Statement fields
         output.append("Statement Data:")
         for field, value in asdict(statement).items():
-            if field == "accounts":  # Handle nested accounts separately
+            if field == "accounts":
                 output.append("  accounts:")
-                for account in value:  # value is a list of Account
+                for account in value:
                     output.append(self.format_account(account, level=2))
             else:
                 output.append(f"  {field}: {value}")
@@ -897,9 +893,9 @@ class ValidationErrorDialog(QDialog):
         # Format Account fields
         output.append(f"{indent}Account:")
         for field, value in account.items():
-            if field == "transactions":  # Handle nested transactions separately
+            if field == "transactions":
                 output.append(f"{indent}  transactions:")
-                for transaction in value:  # value is a list of Transaction
+                for transaction in value:
                     output.append(self.format_transaction(transaction, level + 2))
             else:
                 output.append(f"{indent}  {field}: {value}")
