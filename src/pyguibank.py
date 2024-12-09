@@ -780,7 +780,8 @@ class PyGuiBank(QMainWindow):
         df, debt_cols = plot.get_balance_data(session)
 
         # Limit the data to the specified year range
-        cutoff_date = datetime.now() - timedelta(days=limit_years * 365)
+        now = datetime.now()
+        cutoff_date = now - timedelta(days=limit_years * 365)
         df = df[df.index >= cutoff_date]
 
         # Apply smoothing (rolling average)
@@ -798,7 +799,8 @@ class PyGuiBank(QMainWindow):
             linestyle = "dashed" if account_name in debt_cols else "solid"
             self.balance_ax.plot(df.index, df[account_name], linestyle=linestyle)
 
-        # Apply plot customizations
+        # Customize plot
+        self.balance_ax.set_xlim(left=cutoff_date, right=now)
         self.balance_ax.axhline(0, color="black", linewidth=1.5, linestyle="-")
         self.balance_ax.set_title("Balance History")
         self.balance_ax.set_xlabel("Date")
@@ -823,7 +825,8 @@ class PyGuiBank(QMainWindow):
         df = plot.get_category_data(session)
 
         # Limit the data to the specified year range
-        cutoff_date = datetime.now() - timedelta(days=limit_years * 365)
+        now = datetime.now()
+        cutoff_date = now - timedelta(days=limit_years * 365)
         df = df[df.index >= cutoff_date]
 
         # Apply smoothing (rolling average)
@@ -839,8 +842,9 @@ class PyGuiBank(QMainWindow):
             self.category_ax.plot(df.index, df[category])
 
         # Customize plot
+        self.balance_ax.set_xlim(left=cutoff_date, right=now)
         self.category_ax.axhline(0, color="black", linewidth=1.5, linestyle="-")
-        self.category_ax.set_title("Spending by Category")
+        self.category_ax.set_title("Monthly Spending by Category")
         self.category_ax.set_xlabel("Date")
         self.category_ax.set_ylabel("Amount ($)")
         self.category_ax.grid(True)
