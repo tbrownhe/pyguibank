@@ -71,9 +71,10 @@ class StatementProcessor:
                 )
                 break
             try:
-                suc, dup = self.import_one(fpath)
-                success += suc
-                duplicate += dup
+                suc_, dup_, fail_ = self.import_one(fpath)
+                success += suc_
+                duplicate += dup_
+                fail += fail_
             except Exception:
                 fail += 1
                 logger.exception("Import failed: ")
@@ -103,14 +104,14 @@ class StatementProcessor:
         msg_box.setStandardButtons(QMessageBox.Ok)
         msg_box.exec_()
 
-    def import_one(self, fpath: Path) -> tuple[int, int]:
+    def import_one(self, fpath: Path) -> tuple[int, int, int]:
         """Parses the statement and saves the transaction data to the database.
 
         Args:
             fpath (Path): Statement file to import
 
         Returns:
-            tuple[int, int]: success, duplicate count
+            tuple[int, int]: success, duplicate, fail count
         """
         logger.info("Importing {f}", f=fpath.name)
 
@@ -118,10 +119,23 @@ class StatementProcessor:
         md5hash = hash_file(fpath)
         if self.file_already_imported(md5hash):
             self.handle_duplicate(fpath)
-            return 0, 1
+            return 0, 1, 0
 
         # Extract the statement data into a Statement dataclass
-        self.statement = parse_any(self.Session, fpath)
+        try:
+            self.statement = parse_any(self.Session, fpath)
+        except Exception as e:
+            if self.hard_fail:
+                msg_box = QMessageBox()
+                msg_box.setIcon(QMessageBox.Critical)
+                msg_box.setText(f"The statement could not be parsed:\n{e}")
+                msg_box.setWindowTitle("Parsing Failed")
+                msg_box.setStandardButtons(QMessageBox.Ok)
+                msg_box.exec_()
+                raise
+            else:
+                return 0, 0, 1
+
         if not isinstance(self.statement, Statement):
             raise TypeError("Parsing module must return a Statement dataclass")
 
@@ -135,7 +149,7 @@ class StatementProcessor:
         # Abort if a statement with similar metadata has been imported
         if self.statement_already_imported(self.statement.dpath.name):
             self.handle_duplicate(fpath)
-            return 0, 1
+            return 0, 1, 0
 
         # Insert transactions into db
         with self.Session() as session:
@@ -144,7 +158,7 @@ class StatementProcessor:
         # Rename and move the statement file to the success directory
         self.move_file_safely(self.statement.fpath, self.statement.dpath)
 
-        return 1, 0
+        return 1, 0, 0
 
     def file_already_imported(self, md5hash: str) -> bool:
         """Check if the file has already been saved to the db
