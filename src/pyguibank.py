@@ -545,7 +545,7 @@ class PyGuiBank(QMainWindow):
             return
 
         # Import statement
-        processor = StatementProcessor(self.config)
+        processor = StatementProcessor(self.Session, self.config)
         processor.import_one(fpath)
 
         # Update all GUI elements
