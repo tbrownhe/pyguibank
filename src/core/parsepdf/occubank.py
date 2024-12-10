@@ -97,7 +97,7 @@ class Parser(IParser):
         end_date_str = to_line.split()[1]
         self.start_date = datetime.strptime(start_date_str, self.HEADER_DATE)
         self.end_date = datetime.strptime(end_date_str, self.HEADER_DATE)
-        logger.info(f"Parsed dates from text: {self.start_date} to {self.end_date}")
+        logger.trace(f"Parsed dates from text: {self.start_date} to {self.end_date}")
 
     def dates_from_annotations(self):
         """
@@ -111,7 +111,7 @@ class Parser(IParser):
         end_date_str = self.extract_from_annotations(page, "TO_DATE")
         self.start_date = datetime.strptime(start_date_str, self.HEADER_DATE)
         self.end_date = datetime.strptime(end_date_str, self.HEADER_DATE)
-        logger.info(
+        logger.trace(
             f"Parsed dates from annotations: {self.start_date} to {self.end_date}"
         )
 
