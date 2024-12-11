@@ -1,255 +1,370 @@
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
+from statistics import mode
 
+from loguru import logger
+from pdfplumber.page import Page
+
+from ..interfaces import IParser
 from ..utils import (
+    PDFReader,
     convert_amount_to_float,
     find_param_in_line,
-    find_regex_in_line,
     get_absolute_date,
 )
+from ..validation import Account, Statement, Transaction
 
 
-def get_account_number(lines: list[str]) -> str:
-    """
-    Retrieve the account  number from the statement
-    Statement period activity summary   Account number: 5557133609
-    """
-    search_str = "Account number: "
-    _, line = find_param_in_line(lines, search_str)
-    rline = line.split(search_str)[-1]
-    account = rline.split()[0]
-    return account
+class Parser(IParser):
+    STATEMENT_TYPE = "Wells Fargo Personal Banking"
+    HEADER_DATE = r"%B %d, %Y"
+    HEADER_DATE_REGEX = re.compile(r"[A-Za-z]+\s\d{1,2},\s\d{4}")
+    TRANSACTION_DATE = re.compile(r"\d{1,2}/\d{1,2}")
+    AMOUNT = re.compile(r"\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?")
 
+    def parse(self, reader: PDFReader) -> Statement:
+        """Entry point
 
-def get_statement_dates(lines: list[str]) -> list[datetime]:
-    """
-    Parse the lines into datetime and return variable date_range.
-    The dates must be inferred from lines like these:
-    August 24, 2021 - Page 1 of 5
-    Beginning balance on 7/27
-    Ending balance on 8/24
-    """
-    # Get the statement end year from the long format date
-    wordy_date_pattern = r"[ADFJMNOS]\w*\s\d{1,2}\,\s\d{4}"
-    _, _, wordy_date_str = find_regex_in_line(lines, wordy_date_pattern)
-    wordy_date = datetime.strptime(wordy_date_str, r"%B %d, %Y")
-    YYYY = wordy_date.year
+        Args:
+            reader (PDFReader): pdfplumber child class
 
-    # Get the statement start and end dates in short format
-    start_str = r"Beginning balance on \d{1,2}/\d{1,2}"
-    end_str = r"Ending balance on \d{1,2}/\d{1,2}"
-    _, _, start_pattern = find_regex_in_line(lines, start_str)
-    _, _, end_pattern = find_regex_in_line(lines, end_str)
-    start_date_str = start_pattern.split()[-1]
-    end_date_str = end_pattern.split()[-1]
+        Returns:
+            Statement: Statement dataclass
+        """
+        logger.trace(f"Parsing {self.STATEMENT_TYPE} statement")
 
-    # Convert to datetime assuming bonth have the same year
-    date_format = r"%m/%d/%Y"
-    start_date = datetime.strptime(start_date_str + "/" + str(YYYY), date_format)
-    end_date = datetime.strptime(end_date_str + "/" + str(YYYY), date_format)
+        try:
+            lines = reader.extract_lines_simple()
+            if not lines:
+                raise ValueError("No lines extracted from the PDF.")
+            self.reader = reader
+            return self.extract_statement()
+        except Exception as e:
+            logger.error(f"Error parsing {self.STATEMENT_TYPE} statement: {e}")
+            raise
 
-    # Correct the start_date year if there has been a rollover
-    if start_date > end_date:
-        start_date = datetime.strptime(
-            start_date_str + "/" + str(YYYY - 1), date_format
+    def extract_statement(self) -> Statement:
+        """Extracts all statement data
+
+        Returns:
+            Statement: Statement dataclass
+        """
+        self.get_statement_dates()
+        accounts = self.extract_accounts()
+        if not accounts:
+            raise ValueError("No accounts were extracted from the statement.")
+
+        return Statement(
+            start_date=self.start_date,
+            end_date=self.end_date,
+            accounts=accounts,
         )
 
-    date_range = [start_date, end_date]
+    def get_statement_dates(self) -> None:
+        """
+        Parse the statement date range into datetime.
+        The year is only given in the B d, Y format statement end date
+        at the very top of page 1.
 
-    return date_range
+        Raises:
+            ValueError: If dates cannot be parsed or are invalid.
+        """
+        logger.trace("Attempting to parse dates from text.")
+        try:
+            # First get the full statement end date
+            result = self.HEADER_DATE_REGEX.search(self.reader.text_simple)
+            if not result:
+                raise ValueError("Unable to find statement end date in PDF")
+            date_str = result.group()
+            self.end_date = datetime.strptime(date_str, self.HEADER_DATE)
 
+            # Now get the start date in mm/dd format and resolve to datetime
+            pattern = re.compile(r"(Beginning balance on)\s(\d{1,2}/\d{2})")
+            result = pattern.search(self.reader.text_simple)
+            if not result:
+                raise ValueError("Unable to find statement start date in PDF")
+            mmdd = result.group(2)
+            approx_start_date = self.end_date - timedelta(days=30)
+            self.start_date = get_absolute_date(mmdd, approx_start_date, self.end_date)
+        except Exception as e:
+            logger.trace(f"Failed to parse dates from text: {e}")
+            raise ValueError(f"Failed to parse statement dates: {e}")
 
-def get_transaction_pages(lines: list[str]) -> list[list[str]]:
-    """
-    Returns only lines that contain transaction information.
-    Note, the amounts are in a complex fixed-width column format that
-    changes from page to page. Need to save the transaction lines
-    as well as the column headers to parse them out later.
-    """
-    re_transaction = re.compile(r"^\s\s+\d{1,2}/\d{1,2}\s\s+")
-    # re_columns = re.compile(r"^\s\s+Date\s+.*Description", re.IGNORECASE)
-    columns = ["Date", "Description", "Additions", "Subtractions", "balance"]
-    transaction_pages = []
-    transaction_lines = []
+    def extract_accounts(self) -> list[Account]:
+        """
+        One account per statement
 
-    for line in lines:
-        # Split the document by page of transactions
-        if all([column in line.split() for column in columns]):
-            # This is the column header for this page
-            if len(transaction_lines) > 0:
-                transaction_pages.append(transaction_lines)
-            transaction_lines = [line]
-            continue
+        Returns:
+            list[Account]: List of accounts for this statement.
+        """
+        return [self.extract_account()]
 
-        # Get the transations on this page
-        if re.search(re_transaction, line):
-            transaction_lines.append(line)
-            continue
+    def extract_account(self) -> Account:
+        """
+        Extracts account-level data, including balances and transactions.
 
-    # Append the last page of transactions
-    if len(transaction_lines) > 0:
-        transaction_pages.append(transaction_lines)
+        Returns:
+            Account: The extracted account as a dataclass instance.
 
-    return transaction_pages
+        Raises:
+            ValueError: If account number is invalid or data extraction fails.
+        """
+        # Extract account number
+        try:
+            account_num = self.get_account_number()
+        except Exception as e:
+            raise ValueError(f"Failed to extract account number: {e}")
 
+        # Extract statement balances
+        try:
+            start_balance, end_balance = self.get_statement_balances()
+        except Exception as e:
+            raise ValueError(
+                f"Failed to extract balances for account {account_num}: {e}"
+            )
 
-def get_indices(
-    header: str, column: str, buffer_left: int, buffer_right: int
-) -> dict[str, int]:
-    """
-    Returns a dict representing the string index of column positions
-    """
-    indices = {
-        "L": max(0, header.find(column) + buffer_left),
-        "R": header.find(column) + len(column) + buffer_right,
-    }
-    return indices
+        # Extract transaction lines
+        try:
+            transaction_array = self.get_transaction_array()
+        except Exception as e:
+            raise ValueError(
+                f"Failed to extract transactions for account {account_num}: {e}"
+            )
 
+        # Parse transactions
+        try:
+            transactions = self.parse_transaction_array(transaction_array)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to parse transactions for account {account_num}: {e}"
+            )
 
-def column_slices(header: str) -> dict[str, slice]:
-    """
-    Calculates the slice of each line representing each column.
-    """
-    # Define the settings used to measure position of the column names
-    column_prop = {
-        "Date": {"just": "L", "buffer_left": -2, "buffer_right": 2},
-        "Number": {"just": "L", "buffer_left": -1, "buffer_right": 2},
-        "Description": {"just": "L", "buffer_left": 0, "buffer_right": 0},
-        "Additions": {"just": "L", "buffer_left": -1, "buffer_right": 0},
-        "Subtractions": {"just": "R", "buffer_left": 0, "buffer_right": 3},
-        "balance": {"just": "R", "buffer_left": 0, "buffer_right": 1},
-    }
-
-    # Deal with sometimes-vanishing check number column
-    if "Number" not in header:
-        column_prop.pop("Number")
-
-    # Get the fixed-width positions of the column names
-    name_indx = {}
-    for col, props in column_prop.items():
-        name_indx[col] = get_indices(
-            header, col, props["buffer_left"], props["buffer_right"]
+        return Account(
+            account_num=account_num,
+            start_balance=start_balance,
+            end_balance=end_balance,
+            transactions=transactions,
         )
 
-    # Get the full-width column indices based on the column name indices
-    columns = list(column_prop.keys())
-    slices = {}
-    for i, col in enumerate(columns):
-        if column_prop[col]["just"] == "L":
-            # Column spans left-most indices of current and next column names
-            left = name_indx[col]["L"]
-            if i == len(columns) - 1:
-                right = -1
-            else:
-                right = name_indx[columns[i + 1]]["L"]
-        else:
-            # Column spans right-most indices of current and next column names
-            right = name_indx[col]["R"]
-            if i == 0:
-                left = 0
-            else:
-                left = name_indx[columns[i - 1]]["R"]
-        slices[col] = slice(left, right)
-    return slices
+    def get_account_number(self) -> str:
+        """Retrieve the account number from the statement.
 
+        Returns:
+            str: Account number
+        """
+        pattern = re.compile(r"Account number:\s*(\d{4,})")
+        result = pattern.search(self.reader.text_simple)
+        if not result:
+            raise ValueError("Unable to locate Account Number in PDF")
+        return result.group(1)
 
-def parse_transaction_page(page: list[str], date_range: list[datetime]) -> list[tuple]:
-    """
-    Parse an individual page of transactions.
-    Each page has a fixed-width column format, but column widths change from page to
-    page, so indices need to be updated dynamically.
-    """
-    header = page[0]
-    lines = page[1:]
+    def get_statement_balances(self) -> tuple[float, float]:
+        """Extract the starting balance from the statement.
 
-    # Get a dict containing slices for each column
-    slices = column_slices(header)
+        Raises:
+            ValueError: Unable to extract balances
+        """
+        patterns = ["Beginning balance", "Ending balance"]
+        balances = {}
 
-    # Parse the lines
-    transactions = []
-    for line in lines:
-        # Get the transaction date
-        date_str = line[slices["Date"]][:8].strip()
-        date = get_absolute_date(date_str, date_range)
-        date = date.strftime(r"%Y-%m-%d")
+        for pattern in patterns:
+            try:
+                _, balance_line = find_param_in_line(self.reader.lines_simple, pattern)
+                result = self.AMOUNT.search(balance_line)
+                amount_str = result.group()
+                balance = convert_amount_to_float(amount_str)
+                balances[pattern] = balance
+            except ValueError as e:
+                raise ValueError(
+                    f"Failed to extract balance for pattern '{pattern}': {e}"
+                )
 
-        # Get the description
-        description = line[slices["Description"]]
-        description = " ".join(description.split())
-        description = re.sub(
-            r"Purchase authorized on \d{1,2}/\d{1,2} ", "", description
+        if len(balances) != 2:
+            raise ValueError("Could not extract both starting and ending balances.")
+
+        return balances[patterns[0]], balances[patterns[1]]
+
+    def get_transaction_array(self) -> list[list[str]]:
+        """Extract lines containing transaction information.
+
+        Wells Fargo statements are quite tricky. They must be extracted via pdfplumber's
+        table methods, but the table dimensions vary from page to page so must
+        be adjusted dynamically.
+
+        Returns:
+            list[list[str]]: Processed lines containing dates and amounts for this statement
+        """
+        transaction_array = []
+        for i, page in enumerate(self.reader.PDF.pages):
+            try:
+                transaction_array.extend(self.get_transactions_from_page(page))
+            except Exception as e:
+                raise ValueError(f"Failed to extract transactions from page {i}: {e}")
+
+        return transaction_array
+
+    def get_transactions_from_page(self, page: Page) -> list[list[str]]:
+        """Extracts transaction array from each page of the pdf.
+
+        Args:
+            page (Page): pdfplumber PDF.pages object
+
+        Returns:
+            list[list[str]]: Processed lines containing dates and amounts for this page
+        """
+        # Table header always contains these words
+        header_words = [
+            "Date",
+            "Number",
+            "Description",
+            "Additions",
+            "Subtractions",
+            "balance",
+        ]
+
+        # Get the metadata and text of every word in the header page.
+        page_words = [
+            word for word in page.extract_words() if word.get("text") in header_words
+        ]
+        page_word_list = [pword.get("text") for pword in page_words]
+
+        # Make sure all header words were found. If not, return empty row
+        missing_words = [h for h in header_words if h not in page_word_list]
+        if missing_words:
+            logger.trace(
+                f"Skipping {page.page_number} because a table header was not found."
+            )
+            return []
+
+        # Filter out spurious words by removing anything > 2 points from the mode
+        y_mode = mode(word.get("bottom") for word in page_words)
+        page_words = [
+            word for word in page_words if abs(word.get("bottom") - y_mode) < 2
+        ]
+
+        # Make sure there are no duplicates
+        if len(page_words) != len(header_words):
+            word_list = [word.get("text") for word in page_words]
+            raise ValueError(
+                "Too many header keywords were found."
+                f" Expected: {header_words}\nGot: {word_list}"
+            )
+
+        # Remap words list[dict] so it's addressable by column name
+        header = {}
+        for word in page_words:
+            header[word.get("text")] = {
+                "x0": word.get("x0"),
+                "x1": word.get("x1"),
+                "top": word.get("top"),
+                "bottom": word.get("bottom"),
+            }
+
+        # Crop the page to the table size
+        crop_page = page.crop(
+            [
+                header["Date"]["x0"] - 3,
+                header["Date"]["bottom"] + 0.1,
+                header["balance"]["x1"] + 2,
+                page.height,
+            ]
         )
 
-        # Get the addition
-        addn_str = line[slices["Additions"]].strip()
-        addn = 0.0 if addn_str == "" else convert_amount_to_float(addn_str)
+        def calculate_vertical_lines(header):
+            """
+            Create a list of vertical table separators based on the header coordinates
+            Date:         L justified
+            Number:       R justified
+            Description:  L Justified
+            Additions:    R Justified
+            Subtractions: R Justified
+            balance:      R Justified
+            """
+            return [
+                header["Date"]["x0"] - 3,
+                (header["Date"]["x1"] + header["Number"]["x0"]) / 2,
+                (header["Number"]["x1"] + header["Description"]["x0"]) / 2,
+                header["Additions"]["x0"] - 3,
+                header["Additions"]["x1"] + 2,
+                header["Subtractions"]["x1"] + 2,
+                header["balance"]["x1"] + 2,
+            ]
 
-        # Get the subtraction
-        subt_str = line[slices["Subtractions"]].strip()
-        subt = 0.0 if subt_str == "" else convert_amount_to_float(subt_str)
+        # Extract the table from the cropped page using dynamic vertical separators
+        table_settings = {
+            "vertical_strategy": "explicit",
+            "horizontal_strategy": "text",
+            "explicit_vertical_lines": calculate_vertical_lines(header),
+        }
+        array = crop_page.extract_table(table_settings=table_settings)
 
-        # Combine additiona dn subtraction
-        amount = round(addn - subt, 2)
+        # Array validation
+        for i, row in enumerate(array):
+            # Make sure each row has the right number of columns
+            if len(row) != len(header_words):
+                raise ValueError(f"Incorrect number of columns for row: {row}")
 
-        # Get the EOD balance, if present on this line
-        balance_str = line[slices["balance"]].strip()
-        balance = "nan" if balance_str == "" else convert_amount_to_float(balance_str)
+            # Drop any rows that are empty or below an empty row
+            if not any(row) or row[0].startswith("Ending"):
+                array = array[:i]
+                break
 
-        # Build the transaction
-        transaction = (date, amount, balance, description)
-        transactions.append(transaction)
+        return array
 
-    return transactions
+    def parse_transaction_array(self, array: list[list[str]]) -> list[Transaction]:
+        """Convert transaction table into structured data.
 
+        Args:
+            transaction_lines (listlist[[str]]): Array containing valid transaction data
 
-def backwards_fill_balance(transactions: list[tuple]) -> list[tuple]:
-    """
-    Backwards fill EOD balances so each transaction has a balance.
-    Balance is third column in the tuple.
-    (date, amount, balance, description)
-    """
-    # Deal with edge case first
-    balance_final = transactions[-1][2]
-    if balance_final == "nan":
-        raise ValueError("Final transaction does not have a balance value.")
+        Returns:
+            list[tuple]: Unsorted transaction array
+        """
 
-    # Backfill balance
-    for row in reversed(range(len(transactions))):
-        balance = transactions[row][2]
-        if balance != "nan":
-            # EOD balance
-            continue
-        amount_next = transactions[row + 1][1]
-        balance_next = transactions[row + 1][2]
-        balance = round(balance_next - amount_next, 2)
-        transactions[row] = transactions[row][:2] + (balance,) + (transactions[row][3],)
-    return transactions
+        def get_full_description(i_row):
+            """Lookahead for multi-line transactions"""
+            desc = array[i_row][2]
+            multilines = 1
+            while (
+                i_row + multilines < len(array)
+                and not array[i_row + multilines][0]
+                and array[i_row + multilines][2]
+            ):
+                desc += f" {array[i_row + multilines][2]}"
+                multilines += 1
+            return desc, multilines - 1
 
+        transactions = []
+        i_row = 0
+        while i_row < len(array):
+            row = array[i_row]
 
-def parse_transactions(
-    date_range: list[datetime], transaction_pages: list[list[str]]
-) -> list[tuple]:
-    """
-    Converts the raw transaction text into an organized list of transactions.
-    """
-    # Define the columns and their justification
-    transactions = []
-    for page in transaction_pages:
-        transactions.extend(parse_transaction_page(page, date_range))
+            # Return early if this is not a transaction start line
+            if not bool(self.TRANSACTION_DATE.search(row[0])):
+                i_row += 1
+                continue
 
-    transactions = backwards_fill_balance(transactions)
+            # Extract main part of the transaction
+            posting_date = get_absolute_date(row[0], self.start_date, self.end_date)
+            additions = convert_amount_to_float(row[3]) if row[3] else 0.0
+            subtractions = convert_amount_to_float(row[4]) if row[4] else 0.0
+            amount = additions - subtractions
+            balance = convert_amount_to_float(row[5]) if row[5] else None
+            desc, multilines = get_full_description(i_row)
+            i_row += multilines
 
-    return transactions
+            # Append transaction
+            transactions.append(
+                Transaction(
+                    transaction_date=posting_date,
+                    posting_date=posting_date,
+                    amount=amount,
+                    balance=balance,
+                    desc=desc,
+                )
+            )
 
+            # Increase counter
+            i_row += 1
 
-def parse(lines_raw, lines):
-    """
-    Parse lines of Wells Fargo statement PDF to obtain structured transaction data
-    """
-    account = get_account_number(lines)
-    date_range = get_statement_dates(lines)
-    # No need for get_starting_balance()
-    transaction_pages = get_transaction_pages(lines_raw)
-    transactions = parse_transactions(date_range, transaction_pages)
-    data = {account: transactions}
-    return date_range, data
+        return transactions
