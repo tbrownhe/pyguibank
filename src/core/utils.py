@@ -377,7 +377,7 @@ class PDFReader:
         ]
         return self.lines_simple
 
-    def extract_layout_pages(self) -> list[str]:
+    def extract_layout_pages(self, **kwargs) -> list[str]:
         """Extracts all pages of text of the PDF using a slower layout-based algorithm.
 
         Raises:
@@ -393,10 +393,12 @@ class PDFReader:
             return self.pages
         if self.PDF is None:
             raise ValueError("PDF not opened properly")
-        self.pages = [page.extract_text(layout=True) or "" for page in self.PDF.pages]
+        self.pages = [
+            page.extract_text(layout=False, **kwargs) or "" for page in self.PDF.pages
+        ]
         return self.pages
 
-    def extract_text(self) -> str:
+    def extract_text(self, **kwargs) -> str:
         """Extracts pages carefully then joins them into a single string.
 
         Returns:
@@ -409,11 +411,11 @@ class PDFReader:
         if self.text:
             return self.text
         if self.pages is None:
-            self.extract_layout_pages()
+            self.extract_layout_pages(**kwargs)
         self.text = "\n".join(self.pages)
         return self.text
 
-    def extract_lines_raw(self) -> list[str]:
+    def extract_lines_raw(self, **kwargs) -> list[str]:
         """Extracts non-empty lines of text while maintaining layout format.
 
         Returns:
@@ -427,11 +429,11 @@ class PDFReader:
         if self.lines_raw:
             return self.lines_raw
         if self.text is None:
-            self.extract_text()
+            self.extract_text(**kwargs)
         self.lines_raw = [line for line in self.text.splitlines() if line.strip()]
         return self.lines_raw
 
-    def extract_lines_clean(self) -> list[str]:
+    def extract_lines_clean(self, **kwargs) -> list[str]:
         """Extracts lines of text with normalized whitespace.
 
         Returns:
@@ -446,6 +448,6 @@ class PDFReader:
         if self.lines_clean:
             return self.lines_clean
         if self.lines_raw is None:
-            self.extract_lines_raw()
+            self.extract_lines_raw(**kwargs)
         self.lines_clean = [" ".join(line.split()) for line in self.lines_raw]
         return self.lines_clean
