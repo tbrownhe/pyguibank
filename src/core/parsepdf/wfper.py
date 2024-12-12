@@ -213,10 +213,10 @@ class Parser(IParser):
         Returns:
             list[list[str]]: Processed lines containing dates and amounts for this page
         """
-        # Table header always contains these words
+        # Checking and Savings table header always contains these words
         header_words = [
             "Date",
-            "Number",
+            # "Number", is not included since it only appears in checking
             "Description",
             "Additions",
             "Subtractions",
@@ -275,34 +275,35 @@ class Parser(IParser):
             """
             Create a list of vertical table separators based on the header coordinates
             Date:         L justified
-            Number:       R justified
+            Number:       R justified, need a placeholder col for this, checking only
             Description:  L Justified
             Additions:    R Justified
             Subtractions: R Justified
             balance:      R Justified
             """
             return [
-                header["Date"]["x0"] - 3,
-                (header["Date"]["x1"] + header["Number"]["x0"]) / 2,
-                (header["Number"]["x1"] + header["Description"]["x0"]) / 2,
-                header["Additions"]["x0"] - 3,
-                header["Additions"]["x1"] + 2,
-                header["Subtractions"]["x1"] + 2,
-                header["balance"]["x1"] + 2,
+                header["Date"]["x0"] - 3,  # date
+                header["Date"]["x1"] + 2,  # number, placeholder
+                header["Description"]["x0"] - 2,  # desc
+                header["Additions"]["x0"] - 3,  # addition
+                header["Additions"]["x1"] + 2,  # subtraction
+                header["Subtractions"]["x1"] + 2,  # balance
+                header["balance"]["x1"] + 2,  # right side of table
             ]
 
         # Extract the table from the cropped page using dynamic vertical separators
+        vertical_lines = calculate_vertical_lines(header)
         table_settings = {
             "vertical_strategy": "explicit",
             "horizontal_strategy": "text",
-            "explicit_vertical_lines": calculate_vertical_lines(header),
+            "explicit_vertical_lines": vertical_lines,
         }
         array = crop_page.extract_table(table_settings=table_settings)
 
         # Array validation
         for i, row in enumerate(array):
             # Make sure each row has the right number of columns
-            if len(row) != len(header_words):
+            if len(row) != len(vertical_lines) - 1:
                 raise ValueError(f"Incorrect number of columns for row: {row}")
 
             # Drop any rows that are empty or below an empty row
