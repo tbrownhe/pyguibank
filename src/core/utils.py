@@ -342,7 +342,7 @@ class PDFReader:
             ValueError: Error while reading PDF
 
         Returns:
-            str: Entire pdf extracted with simple algorithm
+            str: Entire pdf extracted with simple algorithm, whitespace normalized
 
         Notes:
             Text is stored as self.text_simple
@@ -351,9 +351,13 @@ class PDFReader:
             return self.text_simple
         if self.PDF is None:
             raise ValueError("PDF not opened properly")
-        self.text_simple = "\n".join(
-            [page.extract_text_simple() or "" for page in self.PDF.pages]
-        )
+        self.pages = [page.extract_text_simple() or "" for page in self.PDF.pages]
+        text_simple_raw = "\n".join(self.pages)
+        self.lines_simple = [
+            " ".join(word for word in line.split())
+            for line in text_simple_raw.splitlines()
+        ]
+        self.text_simple = "\n".join(self.lines_simple)
         return self.text_simple
 
     def extract_lines_simple(self) -> list[str]:
@@ -370,11 +374,6 @@ class PDFReader:
             return self.lines_simple
         if self.pages is None:
             self.extract_text_simple()
-        self.lines_simple = [
-            " ".join(word for word in line.split())
-            for line in self.text_simple.splitlines()
-            if line.strip()
-        ]
         return self.lines_simple
 
     def extract_layout_pages(self, **kwargs) -> list[str]:
