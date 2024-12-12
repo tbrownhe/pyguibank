@@ -160,11 +160,12 @@ class Parser(IParser):
 
     def get_statement_balances(self) -> tuple[float, float]:
         """Extract the starting balance from the statement.
+        There is sometimes a spurious space in the word 'ba lance'
 
         Raises:
             ValueError: Unable to extract balances
         """
-        patterns = ["Beginning balance", "Ending balance"]
+        patterns = ["Beginning ba", "Ending ba"]
         balances = {}
 
         for pattern in patterns:
