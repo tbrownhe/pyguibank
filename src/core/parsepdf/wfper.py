@@ -63,8 +63,8 @@ class Parser(IParser):
     def get_statement_dates(self) -> None:
         """
         Parse the statement date range into datetime.
-        The year is only given in the B d, Y format statement end date
-        at the very top of page 1.
+        The year is only given in the %B %d, %Y format for
+        statement end date at the very top of page 1.
 
         Raises:
             ValueError: If dates cannot be parsed or are invalid.
@@ -79,12 +79,17 @@ class Parser(IParser):
             self.end_date = datetime.strptime(date_str, self.HEADER_DATE)
 
             # Now get the start date in mm/dd format and resolve to datetime
-            pattern = re.compile(r"(Beginning balance on)\s(\d{1,2}/\d{2})")
+            pattern = re.compile(r"Beginning balance on\s+(\d{1,2}/\d{1,2})")
             result = pattern.search(self.reader.text_simple)
             if not result:
                 raise ValueError("Unable to find statement start date in PDF")
-            mmdd = result.group(2)
-            approx_start_date = self.end_date - timedelta(days=30)
+            mmdd = result.group(1)
+
+            # Some savings statements are quarterly, some are monthly. Guess carefully.
+            mm, dd = mmdd.split("/")
+            months = (self.end_date.month - int(mm)) % 12
+            days = self.end_date.day - int(dd)
+            approx_start_date = self.end_date - timedelta(days=30 * months + days)
             self.start_date = get_absolute_date(mmdd, approx_start_date, self.end_date)
         except Exception as e:
             logger.trace(f"Failed to parse dates from text: {e}")
@@ -356,6 +361,8 @@ class Parser(IParser):
             i_row += multilines
 
             # Append transaction
+            # Note: Balance is appended only at the end of each transaction day
+            # and ends up being overwritten by Transaction.sort_and_compute_balances()
             transactions.append(
                 Transaction(
                     transaction_date=posting_date,
