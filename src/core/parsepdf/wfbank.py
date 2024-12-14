@@ -16,7 +16,7 @@ from ..validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
-    STATEMENT_TYPE = "Wells Fargo Personal Banking"
+    STATEMENT_TYPE = "Wells Fargo Personal or Business Banking"
     HEADER_DATE = r"%B %d, %Y"
     HEADER_DATE_REGEX = re.compile(r"[A-Za-z]+\s\d{1,2},\s\d{4}")
     TRANSACTION_DATE = re.compile(r"\d{1,2}/\d{1,2}")
