@@ -9,7 +9,7 @@ from ..interfaces import IParser
 from ..utils import (
     PDFReader,
     convert_amount_to_float,
-    find_param_in_line,
+    find_line_startswith,
     get_absolute_date,
 )
 from ..validation import Account, Statement, Transaction
@@ -166,26 +166,30 @@ class Parser(IParser):
     def get_statement_balances(self) -> tuple[float, float]:
         """Extract the starting balance from the statement.
         There is sometimes a spurious space in the word 'ba lance'
+        Some statements contain "Closing Balance" instead of "Ending Balance"
 
         Raises:
             ValueError: Unable to extract balances
         """
-        patterns = ["Beginning ba", "Ending ba"]
+        try_patterns = ["Beginning ba", "Ending ba", "Closing ba"]
+        patterns = []
         balances = {}
 
-        for pattern in patterns:
+        for pattern in try_patterns:
             try:
-                _, balance_line = find_param_in_line(self.reader.lines_simple, pattern)
+                _, balance_line = find_line_startswith(
+                    self.reader.lines_simple, pattern
+                )
                 result = self.AMOUNT.search(balance_line)
                 amount_str = result.group()
                 balance = convert_amount_to_float(amount_str)
                 balances[pattern] = balance
-            except ValueError as e:
-                raise ValueError(
-                    f"Failed to extract balance for pattern '{pattern}': {e}"
-                )
+                patterns.append(pattern)
+            except Exception as e:
+                logger.trace(f"Failed to extract balance for pattern '{pattern}': {e}")
 
         if len(balances) != 2:
+            logger.error(f"Failed to extract balances: {balances}")
             raise ValueError("Could not extract both starting and ending balances.")
 
         return balances[patterns[0]], balances[patterns[1]]
@@ -200,42 +204,72 @@ class Parser(IParser):
         Returns:
             list[list[str]]: Processed lines containing dates and amounts for this statement
         """
+        # First, define the header difference between personal and business accounts
+        # Checking and Savings table headers always contains these words
+        # "Number", is not included since it only appears in checking
+        header_dict = {
+            "personal": [
+                "Date",
+                "Description",
+                "Additions",
+                "Subtractions",
+                "balance",
+            ],
+            "business": [
+                "Date",
+                "Description",
+                "Credits",
+                "Debits",
+                "balance",
+            ],
+        }
+
+        # Determine header to use
+        header_cols = []
+        pattern_dict = {
+            "personal": ["Wells Fargo Everyday Checking", "Wells Fargo Way2Save"],
+            "business": ["Initiate Business Checking", "Business Market Rate Savings"],
+        }
+        for account_type, patterns in pattern_dict.items():
+            if any(pattern in self.reader.text_simple[:200] for pattern in patterns):
+                header_cols = header_dict[account_type]
+        if not header_cols:
+            raise ValueError(
+                "Unable to determine which header to use for table extraction."
+            )
+
         transaction_array = []
         for i, page in enumerate(self.reader.PDF.pages):
             try:
-                transaction_array.extend(self.get_transactions_from_page(page))
+                transaction_array.extend(
+                    self.get_transactions_from_page(page, header_cols)
+                )
             except Exception as e:
                 raise ValueError(f"Failed to extract transactions from page {i}: {e}")
 
         return transaction_array
 
-    def get_transactions_from_page(self, page: Page) -> list[list[str]]:
+    def get_transactions_from_page(
+        self, page: Page, header_cols: list[str]
+    ) -> list[list[str]]:
         """Extracts transaction array from each page of the pdf.
 
         Args:
             page (Page): pdfplumber PDF.pages object
+            header_cols (list[str]): Column header names to use for table extraction
 
         Returns:
             list[list[str]]: Processed lines containing dates and amounts for this page
         """
-        # Checking and Savings table header always contains these words
-        header_words = [
-            "Date",
-            # "Number", is not included since it only appears in checking
-            "Description",
-            "Additions",
-            "Subtractions",
-            "balance",
-        ]
-
-        # Get the metadata and text of every word in the header page.
+        # Get the metadata and text of every word in the header.
+        page_words_all = page.extract_words()
         page_words = [
-            word for word in page.extract_words() if word.get("text") in header_words
+            word for word in page_words_all if word.get("text") in header_cols
         ]
         page_word_list = [pword.get("text") for pword in page_words]
 
         # Make sure all header words were found. If not, return empty row
-        missing_words = [h for h in header_words if h not in page_word_list]
+        missing_words = [word for word in header_cols if word not in page_word_list]
         if missing_words:
             logger.trace(
                 f"Skipping {page.page_number} because a table header was not found."
@@ -249,11 +283,11 @@ class Parser(IParser):
         ]
 
         # Make sure there are no duplicates
-        if len(page_words) != len(header_words):
+        if len(page_words) != len(header_cols):
             word_list = [word.get("text") for word in page_words]
             raise ValueError(
                 "Too many header keywords were found."
-                f" Expected: {header_words}\nGot: {word_list}"
+                f" Expected: {header_cols}\nGot: {word_list}"
             )
 
         # Remap words list[dict] so it's addressable by column name
@@ -266,12 +300,12 @@ class Parser(IParser):
                 "bottom": word.get("bottom"),
             }
 
-        # Crop the page to the table size
+        # Crop the page to the table size: [x0, top, x1, bottom]
         crop_page = page.crop(
             [
-                header["Date"]["x0"] - 3,
-                header["Date"]["bottom"] + 0.1,
-                header["balance"]["x1"] + 2,
+                header[header_cols[0]]["x0"] - 3,  # Date col
+                header[header_cols[0]]["bottom"] + 0.1,  # Date col
+                header[header_cols[-1]]["x1"] + 2,  # balance col
                 page.height,
             ]
         )
@@ -279,21 +313,21 @@ class Parser(IParser):
         def calculate_vertical_lines(header):
             """
             Create a list of vertical table separators based on the header coordinates
-            Date:         L justified
-            Number:       R justified, need a placeholder col for this, checking only
-            Description:  L Justified
-            Additions:    R Justified
-            Subtractions: R Justified
-            balance:      R Justified
+            0: Date:         L justified
+            -: Number:       R justified, need a placeholder col for this, checking only
+            1: Description:  L Justified
+            2: Additions:    R Justified (or Credits)
+            3: Subtractions: R Justified (or Debits)
+            4: balance:      R Justified
             """
             return [
-                header["Date"]["x0"] - 3,  # date
-                header["Date"]["x1"] + 2,  # number, placeholder
-                header["Description"]["x0"] - 2,  # desc
-                header["Additions"]["x0"] - 3,  # addition
-                header["Additions"]["x1"] + 2,  # subtraction
-                header["Subtractions"]["x1"] + 2,  # balance
-                header["balance"]["x1"] + 2,  # right side of table
+                header[header_cols[0]]["x0"] - 3,  # date col left
+                header[header_cols[0]]["x1"] + 2,  # number, placeholder col left
+                header[header_cols[1]]["x0"] - 2,  # desc col left
+                header[header_cols[2]]["x0"] - 3,  # addition/credit col left
+                header[header_cols[2]]["x1"] + 2,  # subtraction
+                header[header_cols[3]]["x1"] + 2,  # balance col left
+                header[header_cols[4]]["x1"] + 2,  # balance col right
             ]
 
         # Extract the table from the cropped page using dynamic vertical separators
