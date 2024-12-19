@@ -8,7 +8,6 @@ from . import (
     transamerica,
     usbank,
     vanguard,
-    wfbus,
-    wfper,
+    wfbank,
     wfploan,
 )
