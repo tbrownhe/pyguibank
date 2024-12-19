@@ -143,3 +143,4 @@ dmypy.json
 *.db
 *.sqbpro
 *test.py
+init_accounts.json

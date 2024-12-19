@@ -32,6 +32,66 @@ def optimize_db(session: Session) -> None:
     session.commit()
 
 
+def accounts_table(session: Session) -> list[dict]:
+    """
+    Fetches entire Accounts table.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        list[dict]: Table contents
+    """
+    # Perform the query
+    query = session.query(
+        Accounts.AccountID,
+        Accounts.AccountName,
+        Accounts.AccountTypeID,
+        Accounts.Company,
+        Accounts.Description,
+    )
+
+    # Fetch all data
+    data = [
+        {
+            column.get("name", "Unknown"): value
+            for column, value in zip(query.column_descriptions, row)
+        }
+        for row in query.all()
+    ]
+
+    return data
+
+
+def account_numbers_table(session: Session) -> list[dict]:
+    """
+    Fetches entire Accounts table.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        list[dict]: Table contents
+    """
+    # Perform the query
+    query = session.query(
+        AccountNumbers.AccountNumberID,
+        AccountNumbers.AccountID,
+        AccountNumbers.AccountNumber,
+    )
+
+    # Fetch all data
+    data = [
+        {
+            column.get("name", "Unknown"): value
+            for column, value in zip(query.column_descriptions, row)
+        }
+        for row in query.all()
+    ]
+
+    return data
+
+
 def account_id_of_account_number(session: Session, account_num: str) -> int:
     """
     Retrieves an AccountID based on an account_num string found in a statement.
@@ -173,7 +233,7 @@ def account_types_table(session: Session) -> list[dict]:
         session (Session): SQLAlchemy session object.
 
     Returns:
-        tuple[list[tuple], list[str]]: Data and column names.
+        list[dict]: Table contents
     """
     # Perform the query
     query = session.query(
@@ -360,7 +420,7 @@ def statement_types_table(session: Session) -> list[dict]:
         session (Session): SQLAlchemy session object.
 
     Returns:
-        tuple[list[tuple], list[str]]: Data and column names.
+        list[dict]: Table contents
     """
     # Perform the query
     query = session.query(

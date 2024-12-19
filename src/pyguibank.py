@@ -132,6 +132,7 @@ class PyGuiBank(QMainWindow):
         file_menu.addAction("Open Database", self.open_db)
         file_menu.addAction("Preferences", self.preferences)
         file_menu.addAction("Export Database Configuration", self.export_db_config)
+        file_menu.addAction("Export Account Configuration", self.export_account_config)
 
         # Accounts Menu
         accounts_menu = menubar.addMenu("Accounts")
@@ -425,6 +426,7 @@ class PyGuiBank(QMainWindow):
             msg_box.setWindowTitle("New Database Created")
             msg_box.setText(f"Initialized new database at {self.db_path}")
             msg_box.setStandardButtons(QMessageBox.Ok)
+            msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowStaysOnTopHint)
             msg_box.exec_()
 
     #########################
@@ -457,7 +459,24 @@ class PyGuiBank(QMainWindow):
         msg_box.setStandardButtons(QMessageBox.Ok)
         msg_box.exec_()
 
-    def validate_config(self, data: dict):
+    def export_account_config(self):
+        with self.Session() as session:
+            accounts = query.accounts_table(session)
+            account_numbers = query.account_numbers_table(session)
+
+        data = {"Accounts": accounts, "AccountNumbers": account_numbers}
+        dpath = Path("") / "init_accounts.json"
+        with dpath.open("w") as f:
+            json.dump(data, f, indent=2)
+
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.setText("Successfully exported Accounts configuration.")
+        msg_box.setWindowTitle("Configuration Saved")
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec_()
+
+    def validate_db_config(self, data: dict):
         DB_CONFIG_SCHEMA = {
             "type": "object",
             "properties": {
@@ -471,12 +490,27 @@ class PyGuiBank(QMainWindow):
         except ValidationError as e:
             raise ValueError(f"Invalid configuration format: {e}")
 
+    def validate_accounts_config(self, data: dict):
+        DB_CONFIG_SCHEMA = {
+            "type": "object",
+            "properties": {
+                "Accounts": {"type": "array"},
+                "AccountNumbers": {"type": "array"},
+            },
+            "required": ["Accounts", "AccountNumbers"],
+        }
+        try:
+            validate_json(instance=data, schema=DB_CONFIG_SCHEMA)
+        except ValidationError as e:
+            raise ValueError(f"Invalid configuration format: {e}")
+
     def import_db_config(self):
-        dpath = Path("") / "init_db.json"
-        with dpath.open("r") as f:
+        # Import statement search parameters
+        fpath = Path("") / "init_db.json"
+        with fpath.open("r") as f:
             data = json.load(f)
 
-        self.validate_config(data)
+        self.validate_db_config(data)
         with self.Session() as session:
             query.insert_rows_batched(
                 session,
@@ -487,6 +521,26 @@ class PyGuiBank(QMainWindow):
                 session,
                 orm.StatementTypes,
                 data["StatementTypes"],
+            )
+
+        # Import account configuration, if available
+        fpath = Path("") / "init_accounts.json"
+        if not fpath.exists():
+            return
+        with fpath.open("r") as f:
+            data = json.load(f)
+
+        self.validate_accounts_config(data)
+        with self.Session() as session:
+            query.insert_rows_batched(
+                session,
+                orm.Accounts,
+                data["Accounts"],
+            )
+            query.insert_rows_batched(
+                session,
+                orm.AccountNumbers,
+                data["AccountNumbers"],
             )
 
     def about(self):
