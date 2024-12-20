@@ -499,11 +499,15 @@ class AssignAccountNumber(QDialog):
 
 
 class InsertTransaction(QDialog):
-    def __init__(self, Session: sessionmaker, parent=None):
+    def __init__(
+        self, Session: sessionmaker, account_name="", close_account=False, parent=None
+    ):
         super().__init__(parent)
         self.setWindowTitle("Insert Transaction")
         self.setGeometry(100, 100, 400, 200)
         self.Session = Session
+        self.account_name = account_name
+        self.close_account = close_account
 
         # Main layout
         layout = QVBoxLayout(self)
@@ -569,14 +573,24 @@ class InsertTransaction(QDialog):
         try:
             with self.Session() as session:
                 data, _ = query.accounts_details(session)
-            for account_id, account_name, _, _, _ in data:
+
+            selected_index = -1
+            for index, (account_id, account_name, _, _, _) in enumerate(data):
                 self.account_dropdown.addItem(
                     f"{account_name} (ID: {account_id})", account_id
                 )
+                if self.account_name and account_name == self.account_name:
+                    selected_index = index
+
+            # Set the dropdown to the selected index if a match was found
+            if selected_index != -1:
+                self.account_dropdown.setCurrentIndex(selected_index)
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load accounts:\n{str(e)}")
 
     def update_balance(self):
+        QApplication.processEvents()
         account_id = self.account_dropdown.currentData()
         if account_id:
             # Query the database for the most recent balance for this account
@@ -587,6 +601,18 @@ class InsertTransaction(QDialog):
                 latest_date, latest_balance = result
                 self.latest_balance_value.setText(f"{latest_balance:.2f}")
                 self.latest_date_value.setText(f"{latest_date}")
+
+                # Handle account closure shortcut
+                if self.close_account:
+                    close_date = datetime.strptime(
+                        latest_date, r"%Y-%m-%d"
+                    ) + timedelta(days=30)
+                    self.date_selector.setDate(
+                        QDate(close_date.year, close_date.month, close_date.day)
+                    )
+                    self.amount_input.setText(f"{-latest_balance:.2f}")
+                    self.description_input.setText("Account Closed Manually")
+
             else:
                 # If no transactions found, assume balance is zero
                 self.latest_balance_value.setText("0.00")
@@ -663,6 +689,7 @@ class InsertTransaction(QDialog):
                 rows,
                 skip_duplicates=True,
             )
+            session.commit()
 
     def submit(self):
         """
@@ -915,3 +942,40 @@ class ValidationErrorDialog(QDialog):
             output.append(f"{indent}  {field}: {value}")
 
         return "\n".join(output)
+
+
+class BalanceCheckDialog(QDialog):
+    def __init__(self, account_name: str, balance: float, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle("Account Balance Alert")
+        self.setMinimumWidth(400)
+
+        # Main layout
+        layout = QVBoxLayout()
+
+        # Informational message
+        neg = "-" if balance < 0 else ""
+        balance = abs(round(balance, 2))
+        message = (
+            f"The account '{account_name}' has a non-zero balance of {neg}${balance} "
+            "and no recent transactions.\n\n"
+            "Would you like to bring the account to zero by inserting a transaction manually?"
+        )
+        label = QLabel(message)
+        label.setWordWrap(True)
+        layout.addWidget(label)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        self.yes_button = QPushButton("Yes")
+        self.no_button = QPushButton("No")
+        button_layout.addWidget(self.yes_button)
+        button_layout.addWidget(self.no_button)
+        layout.addLayout(button_layout)
+
+        self.setLayout(layout)
+
+        # Connect buttons to dialog result
+        self.yes_button.clicked.connect(self.accept)
+        self.no_button.clicked.connect(self.reject)

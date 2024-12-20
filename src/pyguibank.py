@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 from core import categorize, learn, orm, plot, query, reports
 from core.dialog import (
     AddAccount,
+    BalanceCheckDialog,
     CompletenessDialog,
     InsertTransaction,
     PreferencesDialog,
@@ -138,11 +139,12 @@ class PyGuiBank(QMainWindow):
         accounts_menu = menubar.addMenu("Accounts")
         accounts_menu.addAction("Show Accounts", self.show_accounts)
 
-        # Accounts Menu
+        # Statements Menu
         statements_menu = menubar.addMenu("Statements")
         statements_menu.addAction("Import All", self.import_all_statements)
         statements_menu.addAction("Pick File for Import", self.import_one_statement)
         statements_menu.addAction("Completeness Grid", self.statement_matrix)
+        statements_menu.addAction("Correct Discrepancies", self.statement_discrepancies)
 
         # Transactions Menu
         transactions_menu = menubar.addMenu("Transactions")
@@ -610,6 +612,30 @@ class PyGuiBank(QMainWindow):
         dialog = CompletenessDialog(self.Session)
         if dialog.exec_() == QDialog.Accepted:
             pass
+
+    def statement_discrepancies(self):
+        # Fetch data for the table
+        with self.Session() as session:
+            data = query.latest_balances(session)
+            max_date = query.statement_max_date(session)
+
+        # Prompt the user whether they want to correct the issue
+        for account_name, balance, date in data:
+            days = (max_date - datetime.strptime(date, r"%Y-%m-%d")).days
+            if days < 120 or balance == 0.0:
+                continue
+
+            balance_dialog = BalanceCheckDialog(account_name, balance)
+            if balance_dialog.exec_() != QDialog.Accepted:
+                continue
+
+            insert_dialog = InsertTransaction(
+                self.Session, account_name=account_name, close_account=True
+            )
+            if insert_dialog.exec_() == QDialog.Accepted:
+                # Update all GUI elements
+                with self.Session() as session:
+                    self.update_main_gui(session)
 
     def plot_balances(self):
         with self.Session() as session:

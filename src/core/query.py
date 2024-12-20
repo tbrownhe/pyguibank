@@ -341,6 +341,27 @@ def statement_date_ranges(
     return data, columns
 
 
+def statement_max_date(session: Session) -> datetime:
+    """
+    Retrieves the most recent date from the Statements table.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        datetime: The most recent datetime appearing in the Statements table.
+
+    Raises:
+        ValueError: If the Statements table is empty.
+    """
+    result = session.query(func.max(Statements.EndDate)).scalar()
+
+    if result is None:
+        raise ValueError("The Statements table is empty. No dates found.")
+
+    return datetime.strptime(result, r"%Y-%m-%d")
+
+
 def statements_with_hash(session: Session, md5hash: str) -> list[tuple]:
     """
     Retrieves StatementID and Filename based on the md5hash.
@@ -742,6 +763,8 @@ def insert_rows_carefully(
 ) -> None:
     """
     Insert rows into the database with optional duplicate handling.
+    Function does not autocommit so it can be used with session.begin.
+    Be sure to call session.commit() after calling this.
 
     Args:
         session (Session): SQLAlchemy session.
