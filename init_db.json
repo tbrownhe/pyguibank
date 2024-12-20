@@ -78,7 +78,7 @@
       "Company": "Wells Fargo",
       "Description": "Personal",
       "Extension": ".pdf",
-      "SearchString": "wells fargo way2save savings",
+      "SearchString": "wells fargo way2save",
       "Parser": "wfper",
       "EntryPoint": "core.parsepdf.wfper:Parser"
     },
@@ -89,7 +89,7 @@
       "Extension": ".pdf",
       "SearchString": "wells fargo&&initiate business checking",
       "Parser": "wfbus",
-      "EntryPoint": "core.parsepdf.wfbus:Parser"
+      "EntryPoint": "core.parsepdf.wfper:Parser"
     },
     {
       "AccountTypeID": 2,
@@ -98,7 +98,7 @@
       "Extension": ".pdf",
       "SearchString": "wells fargo&&business market rate savings",
       "Parser": "wfbus",
-      "EntryPoint": "core.parsepdf.wfbus:Parser"
+      "EntryPoint": "core.parsepdf.wfper:Parser"
     },
     {
       "AccountTypeID": 6,
@@ -207,6 +207,33 @@
       "SearchString": "vanguard.com&&account summary",
       "Parser": "vanguard",
       "EntryPoint": "core.parsepdf.vanguard:Parser"
+    },
+    {
+      "AccountTypeID": 6,
+      "Company": "Yamaha",
+      "Description": "Auto Loan",
+      "Extension": ".pdf",
+      "SearchString": "yamaha motor finance",
+      "Parser": "yamahafin",
+      "EntryPoint": "core.parsepdf.yamahafin:Parser"
+    },
+    {
+      "AccountTypeID": 6,
+      "Company": "Capital One",
+      "Description": "Auto Loan",
+      "Extension": ".pdf",
+      "SearchString": "capital one auto finance",
+      "Parser": "capitaloneauto",
+      "EntryPoint": "core.parsepdf.capitaloneauto:Parser"
+    },
+    {
+      "AccountTypeID": 6,
+      "Company": "MOHELA",
+      "Description": "Student Loan",
+      "Extension": ".csv",
+      "SearchString": "<!DOCTYPE HTML PUBLIC",
+      "Parser": "mohela",
+      "EntryPoint": "core.parsecsv.mohela:Parser"
     }
   ]
 }
