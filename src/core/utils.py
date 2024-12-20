@@ -262,6 +262,7 @@ def convert_amount_to_float(amount_str: str) -> float:
         -$12.34  -> -12.34
         ($12.34) -> -12.34
         $12.34CR -> -12.34
+        $12.34-  -> -12.34
     """
     # Remove common characters and normalize string
     normalized_str = (
@@ -271,6 +272,7 @@ def convert_amount_to_float(amount_str: str) -> float:
     # Determine negativity from indicators
     negative = (
         normalized_str.startswith("-")
+        or normalized_str.endswith("-")
         or normalized_str.endswith("CR")
         or (normalized_str.startswith("(") and normalized_str.endswith(")"))
     )

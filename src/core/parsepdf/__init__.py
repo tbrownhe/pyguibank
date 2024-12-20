@@ -10,4 +10,5 @@ from . import (
     vanguard,
     wfbank,
     wfploan,
+    yamahafin,
 )
