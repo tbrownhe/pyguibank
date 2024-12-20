@@ -178,7 +178,7 @@ class Parser(IParser):
             list[str]: Processed lines containing dates and amounts for this statement
         """
         transaction_lines = []
-        for i, page in enumerate(self.reader.pages):
+        for i, page in enumerate(self.reader.pages_layout):
             try:
                 transaction_lines.extend(self.get_transactions_from_page(page))
             except Exception as e:

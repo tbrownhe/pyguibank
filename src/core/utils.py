@@ -308,11 +308,12 @@ class PDFReader:
     def __init__(self, fpath: Path):
         self.fpath = fpath
         self.PDF = None
-        self.pages = None
-        self.text_simple = None
+        self.pages_simple = None
         self.lines_simple = None
-        self.text = None
-        self.lines_raw = None
+        self.text_simple = None
+        self.pages_layout = None
+        self.text_layout = None
+        self.lines_layout = None
         self.lines_clean = None
 
     def __enter__(self):
@@ -353,8 +354,10 @@ class PDFReader:
             return self.text_simple
         if self.PDF is None:
             raise ValueError("PDF not opened properly")
-        self.pages = [page.extract_text_simple() or "" for page in self.PDF.pages]
-        text_simple_raw = "\n".join(self.pages)
+        self.pages_simple = [
+            page.extract_text_simple() or "" for page in self.PDF.pages
+        ]
+        text_simple_raw = "\n".join(self.pages_simple)
         self.lines_simple = [
             " ".join(word for word in line.split())
             for line in text_simple_raw.splitlines()
@@ -374,11 +377,11 @@ class PDFReader:
         """
         if self.lines_simple:
             return self.lines_simple
-        if self.pages is None:
+        if self.pages_simple is None:
             self.extract_text_simple()
         return self.lines_simple
 
-    def extract_layout_pages(self, **kwargs) -> list[str]:
+    def extract_pages_layout(self, **kwargs) -> list[str]:
         """Extracts all pages of text of the PDF using a slower layout-based algorithm.
 
         Raises:
@@ -388,51 +391,53 @@ class PDFReader:
             list[str]: Pages of layout formatted text
 
         Notes:
-            Pages of layout format text are stored as self.pages
+            Pages of layout format text are stored as self.pages_layout
         """
-        if self.pages:
-            return self.pages
+        if self.pages_layout:
+            return self.pages_layout
         if self.PDF is None:
             raise ValueError("PDF not opened properly")
-        self.pages = [
-            page.extract_text(layout=False, **kwargs) or "" for page in self.PDF.pages
+        self.pages_layout = [
+            page.extract_text(layout=True, **kwargs) or "" for page in self.PDF.pages
         ]
-        return self.pages
+        return self.pages_layout
 
-    def extract_text(self, **kwargs) -> str:
+    def extract_text_layout(self, **kwargs) -> str:
         """Extracts pages carefully then joins them into a single string.
 
         Returns:
             str: Joined text in layout format
 
         Notes:
-            Pages of layout format text are stored as self.pages
-            Joined text is stored as self.text
+            Pages of layout format text are stored as self.pages_layout
+            Joined text is stored as self.text_layout
         """
-        if self.text:
-            return self.text
-        if self.pages is None:
-            self.extract_layout_pages(**kwargs)
-        self.text = "\n".join(self.pages)
-        return self.text
+        if self.text_layout:
+            return self.text_layout
+        if self.pages_layout is None:
+            self.extract_pages_layout(**kwargs)
+        self.text_layout = "\n".join(self.pages_layout)
+        return self.text_layout
 
-    def extract_lines_raw(self, **kwargs) -> list[str]:
+    def extract_lines_layout(self, **kwargs) -> list[str]:
         """Extracts non-empty lines of text while maintaining layout format.
 
         Returns:
             list[str]: Non-empty lines of text in layout format
 
         Notes:
-            Pages of layout format text are stored as self.pages
-            Joined text is stored as self.text
-            Raw lines are stored as self.lines_raw
+            Pages of layout format text are stored as self.pages_layout
+            Joined text is stored as self.text_layout
+            Raw lines are stored as self.lines_layout
         """
-        if self.lines_raw:
-            return self.lines_raw
-        if self.text is None:
-            self.extract_text(**kwargs)
-        self.lines_raw = [line for line in self.text.splitlines() if line.strip()]
-        return self.lines_raw
+        if self.lines_layout:
+            return self.lines_layout
+        if self.text_layout is None:
+            self.extract_text_layout(**kwargs)
+        self.lines_layout = [
+            line for line in self.text_layout.splitlines() if line.strip()
+        ]
+        return self.lines_layout
 
     def extract_lines_clean(self, **kwargs) -> list[str]:
         """Extracts lines of text with normalized whitespace.
@@ -442,13 +447,13 @@ class PDFReader:
 
         Notes:
             Pages of layout format text are stored as self.pages
-            Joined text is stored as self.text
-            Raw lines are stored as self.lines_raw
-            Cleaned lines are stored as self.lines_clean
+            Joined text is stored as self.text_layout
+            Raw lines are stored as self.lines_layout
+            Whitespace normalized lines are stored as self.lines_clean
         """
         if self.lines_clean:
             return self.lines_clean
-        if self.lines_raw is None:
-            self.extract_lines_raw(**kwargs)
-        self.lines_clean = [" ".join(line.split()) for line in self.lines_raw]
+        if self.lines_layout is None:
+            self.extract_lines_layout(**kwargs)
+        self.lines_clean = [" ".join(line.split()) for line in self.lines_layout]
         return self.lines_clean

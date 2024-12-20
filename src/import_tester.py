@@ -133,13 +133,13 @@ class TestImportApp(QMainWindow):
 
         # Layout page extraction
         self.output_display.append("\n\nPage Layout Text:\n" + 60 * "=")
-        for page_no, page in enumerate(reader.pages):
+        for page_no, page in enumerate(reader.pages_layout):
             self.output_display.append(f"Page No:{page_no}")
             self.output_display.append(f"{page}")
 
         # Split lines after layout extraction
         self.output_display.append("\n\nLayout Lines:\n" + 60 * "=")
-        self.output_display.append("\n".join(reader.lines_raw))
+        self.output_display.append("\n".join(reader.lines_layout))
 
         # Whitespace normalized after layout extraction
         self.output_display.append("\n\nWhitespace Normalized Lines:\n" + 60 * "=")
