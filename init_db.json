@@ -70,8 +70,8 @@
       "Description": "Personal",
       "Extension": ".pdf",
       "SearchString": "wells fargo everyday checking",
-      "Parser": "wfper",
-      "EntryPoint": "core.parsepdf.wfper:Parser"
+      "Parser": "wfbank",
+      "EntryPoint": "core.parsepdf.wfbank:Parser"
     },
     {
       "AccountTypeID": 2,
@@ -79,8 +79,8 @@
       "Description": "Personal",
       "Extension": ".pdf",
       "SearchString": "wells fargo way2save",
-      "Parser": "wfper",
-      "EntryPoint": "core.parsepdf.wfper:Parser"
+      "Parser": "wfbank",
+      "EntryPoint": "core.parsepdf.wfbank:Parser"
     },
     {
       "AccountTypeID": 1,
@@ -88,8 +88,8 @@
       "Description": "Business",
       "Extension": ".pdf",
       "SearchString": "wells fargo&&initiate business checking",
-      "Parser": "wfbus",
-      "EntryPoint": "core.parsepdf.wfper:Parser"
+      "Parser": "wfbank",
+      "EntryPoint": "core.parsepdf.wfbank:Parser"
     },
     {
       "AccountTypeID": 2,
@@ -97,8 +97,8 @@
       "Description": "Business",
       "Extension": ".pdf",
       "SearchString": "wells fargo&&business market rate savings",
-      "Parser": "wfbus",
-      "EntryPoint": "core.parsepdf.wfper:Parser"
+      "Parser": "wfbank",
+      "EntryPoint": "core.parsepdf.wfbank:Parser"
     },
     {
       "AccountTypeID": 6,
