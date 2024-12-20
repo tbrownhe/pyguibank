@@ -20,7 +20,7 @@ class Parser(IParser):
     HEADER_DATE = r"%B %d, %Y"
     HEADER_DATE_REGEX = re.compile(r"[A-Za-z]+\s\d{1,2},\s\d{4}")
     TRANSACTION_DATE = re.compile(r"\d{1,2}/\d{1,2}")
-    AMOUNT = re.compile(r"\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?")
+    AMOUNT = re.compile(r"-?\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?")
 
     def parse(self, reader: PDFReader) -> Statement:
         """Entry point

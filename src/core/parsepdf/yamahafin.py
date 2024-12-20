@@ -18,7 +18,6 @@ class Parser(IParser):
     HEADER_DATE = r"%m/%d/%y"
     DATE_REGEX = re.compile(r"\d{2}/\d{2}")
     LEADING_DATE = re.compile(r"^\d{2}/\d{2}\s")
-    AMOUNT = re.compile(r"\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?")
 
     def parse(self, reader: PDFReader) -> Statement:
         """Entry point

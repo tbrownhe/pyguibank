@@ -17,7 +17,7 @@ class Parser(IParser):
     STATEMENT_TYPE = "Vanguard 401(k)"
     HEADER_DATE = r"%m/%d/%Y"
     DATE_REGEX = re.compile(r"(\d{2}/\d{2}/\d{4})\s-\s(\d{2}/\d{2}/\d{4})")
-    AMOUNT_REGEX = re.compile(r"-?\$\d{1,3}(,\d{3})*(\.\d{2})?")
+    AMOUNT = re.compile(r"-?\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?")
 
     def parse(self, reader: PDFReader) -> Statement:
         """Entry point
@@ -209,9 +209,7 @@ class Parser(IParser):
             words = line.split()
 
             result = [
-                (i, word)
-                for i, word in enumerate(words)
-                if self.AMOUNT_REGEX.search(word)
+                (i, word) for i, word in enumerate(words) if self.AMOUNT.search(word)
             ]
             if not result:
                 # Skip this line, it's not a transaction line
