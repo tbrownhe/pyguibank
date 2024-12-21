@@ -135,10 +135,10 @@ dmypy.json
 .DS_Store
 
 # Pyguibank output
-config.ini
 *.csv
 *.xlsx
 *.mdl
+init_accounts.json
 
 # DB Browser for SQLite3
 *.db
