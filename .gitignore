@@ -138,9 +138,9 @@ dmypy.json
 *.csv
 *.xlsx
 *.mdl
+init_accounts.json
 
 # DB Browser for SQLite3
 *.db
 *.sqbpro
 *test.py
-init_accounts.json
