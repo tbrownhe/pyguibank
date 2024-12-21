@@ -35,13 +35,14 @@ from PyQt5.QtWidgets import (
 )
 from sqlalchemy.orm import Session
 
-from core import categorize, learn, orm, plot, query, reports
+from core import categorize, cluster, learn, orm, plot, query, reports
 from core.dialog import (
     AddAccount,
     BalanceCheckDialog,
     CompletenessDialog,
     InsertTransaction,
     PreferencesDialog,
+    RecurringTransactionsDialog,
 )
 from core.statements import StatementProcessor
 from core.utils import open_file_in_os, read_config
@@ -238,6 +239,7 @@ class PyGuiBank(QMainWindow):
         transactions_menu.addAction("Insert Manually", self.insert_transaction)
         transactions_menu.addAction("Plot Balances", self.plot_balances)
         transactions_menu.addAction("Plot Categories", self.plot_categories)
+        transactions_menu.addAction("Identify Recurring", self.recurring_transactions)
 
         # Reports Menu
         reports_menu = menubar.addMenu("Reports")
@@ -651,6 +653,11 @@ class PyGuiBank(QMainWindow):
             # Update all GUI elements
             with self.Session() as session:
                 self.update_main_gui(session)
+
+    def recurring_transactions(self):
+        dialog = RecurringTransactionsDialog(self.Session)
+        if dialog.exec_() == QDialog.Accepted:
+            pass
 
     def import_all_statements(self):
         # Import everything

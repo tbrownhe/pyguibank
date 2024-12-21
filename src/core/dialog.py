@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 from PyQt5.QtCore import QAbstractTableModel, QDate, Qt
-from PyQt5.QtGui import QColor
+from PyQt5.QtGui import QColor, QIntValidator
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -22,15 +22,17 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSizePolicy,
+    QSlider,
     QTableView,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
+    QWidget,
 )
 from sqlalchemy.orm import Session, sessionmaker
 
-from . import query
+from . import cluster, query
 from .orm import AccountNumbers, Accounts, Transactions
 from .utils import open_file_in_os, read_config
 from .validation import Statement, Transaction, ValidationError
@@ -979,3 +981,164 @@ class BalanceCheckDialog(QDialog):
         # Connect buttons to dialog result
         self.yes_button.clicked.connect(self.accept)
         self.no_button.clicked.connect(self.reject)
+
+
+class RecurringTransactionsDialog(QDialog):
+    def __init__(self, Session: sessionmaker, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Recurring Transactions Analysis")
+        self.Session = Session
+
+        # Layouts
+        layout = QVBoxLayout(self)
+
+        # Date selectors
+        date_layout = QHBoxLayout()
+        date_layout.addWidget(QLabel("Start Date:"))
+        self.start_date = QDateEdit()
+        self.start_date.setCalendarPopup(True)
+        self.start_date.setDate(QDate.currentDate().addYears(-1))
+        date_layout.addWidget(self.start_date)
+
+        date_layout.addWidget(QLabel("End Date:"))
+        self.end_date = QDateEdit()
+        self.end_date.setCalendarPopup(True)
+        self.end_date.setDate(QDate.currentDate())
+        date_layout.addWidget(self.end_date)
+        layout.addLayout(date_layout)
+
+        # Clustering options
+        clustering_layout = QVBoxLayout()
+        self.include_amount_checkbox = QCheckBox("Include Amount in Clustering")
+        clustering_layout.addWidget(self.include_amount_checkbox)
+
+        # Sliders
+        self.eps_slider = self._create_slider("DBSCAN Epsilon", 1, 20, 5, 10)
+        self.min_samples_slider = self._create_slider("DBSCAN Min Samples", 1, 10, 2, 1)
+        self.min_frequency_slider = self._create_slider(
+            "DBSCAN Min Frequency", 1, 30, 3, 1
+        )
+        self.max_interval_slider = self._create_slider(
+            "DBSCAN Max Interval", 1, 100, 35, 1
+        )
+        self.variance_slider = self._create_slider(
+            "Max Amount Variance (%)", 0, 1000, 100, 10
+        )
+
+        clustering_layout.addWidget(self.eps_slider["widget"])
+        clustering_layout.addWidget(self.min_samples_slider["widget"])
+        clustering_layout.addWidget(self.min_frequency_slider["widget"])
+        clustering_layout.addWidget(self.max_interval_slider["widget"])
+        clustering_layout.addWidget(self.variance_slider["widget"])
+
+        layout.addLayout(clustering_layout)
+
+        # Analyze button
+        self.analyze_button = QPushButton("Analyze")
+        self.analyze_button.clicked.connect(self.analyze_transactions)
+        layout.addWidget(self.analyze_button)
+
+        # Table for displaying results
+        self.table = QTableWidget()
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(
+            ["AccountName", "Date", "Amount", "Cluster", "Description"]
+        )
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.setSortingEnabled(True)
+        layout.addWidget(self.table)
+
+        self.setLayout(layout)
+
+    def _create_slider(self, label, min_val, max_val, default_val, divide_by):
+        layout = QVBoxLayout()
+        slider_label = QLabel(f"{label}: {default_val / divide_by:.1f}")
+        slider = QSlider(Qt.Horizontal)
+        slider.setMinimum(min_val)
+        slider.setMaximum(max_val)
+        slider.setValue(default_val)
+        slider.valueChanged.connect(
+            lambda value: slider_label.setText(f"{label}: {value / divide_by:.1f}")
+        )
+        layout.addWidget(slider_label)
+        layout.addWidget(slider)
+        widget = QWidget()
+        widget.setLayout(layout)
+        return {"slider": slider, "layout": layout, "widget": widget}
+
+    def analyze_transactions(self):
+        # Retrieve and process transactions
+        start_date = self.start_date.date().toPyDate()
+        end_date = self.end_date.date().toPyDate()
+
+        with self.Session() as session:
+            data, columns = query.transactions_in_range(session, start_date, end_date)
+        transactions = pd.DataFrame(data, columns=columns)
+
+        if transactions.empty:
+            self.table.setRowCount(0)
+            return
+
+        # Preprocess and cluster
+        eps = self.eps_slider["slider"].value() / 10
+        min_samples = self.min_samples_slider["slider"].value()
+        min_frequency = self.min_frequency_slider["slider"].value()
+        max_interval = self.max_interval_slider["slider"].value()
+        max_variance = self.variance_slider["slider"].value() / 10
+        include_amount = self.include_amount_checkbox.isChecked()
+
+        # Perform the clustering
+        self.clustered = cluster.recurring_transactions(
+            transactions,
+            eps=eps,
+            min_samples=min_samples,
+            min_frequency=min_frequency,
+            max_interval=max_interval,
+            include_amount=include_amount,
+            max_variance=max_variance,
+        )
+
+        # Update table
+        self.update_table(self.clustered)
+
+    def update_table(self, df: pd.DataFrame):
+        self.table.setRowCount(len(df))
+        for row_index, row in df.iterrows():
+            self.table.setItem(row_index, 0, QTableWidgetItem(row["AccountName"]))
+            self.table.setItem(
+                row_index, 1, QTableWidgetItem(row["Date"].strftime("%Y-%m-%d"))
+            )
+            self.table.setItem(row_index, 2, QTableWidgetItem(f"${row['Amount']:.2f}"))
+            self.table.setItem(row_index, 3, QTableWidgetItem(str(row["Cluster"])))
+            self.table.setItem(row_index, 4, QTableWidgetItem(row["Description"]))
+
+        # Sort by Cluster
+        self.table.sortItems(3, Qt.AscendingOrder)
+
+    def save_to_csv(self):
+        """
+        Save the clustered transactions to a CSV file.
+        """
+        if not hasattr(self, "clustered") or self.clustered.empty:
+            QMessageBox.warning(
+                self, "No Data", "There are no clustered transactions to save."
+            )
+            return
+
+        options = QFileDialog.Options()
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Clustered Transactions",
+            "",
+            "CSV Files (*.csv);;All Files (*)",
+            options=options,
+        )
+        if file_path:
+            try:
+                # Save the dataframe to CSV
+                self.clustered.to_csv(file_path, index=False)
+                QMessageBox.information(
+                    self, "Success", f"Clustered transactions saved to {file_path}."
+                )
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to save file: {e}")

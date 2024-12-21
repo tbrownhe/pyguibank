@@ -606,6 +606,50 @@ def latest_balances(session: Session) -> list[tuple[str, str, float]]:
     return query.all()
 
 
+def transactions_in_range(
+    session: Session,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+) -> tuple[list[tuple], list[str]]:
+    """
+    Retrieves transaction data within a date range.
+    Returns all transactions if no flags are set.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+        start_date (datetime, optional): Minimum date to include
+        end_date (datetime, optional): Maximum date to include
+
+    Returns:
+        tuple[list[tuple], list[str]]: A list of training data and column names.
+    """
+    # Base query
+    query = (
+        session.query(
+            Accounts.AccountName,
+            Transactions.Date,
+            Transactions.Amount,
+            Transactions.Category,
+            Transactions.Description,
+        )
+        .join(Accounts, Transactions.AccountID == Accounts.AccountID)
+        .join(AccountTypes, Accounts.AccountTypeID == AccountTypes.AccountTypeID)
+        .order_by(asc(Transactions.Date), asc(Transactions.TransactionID))
+    )
+
+    # Apply filters
+    if start_date:
+        query = query.filter(Transactions.Date >= start_date.strftime(r"%Y-%m-%d"))
+    elif end_date:
+        query = query.filter(Transactions.Date <= end_date.strftime(r"%Y-%m-%d"))
+
+    # Execute query and fetch results
+    data = query.all()
+    columns = [column.get("name", "Unknown") for column in query.column_descriptions]
+
+    return data, columns
+
+
 def training_set(
     session: Session,
     verified: bool = False,
