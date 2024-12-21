@@ -1,3 +1,4 @@
+import math
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -983,88 +984,195 @@ class BalanceCheckDialog(QDialog):
         self.no_button.clicked.connect(self.reject)
 
 
+class TransactionTableModel(QAbstractTableModel):
+    def __init__(self, data, parent=None):
+        super().__init__(parent)
+        self._data = data  # Expecting a pandas DataFrame
+        self.headers = list(data.columns)
+
+    def rowCount(self, parent=None):
+        return len(self._data)
+
+    def columnCount(self, parent=None):
+        return len(self.headers)
+
+    def data(self, index, role):
+        if not index.isValid():
+            return None
+
+        value = self._data.iloc[index.row(), index.column()]
+
+        if role == Qt.DisplayRole:
+            return str(value)  # Display as a string
+        if role == Qt.TextAlignmentRole:
+            return Qt.AlignRight if isinstance(value, (int, float)) else Qt.AlignLeft
+
+        return None
+
+    def headerData(self, section, orientation, role):
+        if role != Qt.DisplayRole:
+            return None
+
+        if orientation == Qt.Horizontal:
+            return self.headers[section]  # Column headers
+        elif orientation == Qt.Vertical:
+            return str(section + 1)  # Row numbers
+
+    def sort(self, column, order):
+        """Sort the table by the given column."""
+        col_name = self.headers[column]
+        ascending = order == Qt.AscendingOrder
+        self.layoutAboutToBeChanged.emit()
+        self._data.sort_values(by=col_name, ascending=ascending, inplace=True)
+        self.layoutChanged.emit()
+
+    def update_data(self, new_data: pd.DataFrame):
+        """Update the model with new data."""
+        self.layoutAboutToBeChanged.emit()
+        self._data = new_data
+        self.headers = list(new_data.columns)
+        self.layoutChanged.emit()
+
+
 class RecurringTransactionsDialog(QDialog):
     def __init__(self, Session: sessionmaker, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Recurring Transactions Analysis")
+
+        # Fit primary screen
+        screen = QApplication.primaryScreen()
+        geometry = screen.availableGeometry()
+        self.resize(int(0.6 * geometry.width()), int(0.8 * geometry.height()))
+
         self.Session = Session
+        self.clustered = None
+        self.columns = [
+            "AccountName",
+            "Date",
+            "Amount",
+            "Category",
+            "Cluster",
+            "Description",
+        ]
 
-        # Layouts
-        layout = QVBoxLayout(self)
+        # Main layout
+        main_layout = QVBoxLayout(self)
 
-        # Date selectors
-        date_layout = QHBoxLayout()
-        date_layout.addWidget(QLabel("Start Date:"))
+        # Control section layout
+        control_widget = QWidget()
+        control_layout = QGridLayout()
+        control_widget.setLayout(control_layout)
+
+        # Start date and end date selectors
+        row = 0
+        start_date_label = QLabel("Start Date:")
+        start_date_label.setAlignment(Qt.AlignRight)
+        control_layout.addWidget(start_date_label, row, 0)
         self.start_date = QDateEdit()
         self.start_date.setCalendarPopup(True)
         self.start_date.setDate(QDate.currentDate().addYears(-1))
-        date_layout.addWidget(self.start_date)
+        control_layout.addWidget(self.start_date, row, 1)
 
-        date_layout.addWidget(QLabel("End Date:"))
+        end_date_label = QLabel("Start Date:")
+        end_date_label.setAlignment(Qt.AlignRight)
+        control_layout.addWidget(end_date_label, row, 2)
+
         self.end_date = QDateEdit()
         self.end_date.setCalendarPopup(True)
         self.end_date.setDate(QDate.currentDate())
-        date_layout.addWidget(self.end_date)
-        layout.addLayout(date_layout)
+        control_layout.addWidget(self.end_date, row, 3)
+        row += 1
 
         # Clustering options
-        clustering_layout = QVBoxLayout()
-        self.include_amount_checkbox = QCheckBox("Include Amount in Clustering")
-        clustering_layout.addWidget(self.include_amount_checkbox)
+        self.include_amount_checkbox = QCheckBox(
+            "Include Amount in Clustering Analysis"
+        )
+        control_layout.addWidget(self.include_amount_checkbox, row, 2, 1, 2)
+        row += 1
 
         # Sliders
-        self.eps_slider = self._create_slider("DBSCAN Epsilon", 1, 20, 5, 10)
-        self.min_samples_slider = self._create_slider("DBSCAN Min Samples", 1, 10, 2, 1)
+        self.eps_slider = self._create_slider(
+            "Cluster Separation (Epsilon)", 1, 200, 50, 100
+        )
+        self.min_samples_slider = self._create_slider(
+            "Min Members per Cluster", 1, 10, 2, 1
+        )
         self.min_frequency_slider = self._create_slider(
-            "DBSCAN Min Frequency", 1, 30, 3, 1
+            "Min Interval (days)", 1, 30, 3, 1
         )
         self.max_interval_slider = self._create_slider(
-            "DBSCAN Max Interval", 1, 100, 35, 1
+            "Max Interval (days)", 1, 100, 35, 1, show_inf=True
         )
         self.variance_slider = self._create_slider(
-            "Max Amount Variance (%)", 0, 1000, 100, 10
+            "Max Amount Variance (%)", 0, 300, 100, 1, show_inf=True
         )
 
-        clustering_layout.addWidget(self.eps_slider["widget"])
-        clustering_layout.addWidget(self.min_samples_slider["widget"])
-        clustering_layout.addWidget(self.min_frequency_slider["widget"])
-        clustering_layout.addWidget(self.max_interval_slider["widget"])
-        clustering_layout.addWidget(self.variance_slider["widget"])
-
-        layout.addLayout(clustering_layout)
+        sliders = [
+            self.eps_slider,
+            self.min_samples_slider,
+            self.min_frequency_slider,
+            self.max_interval_slider,
+            self.variance_slider,
+        ]
+        for row, slider in enumerate(sliders, start=row):
+            control_layout.addWidget(slider["label"], row, 0, 1, 2)
+            control_layout.addWidget(slider["slider"], row, 2, 1, 2)
+        row += 1
 
         # Analyze button
-        self.analyze_button = QPushButton("Analyze")
-        self.analyze_button.clicked.connect(self.analyze_transactions)
-        layout.addWidget(self.analyze_button)
+        analyze_button = QPushButton("Analyze")
+        analyze_button.clicked.connect(self.analyze_transactions)
+        control_layout.addWidget(analyze_button, row, 2, 1, 2)
+
+        # Add the control section to the main layout
+        main_layout.addWidget(control_widget)
 
         # Table for displaying results
-        self.table = QTableWidget()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(
-            ["AccountName", "Date", "Amount", "Cluster", "Description"]
-        )
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table = QTableView()
+        self.model = TransactionTableModel(pd.DataFrame([], columns=self.columns))
+        self.table.setModel(self.model)
         self.table.setSortingEnabled(True)
-        layout.addWidget(self.table)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        main_layout.addWidget(self.table)
 
-        self.setLayout(layout)
+        # Save Table and Close buttons
+        button_layout = QHBoxLayout()
+        self.save_button = QPushButton("Save Table")
+        self.save_button.clicked.connect(self.save_to_csv)
+        button_layout.addWidget(self.save_button)
 
-    def _create_slider(self, label, min_val, max_val, default_val, divide_by):
-        layout = QVBoxLayout()
-        slider_label = QLabel(f"{label}: {default_val / divide_by:.1f}")
+        self.close_button = QPushButton("Close", self)
+        self.close_button.clicked.connect(self.accept)
+        button_layout.addWidget(self.close_button)
+
+        main_layout.addLayout(button_layout)
+
+        self.setLayout(main_layout)
+
+    def _create_slider(
+        self, label, min_val, max_val, default_val, divide_by, show_inf=False
+    ):
+        precision = int(math.ceil(math.log10(divide_by)))
+        slider_label = QLabel(f"{label}: {default_val / divide_by:.{precision}f}")
+        slider_label.setAlignment(Qt.AlignRight)
         slider = QSlider(Qt.Horizontal)
         slider.setMinimum(min_val)
         slider.setMaximum(max_val)
         slider.setValue(default_val)
-        slider.valueChanged.connect(
-            lambda value: slider_label.setText(f"{label}: {value / divide_by:.1f}")
-        )
-        layout.addWidget(slider_label)
-        layout.addWidget(slider)
-        widget = QWidget()
-        widget.setLayout(layout)
-        return {"slider": slider, "layout": layout, "widget": widget}
+
+        def update_label(value):
+            if show_inf and value == max_val:
+                slider_label.setText(f"{label}: Inf")
+            else:
+                slider_label.setText(f"{label}: {value / divide_by:.{precision}f}")
+
+        slider.valueChanged.connect(update_label)
+        return {"slider": slider, "label": slider_label}
+
+    def inf_slider(self, slider):
+        value = 1e6 if slider.value() == slider.maximum() else slider.value()
+        return value
 
     def analyze_transactions(self):
         # Retrieve and process transactions
@@ -1080,11 +1188,11 @@ class RecurringTransactionsDialog(QDialog):
             return
 
         # Preprocess and cluster
-        eps = self.eps_slider["slider"].value() / 10
+        eps = self.eps_slider["slider"].value() / 100
         min_samples = self.min_samples_slider["slider"].value()
         min_frequency = self.min_frequency_slider["slider"].value()
-        max_interval = self.max_interval_slider["slider"].value()
-        max_variance = self.variance_slider["slider"].value() / 10
+        max_interval = self.inf_slider(self.max_interval_slider["slider"])
+        max_variance = self.inf_slider(self.variance_slider["slider"])
         include_amount = self.include_amount_checkbox.isChecked()
 
         # Perform the clustering
@@ -1099,7 +1207,7 @@ class RecurringTransactionsDialog(QDialog):
         )
 
         # Update table
-        self.update_table(self.clustered)
+        self.model.update_data(self.clustered[self.columns].reset_index(drop=True))
 
     def update_table(self, df: pd.DataFrame):
         self.table.setRowCount(len(df))
@@ -1119,7 +1227,7 @@ class RecurringTransactionsDialog(QDialog):
         """
         Save the clustered transactions to a CSV file.
         """
-        if not hasattr(self, "clustered") or self.clustered.empty:
+        if self.clustered is None:
             QMessageBox.warning(
                 self, "No Data", "There are no clustered transactions to save."
             )
