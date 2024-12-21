@@ -90,7 +90,6 @@ class Parser(IParser):
         """
         _, from_line = find_line_re_search(self.lines, self.FROM_DATE)
         _, to_line = find_line_re_search(self.lines, self.TO_DATE)
-        print(from_line, to_line)
 
         # Parse the lines into datetime
         start_date_str = from_line.split()[1]
