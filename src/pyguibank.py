@@ -8,6 +8,7 @@ import matplotlib.dates as mdates
 import pandas as pd
 from jsonschema import ValidationError
 from jsonschema import validate as validate_json
+from loguru import logger
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -52,6 +53,92 @@ class MatplotlibCanvas(FigureCanvas):
         self.axes = self.fig.add_subplot(111)
         super().__init__(self.fig)
         self.setParent(parent)
+
+        # Connect the pick event
+        self.fig.canvas.mpl_connect("pick_event", self.on_legend_click)
+
+    def plot(
+        self,
+        df: pd.DataFrame,
+        selected_accounts: list[str],
+        left=None,
+        right=None,
+        title="",
+        xlabel="",
+        ylabel="",
+        dashed=[],
+    ):
+        self.axes.clear()
+
+        # Handle empty data
+        if df.empty or not selected_accounts:
+            self.axes.text(
+                0.5,
+                0.5,
+                "No data available",
+                transform=self.axes.transAxes,
+                ha="center",
+            )
+            self.draw()
+            return
+
+        # Plot the lines
+        self.lines = {}
+        for account_name in selected_accounts:
+            linestyle = "dashed" if account_name in dashed else "solid"
+            (line,) = self.axes.plot(
+                df.index,
+                df[account_name],
+                label=account_name,
+                picker=True,
+                linestyle=linestyle,
+            )
+            self.lines[account_name] = line
+
+        # Handle options
+        left = left if left else df.index.min()
+        right = right if right else df.index.max()
+
+        # Customize appearance
+        self.axes.set_xlim(left=left, right=right)
+        self.axes.axhline(0, color="black", linewidth=1.5, linestyle="-")
+        self.axes.axvline(right, color="red", linewidth=1.5, linestyle="-")
+        self.axes.set_title(title)
+        self.axes.set_xlabel(xlabel)
+        self.axes.set_ylabel(ylabel)
+        self.axes.grid(True)
+        self.axes.fmt_xdata = lambda x: mdates.num2date(x).strftime(r"%Y-%m-%d")
+
+        # Add legend with picking enabled
+        legend = self.axes.legend(loc="upper left", fontsize="xx-small")
+        hitbox = 5.0
+        for legend_entry in legend.get_lines():
+            legend_entry.set_picker(hitbox)
+
+        self.draw()
+
+    def on_legend_click(self, event):
+        # Get the corresponding label
+        legend_entry = event.artist
+        label = legend_entry.get_label()
+
+        # Find the line corresponding to the label
+        line = self.lines.get(label)
+
+        if line is None:
+            logger.warning(f"No line found for label {label}")
+            return
+
+        if line:
+            # Toggle the line's visibility
+            visible = not line.get_visible()
+            line.set_visible(visible)
+
+            # Toggle legend entry alpha (fade when hidden)
+            legend_entry.set_alpha(1.0 if visible else 0.2)
+
+            # Redraw the canvas
+            self.draw()
 
 
 class PandasModel(QAbstractTableModel):
@@ -322,13 +409,12 @@ class PyGuiBank(QMainWindow):
         )
 
         ### Add balance history chart
-        balance_canvas = MatplotlibCanvas(self, width=7, height=5)
-        self.balance_ax = balance_canvas.axes
-        balance_toolbar = NavigationToolbar(balance_canvas, self)
+        self.balance_canvas = MatplotlibCanvas(self, width=7, height=5)
+        balance_toolbar = NavigationToolbar(self.balance_canvas, self)
 
         balance_chart_layout = QVBoxLayout()
         balance_chart_layout.addWidget(balance_toolbar)
-        balance_chart_layout.addWidget(balance_canvas)
+        balance_chart_layout.addWidget(self.balance_canvas)
 
         balance_chart_group = QGroupBox("Balance History Chart")
         balance_chart_group.setLayout(balance_chart_layout)
@@ -336,13 +422,12 @@ class PyGuiBank(QMainWindow):
         self.grid_layout.addWidget(balance_chart_group, 0, 2, 3, 1)
 
         ### Add category spending chart
-        category_canvas = MatplotlibCanvas(self, width=7, height=5)
-        self.category_ax = category_canvas.axes
-        category_toolbar = NavigationToolbar(category_canvas, self)
+        self.category_canvas = MatplotlibCanvas(self, width=7, height=5)
+        category_toolbar = NavigationToolbar(self.category_canvas, self)
 
         category_chart_layout = QVBoxLayout()
         category_chart_layout.addWidget(category_toolbar)
-        category_chart_layout.addWidget(category_canvas)
+        category_chart_layout.addWidget(self.category_canvas)
 
         category_chart_group = QGroupBox("Category Spending Chart")
         category_chart_group.setLayout(category_chart_layout)
@@ -868,32 +953,20 @@ class PyGuiBank(QMainWindow):
         if smoothing_days > 1:
             df = df.rolling(window=smoothing_days, min_periods=1).mean()
 
-        # Clear the current contents of the plot
-        self.balance_ax.cla()
-
-        # Plot only account data where the account is in the checklist
+        # Plot selected account data
         filtered_accounts = [
             acct for acct in df.columns.values if acct in selected_accounts
         ]
-        for account_name in filtered_accounts:
-            linestyle = "dashed" if account_name in debt_cols else "solid"
-            self.balance_ax.plot(df.index, df[account_name], linestyle=linestyle)
-
-        # Customize plot
-        self.balance_ax.set_xlim(left=cutoff_date, right=now)
-        self.balance_ax.axhline(0, color="black", linewidth=1.5, linestyle="-")
-        self.balance_ax.axvline(now, color="red", linewidth=1.5, linestyle="-")
-        self.balance_ax.set_title("Balance History")
-        self.balance_ax.set_xlabel("Date")
-        self.balance_ax.set_ylabel("Balance ($)")
-        self.balance_ax.grid(True)
-        self.balance_ax.legend(filtered_accounts, loc="upper left", fontsize="xx-small")
-
-        # Show mouse hover coordinate
-        self.balance_ax.fmt_xdata = lambda x: mdates.num2date(x).strftime(r"%Y-%m-%d")
-
-        # Redraw the canvas to reflect updates
-        self.balance_ax.figure.canvas.draw()
+        self.balance_canvas.plot(
+            df,
+            filtered_accounts,
+            left=cutoff_date,
+            right=now,
+            title="Balance History",
+            xlabel="Date",
+            ylabel="Balance ($)",
+            dashed=debt_cols,
+        )
 
     def update_category_spending_chart(self, session: Session):
         QApplication.processEvents()
@@ -914,29 +987,17 @@ class PyGuiBank(QMainWindow):
         if smoothing_months > 1:
             df = df.rolling(window=smoothing_months, min_periods=1).mean()
 
-        # Clear the current contents of the plot
-        self.category_ax.cla()
-
-        # Plot only the selected categories
+        # Plot the selected categories
         filtered_cats = [cat for cat in df.columns.values if cat in selected_cats]
-        for category in filtered_cats:
-            self.category_ax.plot(df.index, df[category])
-
-        # Customize plot
-        self.category_ax.set_xlim(left=cutoff_date, right=now)
-        self.category_ax.axhline(0, color="black", linewidth=1.5, linestyle="-")
-        self.category_ax.axvline(now, color="red", linewidth=1.5, linestyle="-")
-        self.category_ax.set_title("Monthly Spending by Category")
-        self.category_ax.set_xlabel("Date")
-        self.category_ax.set_ylabel("Amount ($)")
-        self.category_ax.grid(True)
-        self.category_ax.legend(filtered_cats, loc="upper left", fontsize="xx-small")
-
-        # Show mouse hover coordinate
-        self.category_ax.fmt_xdata = lambda x: mdates.num2date(x).strftime(r"%Y-%m-%d")
-
-        # Redraw the canvas to reflect updates
-        self.category_ax.figure.canvas.draw()
+        self.category_canvas.plot(
+            df,
+            filtered_cats,
+            left=cutoff_date,
+            right=now,
+            title="Monthly Spending by Category",
+            xlabel="Date",
+            ylabel="Amount ($)",
+        )
 
 
 if __name__ == "__main__":
