@@ -2,28 +2,35 @@ import re
 
 import nltk
 import pandas as pd
+from loguru import logger
 from scipy.sparse import hstack
 from sklearn.cluster import DBSCAN
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import MinMaxScaler
+
+# Download stopwords if necessary
+for attempt in range(1, 4):
+    try:
+        from nltk.corpus import stopwords
+
+        STOP_WORDS = set(stopwords.words("english"))
+    except Exception:
+        logger.debug(
+            "Downloading Stopwords for 'nltk' corpus... Attempt {attempt} of 3"
+        )
+        nltk.download("stopwords")
+        continue
+    break
 
 
 def preprocess_text(description: str) -> str:
     """
     Normalize and preprocess the transaction description.
     """
-    # Download stopwords if necessary
-    try:
-        from nltk.corpus import stopwords
-    except LookupError:
-        nltk.download("stopwords")
-        from nltk.corpus import stopwords
-
     # Normalize text and remove special characters
-    stop_words = set(stopwords.words("english"))
     description = description.lower()
     description = re.sub(r"[^a-z0-9\s]", "", description)
-    tokens = [word for word in description.split() if word not in stop_words]
+    tokens = [word for word in description.split() if word not in STOP_WORDS]
     return " ".join(tokens)
 
 
