@@ -712,11 +712,12 @@ class PyGuiBank(QMainWindow):
             max_date = query.statement_max_date(session)
 
         # Prompt the user whether they want to correct the issue
+        count = 0
         for account_name, balance, date in data:
             days = (max_date - datetime.strptime(date, r"%Y-%m-%d")).days
             if days < 120 or balance == 0.0:
                 continue
-
+            count += 1
             balance_dialog = BalanceCheckDialog(account_name, balance)
             if balance_dialog.exec_() != QDialog.Accepted:
                 continue
@@ -728,6 +729,17 @@ class PyGuiBank(QMainWindow):
                 # Update all GUI elements
                 with self.Session() as session:
                     self.update_main_gui(session)
+
+        # Completed dialog
+        QMessageBox.information(
+            self,
+            "Search Complete",
+            (
+                "No additional discrepancies found."
+                if count > 0
+                else "No discrepancies found."
+            ),
+        )
 
     def plot_balances(self):
         with self.Session() as session:
