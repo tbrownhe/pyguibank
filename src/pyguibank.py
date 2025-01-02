@@ -1,6 +1,8 @@
 import json
+import os
 import sys
 import traceback
+from contextlib import suppress
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -35,7 +37,7 @@ from PyQt5.QtWidgets import (
 )
 from sqlalchemy.orm import Session
 
-from core import categorize, cluster, learn, orm, plot, query, reports
+from core import categorize, learn, orm, plot, query, reports
 from core.dialog import (
     AddAccount,
     BalanceCheckDialog,
@@ -45,7 +47,10 @@ from core.dialog import (
     RecurringTransactionsDialog,
 )
 from core.statements import StatementProcessor
-from core.utils import open_file_in_os, read_config
+from core.utils import open_file_in_os, read_config, resource_path
+
+# Set Bindings
+os.environ["QT_API"] = "PyQt5"
 
 
 class MatplotlibCanvas(FigureCanvas):
@@ -467,7 +472,6 @@ class PyGuiBank(QMainWindow):
 
         # Create text edit for exception traceback
         tb = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
-        # print(tb)
         text_edit = QTextEdit()
         text_edit.setPlainText(tb)
         text_edit.setReadOnly(True)
@@ -496,7 +500,7 @@ class PyGuiBank(QMainWindow):
         dialog.exec_()
 
     def update_from_config(self):
-        self.config_path = Path("") / "config.ini"
+        self.config_path = resource_path(Path("") / "config.ini")
         self.config = read_config(self.config_path)
         self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
         self.ensure_db()
@@ -554,7 +558,7 @@ class PyGuiBank(QMainWindow):
             account_numbers = query.account_numbers_table(session)
 
         data = {"Accounts": accounts, "AccountNumbers": account_numbers}
-        dpath = Path("") / "init_accounts.json"
+        dpath = resource_path(Path("") / "init_accounts.json")
         with dpath.open("w") as f:
             json.dump(data, f, indent=2)
 
@@ -595,7 +599,7 @@ class PyGuiBank(QMainWindow):
 
     def import_db_config(self):
         # Import statement search parameters
-        fpath = Path("") / "init_db.json"
+        fpath = resource_path(Path("") / "init_db.json")
         with fpath.open("r") as f:
             data = json.load(f)
 
@@ -1050,9 +1054,19 @@ class PyGuiBank(QMainWindow):
 
 
 if __name__ == "__main__":
+    # Close the splash screen
+    with suppress(ModuleNotFoundError):
+        import pyi_splash  # type: ignore
+
+        pyi_splash.close()
+
     # Kick off the GUI
-    app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("pyguibank.png"))
-    window = PyGuiBank()
-    window.show()
-    sys.exit(app.exec_())
+    try:
+        app = QApplication(sys.argv)
+        app.setWindowIcon(QIcon(str(resource_path("pyguibank.png"))))
+        window = PyGuiBank()
+        window.show()
+        sys.exit(app.exec_())
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        sys.exit(1)

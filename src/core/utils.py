@@ -3,11 +3,18 @@ import hashlib
 import os
 import re
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Union
 
 import pdfplumber
+
+
+def resource_path(relative_path: Path):
+    """Get absolute path to resource, works for PyInstaller bundles."""
+    base_path = getattr(sys, "_MEIPASS", os.path.abspath("."))
+    return Path(base_path) / relative_path
 
 
 def read_config(config_path: Path):

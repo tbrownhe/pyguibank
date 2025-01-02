@@ -15,5 +15,6 @@ dependencies:
   - sqlalchemy
   - jsonschema
   - nltk
+  - pyinstaller==5.13
   - pip:
       - pdfplumber==0.11.4
