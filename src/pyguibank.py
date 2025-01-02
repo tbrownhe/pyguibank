@@ -836,19 +836,49 @@ class PyGuiBank(QMainWindow):
 
     def categorize_uncategorized(self):
         model_path = Path(self.config.get("CLASSIFIER", "model_path")).resolve()
+        if not model_path.exists():
+            QMessageBox.warning(
+                self,
+                "Classifier Model Not Found",
+                (
+                    f"{model_path} could not be found.\n"
+                    "Please select a valid classifier model file in Preferences."
+                ),
+            )
+            return
         with self.Session() as session:
             categorize.transactions(
                 session, model_path, unverified=True, uncategorized=True
             )
             self.update_main_gui(session)
+        QMessageBox.information(
+            self,
+            "Success",
+            "Succesfully categorized all uncategorized transactions",
+        )
 
     def categorize_unverified(self):
         model_path = Path(self.config.get("CLASSIFIER", "model_path")).resolve()
+        if not model_path.exists():
+            QMessageBox.warning(
+                self,
+                "Classifier Model Not Found",
+                (
+                    f"{model_path} could not be found.\n"
+                    "Please select a valid classifier model file in Preferences."
+                ),
+            )
+            return
         with self.Session() as session:
             categorize.transactions(
                 session, model_path, unverified=True, uncategorized=False
             )
             self.update_main_gui(session)
+        QMessageBox.information(
+            self,
+            "Success",
+            "Succesfully categorized all unverified transactions",
+        )
 
     ################################
     ### CENTRAL WIDGET FUNCTIONS ###
