@@ -37,6 +37,7 @@ class Accounts(Base):
     AccountTypeID = Column(Integer, ForeignKey("AccountTypes.AccountTypeID"))
     Company = Column(String)
     Description = Column(Text)
+    AppreciationRate = Column(Numeric, default=0)
 
     account_types = relationship("AccountTypes", back_populates="accounts")
     account_numbers = relationship("AccountNumbers", back_populates="accounts")

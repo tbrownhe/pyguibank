@@ -222,9 +222,12 @@ def update_accounts_table(
     accounts_table.setHorizontalHeaderLabels(columns)
     accounts_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
 
+    appreciation_idx = len(columns) - 1
     for row_idx, row_data in enumerate(data):
-        for col_idx, cell_data in enumerate(row_data):
-            item = QTableWidgetItem(str(cell_data))
+        for col_idx, value in enumerate(row_data):
+            if col_idx == appreciation_idx:
+                value = f"{value:.4f}" if value != 0 else "0"
+            item = QTableWidgetItem(str(value))
             item.setFlags(item.flags() & ~Qt.ItemIsEditable)
             accounts_table.setItem(row_idx, col_idx, item)
 
@@ -241,12 +244,12 @@ def update_accounts_table(
     dialog.adjustSize()
 
 
-class AddAccount(QDialog):
+class EditAccounts(QDialog):
     def __init__(
         self, Session: sessionmaker, company="", description="", account_type=""
     ):
         super().__init__()
-        self.setWindowTitle("Accounts")
+        self.setWindowTitle("Edit Accounts")
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
         screen_height = QApplication.primaryScreen().availableGeometry().height()
@@ -255,7 +258,7 @@ class AddAccount(QDialog):
         self.setContentsMargins(10, 10, 10, 10)
 
         self.Session = Session
-        self.account_cols = None
+        self.selected_account = None
 
         # Main layout
         layout = QVBoxLayout(self)
@@ -270,9 +273,12 @@ class AddAccount(QDialog):
         layout.addWidget(self.accounts_table)
         with self.Session() as session:
             update_accounts_table(self, session, self.accounts_table)
+        self.accounts_table.cellClicked.connect(self.populate_fields)
 
         # Descriptive text
-        desc2_text = "To add an account, please fill out the following information:"
+        desc2_text = (
+            "To add or edit an account, please fill out the following information:"
+        )
         desc2_label = QLabel(desc2_text)
         layout.addWidget(desc2_label)
 
@@ -280,61 +286,173 @@ class AddAccount(QDialog):
         form_layout = QFormLayout()
 
         self.account_name_edit = QLineEdit(self)
-
         self.company_edit = QLineEdit(self)
-        if company:
-            self.company_edit.setText(company)
-
         self.description_edit = QLineEdit(self)
-        if description:
-            self.description_edit.setText(description)
-
         self.account_type_combo = QComboBox(self)
+
         with self.Session() as session:
             account_types = query.account_types(session)
         self.account_type_combo.addItems(account_types)
-        if account_type:
-            index = account_types.index(account_type)
-            self.account_type_combo.setCurrentIndex(index)
 
-        # Tool tips
-        self.account_name_edit.setPlaceholderText(
-            "Enter a UNIQUE Account Name for the account"
-        )
-        self.company_edit.setToolTip("Company associated with this account")
-        self.description_edit.setPlaceholderText(
-            "Account description, e.g., Personal, Business, Student, etc"
-        )
-        self.account_type_combo.setToolTip("Choose the account type from the list")
+        self.appreciation_edit = QLineEdit(self)
+        self.appreciation_edit.setPlaceholderText("Enter annual appreciation rate (%)")
+        self.appreciation_edit.setEnabled(False)
 
-        # Create form layout
+        self.account_type_combo.currentTextChanged.connect(
+            self.toggle_appreciation_field
+        )
+
         form_layout.addRow("Account Name:", self.account_name_edit)
         form_layout.addRow("Company:", self.company_edit)
         form_layout.addRow("Description:", self.description_edit)
         form_layout.addRow("Account Type:", self.account_type_combo)
+        form_layout.addRow("Appreciation Rate (%):", self.appreciation_edit)
 
         layout.addLayout(form_layout)
 
-        # Submit button with validation
-        cancel_button = QPushButton("Cancel")
-        cancel_button.clicked.connect(self.cancel)
-
-        submit_button = QPushButton("Submit")
-        submit_button.clicked.connect(self.submit)
-
+        # Action buttons
         button_layout = QHBoxLayout()
-        button_layout.addWidget(cancel_button)
-        button_layout.addWidget(submit_button)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.reject)
+        button_layout.addWidget(self.cancel_button)
+
+        self.add_button = QPushButton("Add Account")
+        self.add_button.setStyleSheet("background-color: lightgreen; color: black;")
+        self.add_button.clicked.connect(self.add_account)
+        button_layout.addWidget(self.add_button)
+
+        self.edit_button = QPushButton("Edit Account")
+        self.edit_button.setStyleSheet("background-color: lightblue; color: black;")
+        self.edit_button.clicked.connect(self.edit_account)
+        self.edit_button.setEnabled(False)  # Disabled by default
+        button_layout.addWidget(self.edit_button)
+
+        self.delete_button = QPushButton("Delete Account")
+        self.delete_button.setStyleSheet("background-color: lightcoral; color: black;")
+        self.delete_button.clicked.connect(self.delete_account)
+        self.delete_button.setEnabled(False)  # Disabled by default
+        button_layout.addWidget(self.delete_button)
+
         layout.addLayout(button_layout)
 
-        # Set the layout in the QDialog
         self.setLayout(layout)
 
-    def cancel(self):
-        self.reject()
+    def toggle_appreciation_field(self, account_type: str):
+        """
+        Enable or disable the Appreciation Rate field based on account type.
+        """
+        if account_type == "TangibleAsset":
+            self.appreciation_edit.setEnabled(True)
+        else:
+            self.appreciation_edit.clear()
+            self.appreciation_edit.setEnabled(False)
 
-    def submit(self):
-        # Ensure required fields are filled
+    def populate_fields(self, row: int, column: int):
+        """
+        Populate fields with the data from the selected account in the table.
+        """
+        self.selected_account = self.accounts_table.item(row, 0).text()
+        self.account_name_edit.setText(self.selected_account)
+        self.company_edit.setText(self.accounts_table.item(row, 1).text())
+        self.description_edit.setText(self.accounts_table.item(row, 2).text())
+        self.account_type_combo.setCurrentText(self.accounts_table.item(row, 3).text())
+        if self.appreciation_edit.isEnabled():
+            self.appreciation_edit.setText(self.accounts_table.item(row, 4).text())
+        self.edit_button.setEnabled(True)
+        self.delete_button.setEnabled(True)
+
+    def add_account(self):
+        """
+        Add a new account.
+        """
+        if not self.validate_fields():
+            return
+
+        account_type = self.account_type_combo.currentText()
+        with self.Session() as session:
+            account_type_id = query.account_type_id(session, account_type)
+
+        appreciation_rate = self.get_appreciation_rate()
+
+        row = {
+            "AccountTypeID": account_type_id,
+            "Company": self.company_edit.text(),
+            "Description": self.description_edit.text(),
+            "AccountName": self.account_name_edit.text(),
+            "AppreciationRate": appreciation_rate or 0.0,
+        }
+
+        try:
+            with self.Session() as session:
+                query.insert_rows_batched(session, Accounts, [row])
+            QMessageBox.information(self, "Success", "Account added successfully.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to add account:\n{str(e)}")
+        self.refresh_table()
+
+    def edit_account(self):
+        """
+        Edit the selected account.
+        """
+        confirm = QMessageBox.question(
+            self,
+            "Edit Account",
+            f"Are you sure you want to edit the account '{self.selected_account}'?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+
+        if not self.validate_fields():
+            return
+
+        account_type = self.account_type_combo.currentText()
+        appreciation_rate = self.get_appreciation_rate()
+
+        try:
+            with self.Session() as session:
+                account_type_id = query.account_type_id(session, account_type)
+                query.update_account_details(
+                    session,
+                    account_name=self.selected_account,
+                    account_type_id=account_type_id,
+                    company=self.company_edit.text(),
+                    desc=self.description_edit.text(),
+                    appreciation=appreciation_rate or 0.0,
+                )
+            QMessageBox.information(self, "Success", "Account updated successfully.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to update account:\n{str(e)}")
+        self.refresh_table()
+
+    def delete_account(self):
+        """
+        Delete the selected account.
+        """
+        confirm = QMessageBox.question(
+            self,
+            "Delete Account",
+            f"Are you sure you want to delete the account '{self.selected_account}'?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if confirm != QMessageBox.Yes:
+            return
+
+        try:
+            with self.Session() as session:
+                session.query(Accounts).filter_by(
+                    AccountName=self.selected_account
+                ).delete()
+                session.commit()
+            QMessageBox.information(self, "Success", "Account deleted successfully.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to delete account:\n{str(e)}")
+        self.refresh_table()
+
+    def validate_fields(self) -> bool:
+        """
+        Validate required fields.
+        """
         if not all(
             [
                 self.account_name_edit.text(),
@@ -345,30 +463,44 @@ class AddAccount(QDialog):
             QMessageBox.warning(
                 self, "Missing Information", "Please fill in all required fields."
             )
-            return
+            return False
+        return True
 
-        # Grab the AccountTypeID
-        account_type = self.account_type_combo.currentText()
+    def get_appreciation_rate(self) -> float:
+        """
+        Get the appreciation rate value.
+        """
+        if self.appreciation_edit.isEnabled():
+            try:
+                return float(self.appreciation_edit.text())
+            except ValueError:
+                QMessageBox.warning(
+                    self,
+                    "Invalid Input",
+                    "Please enter a valid number for appreciation rate.",
+                )
+                return None
+        return 0.0
+
+    def refresh_table(self):
+        """
+        Refresh the accounts table.
+        """
         with self.Session() as session:
-            account_type_id = query.account_type_id(session, account_type)
+            update_accounts_table(self, session, self.accounts_table)
+        self.clear_fields()
 
-        # Insert new account into Accounts Table
-        row = {
-            "AccountTypeID": account_type_id,
-            "Company": self.company_edit.text(),
-            "Description": self.description_edit.text(),
-            "AccountName": self.account_name_edit.text(),
-        }
-        try:
-            with self.Session() as session:
-                query.insert_rows_batched(session, Accounts, [row])
-            QMessageBox.information(
-                self, "Success", "New account has been added successfully."
-            )
-            self.accept()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to create account:\n{str(e)}")
-            return
+    def clear_fields(self):
+        """
+        Clear the input fields.
+        """
+        self.account_name_edit.clear()
+        self.company_edit.clear()
+        self.description_edit.clear()
+        self.account_type_combo.setCurrentIndex(0)
+        self.appreciation_edit.clear()
+        self.edit_button.setEnabled(False)
+        self.delete_button.setEnabled(False)
 
 
 class AssignAccountNumber(QDialog):
@@ -385,9 +517,8 @@ class AssignAccountNumber(QDialog):
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
         screen_height = QApplication.primaryScreen().availableGeometry().height()
-        max_height = int(screen_height * 0.8)
-        self.setMinimumHeight(400)
-        self.setMaximumHeight(max_height)
+        self.setMinimumHeight(int(screen_height * 0.6))
+        self.setMaximumHeight(int(screen_height))
         self.setContentsMargins(10, 10, 10, 10)
 
         self.Session = Session
@@ -459,7 +590,7 @@ class AssignAccountNumber(QDialog):
             self.account_id = int(account_id_item.text())
 
     def new_account(self):
-        dialog = AddAccount(
+        dialog = EditAccounts(
             self.Session, self.company, self.description, self.account_type
         )
         if dialog.exec_() == QDialog.Accepted:
@@ -575,10 +706,10 @@ class InsertTransaction(QDialog):
         """
         try:
             with self.Session() as session:
-                data, _ = query.accounts_details(session)
+                data = query.accounts_with_ids(session)
 
             selected_index = -1
-            for index, (account_id, account_name, _, _, _) in enumerate(data):
+            for index, (account_id, account_name) in enumerate(data):
                 self.account_dropdown.addItem(
                     f"{account_name} (ID: {account_id})", account_id
                 )
@@ -1250,3 +1381,97 @@ class RecurringTransactionsDialog(QDialog):
                 )
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save file: {e}")
+
+
+class AppreciationCalculator(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Appreciation Rate Calculator")
+        self.resize(400, 250)
+
+        # Main layout
+        layout = QVBoxLayout(self)
+
+        # Descriptive text
+        desc_text = (
+            "This calculator estimates the Appreciation Rate of a Tangible Asset.\n"
+            "The result can be used for Tangible Assets entered manually into\n"
+            "the Edit Accounts Dialog."
+        )
+        desc_label = QLabel(desc_text)
+        layout.addWidget(desc_label)
+
+        # Form layout for user inputs
+        form_layout = QFormLayout()
+
+        # Start date selector
+        self.start_date = QDateEdit()
+        self.start_date.setCalendarPopup(True)
+        self.start_date.setDate(QDate.currentDate().addYears(-1))  # Default: 1 year ago
+        form_layout.addRow("Start Date:", self.start_date)
+
+        # End date selector
+        self.end_date = QDateEdit()
+        self.end_date.setCalendarPopup(True)
+        self.end_date.setDate(QDate.currentDate())  # Default: today
+        form_layout.addRow("End Date:", self.end_date)
+
+        # Starting value input
+        self.start_value_edit = QLineEdit()
+        self.start_value_edit.setPlaceholderText("Enter the starting value")
+        form_layout.addRow("Starting Value:", self.start_value_edit)
+
+        # Ending value input
+        self.end_value_edit = QLineEdit()
+        self.end_value_edit.setPlaceholderText("Enter the ending value")
+        form_layout.addRow("Ending Value:", self.end_value_edit)
+
+        # Output display
+        self.result_edit = QLineEdit()
+        self.result_edit.setReadOnly(True)
+        self.result_edit.setPlaceholderText("Annual Appreciation Rate (%)")
+        form_layout.addRow("Appreciation Rate (%)", self.result_edit)
+
+        layout.addLayout(form_layout)
+
+        # Button layout
+        button_layout = QHBoxLayout()
+
+        # Submit button
+        self.submit_button = QPushButton("Calculate")
+        self.submit_button.clicked.connect(self.calculate_appreciation_rate)
+        button_layout.addWidget(self.submit_button)
+
+        # Close button
+        self.close_button = QPushButton("Close")
+        self.close_button.clicked.connect(self.close)
+        button_layout.addWidget(self.close_button)
+
+        layout.addLayout(button_layout)
+
+    def calculate_appreciation_rate(self):
+        try:
+            # Extract input values
+            start_date = self.start_date.date().toPyDate()
+            end_date = self.end_date.date().toPyDate()
+            start_value = float(self.start_value_edit.text())
+            end_value = float(self.end_value_edit.text())
+
+            # Validate inputs
+            if start_date >= end_date:
+                raise ValueError("Start Date must be earlier than End Date.")
+            if start_value <= 0 or end_value <= 0:
+                raise ValueError("Values must be positive.")
+
+            # Calculate appreciation rate
+            days = (end_date - start_date).days
+            annual_rate = (
+                (end_value / start_value) ** (365 / days) - 1
+            ) * 100  # Convert to percentage
+
+            # Display result
+            self.result_edit.setText(f"{annual_rate:.2f}")
+        except ValueError as e:
+            QMessageBox.warning(self, "Input Error", str(e))
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"An unexpected error occurred: {e}")

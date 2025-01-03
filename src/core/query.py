@@ -144,9 +144,30 @@ def account_type_id(session: Session, account_type: str) -> int:
     return account_type_entry[0]
 
 
+def accounts_with_ids(
+    session: Session,
+) -> tuple[list[tuple[int, str]], list[str]]:
+    """
+    Retrieves AccountID and AccountNames.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        tuple[list[tuple[int, str]], list[str]]:
+            Data and column names.
+    """
+    query = session.query(
+        Accounts.AccountID,
+        Accounts.AccountName,
+    )
+
+    return query.all()
+
+
 def accounts_details(
     session: Session,
-) -> tuple[list[tuple[int, str, str, str, str]], list[str]]:
+) -> tuple[list[tuple[str, str, str, str, float]], list[str]]:
     """
     Retrieves all account details, including the account type name.
 
@@ -154,21 +175,64 @@ def accounts_details(
         session (Session): SQLAlchemy session object.
 
     Returns:
-        tuple[list[tuple[int, str, str, str, str]], list[str]]:
+        tuple[list[tuple[str, str, str, str, float]], list[str]]:
             Data and column names.
     """
     query = session.query(
-        Accounts.AccountID,
         Accounts.AccountName,
         Accounts.Company,
         Accounts.Description,
         AccountTypes.AccountType,
+        Accounts.AppreciationRate,
     ).join(AccountTypes, Accounts.AccountTypeID == AccountTypes.AccountTypeID)
 
     data = query.all()
     columns = [column.get("name", "Unknown") for column in query.column_descriptions]
 
     return data, columns
+
+
+def update_account_details(
+    session: Session,
+    account_name: str,
+    account_type_id: int,
+    company: str,
+    desc: str,
+    appreciation: float,
+):
+    session.query(Accounts).filter_by(AccountName=account_name).update(
+        {
+            "AccountTypeID": account_type_id,
+            "Company": company,
+            "Description": desc,
+            "AppreciationRate": appreciation,
+        }
+    )
+    session.commit()
+
+
+def appreciation_rate(session: Session, account_name: str):
+    """
+    Retrieves the appreciation rate for a given account name.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        float: Appreciation rate
+    """
+    result = (
+        session.query(
+            Accounts.AppreciationRate,
+        )
+        .filter(Accounts.AccountName == account_name)
+        .one_or_none()
+    )
+
+    if result is None:
+        raise KeyError(f"{account_name} not found in AccountTypes.AccountType")
+
+    return float(result[0])
 
 
 def account_name_of_account_id(session: Session, account_id: int) -> str:

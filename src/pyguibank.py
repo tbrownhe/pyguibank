@@ -39,12 +39,13 @@ from sqlalchemy.orm import Session
 
 from core import categorize, learn, orm, plot, query, reports
 from core.dialog import (
-    AddAccount,
+    EditAccounts,
     BalanceCheckDialog,
     CompletenessDialog,
     InsertTransaction,
     PreferencesDialog,
     RecurringTransactionsDialog,
+    AppreciationCalculator,
 )
 from core.statements import StatementProcessor
 from core.utils import open_file_in_os, read_config, resource_path
@@ -230,7 +231,8 @@ class PyGuiBank(QMainWindow):
 
         # Accounts Menu
         accounts_menu = menubar.addMenu("Accounts")
-        accounts_menu.addAction("Show Accounts", self.show_accounts)
+        accounts_menu.addAction("Edit Accounts", self.edit_accounts)
+        accounts_menu.addAction("Appreciation Calculator", self.appreciation_calc)
 
         # Statements Menu
         statements_menu = menubar.addMenu("Statements")
@@ -644,12 +646,17 @@ class PyGuiBank(QMainWindow):
         msg_box.setStandardButtons(QMessageBox.Ok)
         msg_box.exec_()
 
-    def show_accounts(self):
-        dialog = AddAccount(self.Session)
+    def edit_accounts(self):
+        dialog = EditAccounts(self.Session)
         if dialog.exec_() == QDialog.Accepted:
             # Update all GUI elements
             with self.Session() as session:
                 self.update_main_gui(session)
+
+    def appreciation_calc(self):
+        dialog = AppreciationCalculator()
+        if dialog.exec_() == QDialog.Accepted:
+            pass
 
     def insert_transaction(self):
         dialog = InsertTransaction(self.Session)
