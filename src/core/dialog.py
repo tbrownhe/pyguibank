@@ -317,12 +317,12 @@ class EditAccounts(QDialog):
         button_layout.addWidget(self.cancel_button)
 
         self.add_button = QPushButton("Add Account")
-        self.add_button.setStyleSheet("background-color: lightgreen; color: black;")
+        # self.add_button.setStyleSheet("background-color: lightgreen; color: black;")
         self.add_button.clicked.connect(self.add_account)
         button_layout.addWidget(self.add_button)
 
         self.edit_button = QPushButton("Edit Account")
-        self.edit_button.setStyleSheet("background-color: lightblue; color: black;")
+        # self.edit_button.setStyleSheet("background-color: lightblue; color: black;")
         self.edit_button.clicked.connect(self.edit_account)
         self.edit_button.setEnabled(False)  # Disabled by default
         button_layout.addWidget(self.edit_button)
@@ -1387,14 +1387,13 @@ class AppreciationCalculator(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Appreciation Rate Calculator")
-        self.resize(400, 250)
 
         # Main layout
         layout = QVBoxLayout(self)
 
         # Descriptive text
         desc_text = (
-            "This calculator estimates the Appreciation Rate of a Tangible Asset.\n"
+            "Use this to estimate the Annual Appreciation Rate of a Tangible Asset.\n"
             "The result can be used for Tangible Assets entered manually into\n"
             "the Edit Accounts Dialog."
         )
@@ -1448,6 +1447,7 @@ class AppreciationCalculator(QDialog):
         button_layout.addWidget(self.close_button)
 
         layout.addLayout(button_layout)
+        self.setFixedSize(layout.sizeHint())
 
     def calculate_appreciation_rate(self):
         try:
