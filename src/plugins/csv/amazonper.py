@@ -2,8 +2,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Union
 
-# from ..db import execute_sql_query
-from ..utils import convert_amount_to_float
+from core.utils import convert_amount_to_float
 
 
 def get_card_id(payment_instrument: str) -> Union[int, None]:

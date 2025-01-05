@@ -3,9 +3,9 @@ from datetime import datetime
 
 from loguru import logger
 
-from ..interfaces import IParser
-from ..utils import PDFReader, convert_amount_to_float, find_param_in_line
-from ..validation import Account, Statement, Transaction
+from core.interfaces import IParser
+from core.utils import PDFReader, convert_amount_to_float, find_param_in_line
+from core.validation import Account, Statement, Transaction
 
 
 class Parser(IParser):

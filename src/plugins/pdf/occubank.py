@@ -3,8 +3,8 @@ from datetime import datetime
 
 from loguru import logger
 
-from ..interfaces import IParser
-from ..utils import (
+from core.interfaces import IParser
+from core.utils import (
     PDFReader,
     convert_amount_to_float,
     find_line_re_search,
@@ -12,7 +12,7 @@ from ..utils import (
     find_param_in_line,
     get_absolute_date,
 )
-from ..validation import Account, Statement, Transaction
+from core.validation import Account, Statement, Transaction
 
 
 class Parser(IParser):

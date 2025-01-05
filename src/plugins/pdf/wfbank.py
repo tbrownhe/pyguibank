@@ -5,14 +5,14 @@ from statistics import mode
 from loguru import logger
 from pdfplumber.page import Page
 
-from ..interfaces import IParser
-from ..utils import (
+from core.interfaces import IParser
+from core.utils import (
     PDFReader,
     convert_amount_to_float,
     find_line_startswith,
     get_absolute_date,
 )
-from ..validation import Account, Statement, Transaction
+from core.validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
