@@ -77,6 +77,9 @@ def get_balance_data(session: Session) -> None:
     """
     # Get all the transactions
     data, columns = query.transactions(session)
+    if len(data) == 0:
+        return pd.DataFrame(), []
+
     df = pd.DataFrame(data, columns=columns)
     df["Date"] = pd.to_datetime(df["Date"])
 
