@@ -39,16 +39,16 @@ from sqlalchemy.orm import Session
 
 from core import categorize, learn, orm, plot, query, reports
 from core.dialog import (
-    EditAccounts,
+    AppreciationCalculator,
     BalanceCheckDialog,
     CompletenessDialog,
+    EditAccounts,
     InsertTransaction,
     PreferencesDialog,
     RecurringTransactionsDialog,
-    AppreciationCalculator,
 )
 from core.statements import StatementProcessor
-from core.utils import open_file_in_os, read_config, resource_path
+from core.utils import PluginManager, open_file_in_os, read_config, resource_path
 
 # Set Bindings
 os.environ["QT_API"] = "PyQt5"
@@ -449,6 +449,13 @@ class PyGuiBank(QMainWindow):
         with self.Session() as session:
             self.update_main_gui(session)
 
+        # Initialize the plugin manager
+        self.plugin_manager = PluginManager()
+        plugin_dir = (
+            Path("plugins") if hasattr(sys, "_MEIPASS") else Path("src/plugins")
+        ).resolve()
+        self.plugin_manager.load_plugins(plugin_dir)
+
     def exception_hook(self, exc_type, exc_value, exc_traceback):
         """
         Handle uncaught exceptions by displaying an error dialog with traceback.
@@ -672,7 +679,7 @@ class PyGuiBank(QMainWindow):
 
     def import_all_statements(self):
         # Import everything
-        processor = StatementProcessor(self.Session, self.config)
+        processor = StatementProcessor(self.Session, self.config, self.plugin_manager)
         processor.import_all(parent=self)
 
         # Update all GUI elements
@@ -704,7 +711,7 @@ class PyGuiBank(QMainWindow):
             return
 
         # Import statement
-        processor = StatementProcessor(self.Session, self.config)
+        processor = StatementProcessor(self.Session, self.config, self.plugin_manager)
         processor.import_one(fpath)
 
         # Update all GUI elements

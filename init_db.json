@@ -44,7 +44,7 @@
       "Extension": ".pdf",
       "SearchString": "oregon community credit union&&membernumber",
       "Parser": "occubank",
-      "EntryPoint": "core.parsepdf.occubank:Parser"
+      "EntryPoint": "pdf.occubank:Parser"
     },
     {
       "AccountTypeID": 3,
@@ -53,7 +53,7 @@
       "Extension": ".pdf",
       "SearchString": "www.myoccu.org&&cardservices",
       "Parser": "occucc",
-      "EntryPoint": "core.parsepdf.occucc:Parser"
+      "EntryPoint": "pdf.occucc:Parser"
     },
     {
       "AccountTypeID": 6,
@@ -62,7 +62,7 @@
       "Extension": ".csv",
       "SearchString": "254779",
       "Parser": "occuauto",
-      "EntryPoint": "core.parsecsv.occuauto:Parser"
+      "EntryPoint": "csv.occuauto:Parser"
     },
     {
       "AccountTypeID": 1,
@@ -71,7 +71,7 @@
       "Extension": ".pdf",
       "SearchString": "wells fargo everyday checking",
       "Parser": "wfbank",
-      "EntryPoint": "core.parsepdf.wfbank:Parser"
+      "EntryPoint": "pdf.wfbank:Parser"
     },
     {
       "AccountTypeID": 2,
@@ -80,7 +80,7 @@
       "Extension": ".pdf",
       "SearchString": "wells fargo way2save",
       "Parser": "wfbank",
-      "EntryPoint": "core.parsepdf.wfbank:Parser"
+      "EntryPoint": "pdf.wfbank:Parser"
     },
     {
       "AccountTypeID": 1,
@@ -89,7 +89,7 @@
       "Extension": ".pdf",
       "SearchString": "wells fargo&&initiate business checking",
       "Parser": "wfbank",
-      "EntryPoint": "core.parsepdf.wfbank:Parser"
+      "EntryPoint": "pdf.wfbank:Parser"
     },
     {
       "AccountTypeID": 2,
@@ -98,7 +98,7 @@
       "Extension": ".pdf",
       "SearchString": "wells fargo&&business market rate savings",
       "Parser": "wfbank",
-      "EntryPoint": "core.parsepdf.wfbank:Parser"
+      "EntryPoint": "pdf.wfbank:Parser"
     },
     {
       "AccountTypeID": 6,
@@ -107,7 +107,7 @@
       "Extension": ".pdf",
       "SearchString": "wells fargo&&personal loan statement",
       "Parser": "wfploan",
-      "EntryPoint": "core.parsepdf.wfploan:Parser"
+      "EntryPoint": "pdf.wfploan:Parser"
     },
     {
       "AccountTypeID": 3,
@@ -116,7 +116,7 @@
       "Extension": ".pdf",
       "SearchString": "www.citicards.com",
       "Parser": "citi",
-      "EntryPoint": "core.parsepdf.citi:Parser"
+      "EntryPoint": "pdf.citi:Parser"
     },
     {
       "AccountTypeID": 3,
@@ -125,7 +125,7 @@
       "Extension": ".pdf",
       "SearchString": "u.s. bank&&reivisa.com",
       "Parser": "usbank",
-      "EntryPoint": "core.parsepdf.usbank:Parser"
+      "EntryPoint": "pdf.usbank:Parser"
     },
     {
       "AccountTypeID": 3,
@@ -134,7 +134,7 @@
       "Extension": ".pdf",
       "SearchString": "u.s. bank&&reimastercard.com",
       "Parser": "usbank",
-      "EntryPoint": "core.parsepdf.usbank:Parser"
+      "EntryPoint": "pdf.usbank:Parser"
     },
     {
       "AccountTypeID": 4,
@@ -143,7 +143,7 @@
       "Extension": ".pdf",
       "SearchString": "intel 401(k)&&fidelity",
       "Parser": "fidelity401k",
-      "EntryPoint": "core.parsepdf.fidelity401k:Parser"
+      "EntryPoint": "pdf.fidelity401k:Parser"
     },
     {
       "AccountTypeID": 5,
@@ -152,7 +152,7 @@
       "Extension": ".pdf",
       "SearchString": "fidelity health savings account",
       "Parser": "fidelityhsa",
-      "EntryPoint": "core.parsepdf.fidelityhsa:Parser"
+      "EntryPoint": "pdf.fidelityhsa:Parser"
     },
     {
       "AccountTypeID": 5,
@@ -161,7 +161,7 @@
       "Extension": ".pdf",
       "SearchString": "healthequity&&healthsavingsaccount",
       "Parser": "hehsa",
-      "EntryPoint": "core.parsepdf.hehsa:Parser"
+      "EntryPoint": "pdf.hehsa:Parser"
     },
     {
       "AccountTypeID": 4,
@@ -170,7 +170,7 @@
       "Extension": ".pdf",
       "SearchString": "transamerica&&retirement account statement",
       "Parser": "transamerica",
-      "EntryPoint": "core.parsepdf.transamerica:Parser"
+      "EntryPoint": "pdf.transamerica:Parser"
     },
     {
       "AccountTypeID": 6,
@@ -179,7 +179,7 @@
       "Extension": ".xlsx",
       "SearchString": "fedloan servicing",
       "Parser": "fedloan",
-      "EntryPoint": "core.parsexlsx.fedloan:Parser"
+      "EntryPoint": "xlsx.fedloan:Parser"
     },
     {
       "AccountTypeID": 7,
@@ -188,7 +188,7 @@
       "Extension": ".csv",
       "SearchString": "amazon&&unspsc code&&asin/isbn",
       "Parser": "amazonper",
-      "EntryPoint": "core.parsecsv.amazonper:Parser"
+      "EntryPoint": "csv.amazonper:Parser"
     },
     {
       "AccountTypeID": 7,
@@ -197,7 +197,7 @@
       "Extension": ".csv",
       "SearchString": "amazon&&account group&&po number",
       "Parser": "amazonbus",
-      "EntryPoint": "core.parsecsv.amazonbus:Parser"
+      "EntryPoint": "csv.amazonbus:Parser"
     },
     {
       "AccountTypeID": 4,
@@ -206,7 +206,7 @@
       "Extension": ".pdf",
       "SearchString": "vanguard.com&&account summary",
       "Parser": "vanguard",
-      "EntryPoint": "core.parsepdf.vanguard:Parser"
+      "EntryPoint": "pdf.vanguard:Parser"
     },
     {
       "AccountTypeID": 6,
@@ -215,7 +215,7 @@
       "Extension": ".pdf",
       "SearchString": "yamaha motor finance",
       "Parser": "yamahafin",
-      "EntryPoint": "core.parsepdf.yamahafin:Parser"
+      "EntryPoint": "pdf.yamahafin:Parser"
     },
     {
       "AccountTypeID": 6,
@@ -224,7 +224,7 @@
       "Extension": ".pdf",
       "SearchString": "capital one auto finance",
       "Parser": "capitaloneauto",
-      "EntryPoint": "core.parsepdf.capitaloneauto:Parser"
+      "EntryPoint": "pdf.capitaloneauto:Parser"
     },
     {
       "AccountTypeID": 6,
@@ -233,7 +233,7 @@
       "Extension": ".csv",
       "SearchString": "<!DOCTYPE HTML PUBLIC",
       "Parser": "mohela",
-      "EntryPoint": "core.parsecsv.mohela:Parser"
+      "EntryPoint": "csv.mohela:Parser"
     }
   ]
 }

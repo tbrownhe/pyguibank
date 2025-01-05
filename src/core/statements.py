@@ -11,13 +11,15 @@ from . import query
 from .dialog import AssignAccountNumber
 from .orm import Statements, Transactions
 from .parse import parse_any
-from .utils import hash_file
+from .utils import PluginManager, hash_file
 from .validation import Statement, Transaction
 
 
 class StatementProcessor:
 
-    def __init__(self, Session: sessionmaker, config: ConfigParser) -> None:
+    def __init__(
+        self, Session: sessionmaker, config: ConfigParser, plugin_manager: PluginManager
+    ) -> None:
         """Initialize the processor and make sure config is valid
 
         Args:
@@ -25,6 +27,7 @@ class StatementProcessor:
         """
         self.Session = Session
         self.config = config
+        self.plugin_manager = plugin_manager
         try:
             self.import_dir = Path(self.config.get("IMPORT", "import_dir")).resolve()
             self.success_dir = Path(self.config.get("IMPORT", "success_dir")).resolve()
@@ -128,7 +131,7 @@ class StatementProcessor:
             return 0, 1
 
         # Extract the statement data into a Statement dataclass
-        self.statement = parse_any(self.Session, fpath)
+        self.statement = parse_any(self.Session, self.plugin_manager, fpath)
 
         if not isinstance(self.statement, Statement):
             raise TypeError("Parsing module must return a Statement dataclass")

@@ -2,7 +2,7 @@ import csv
 import importlib
 import re
 from pathlib import Path
-from typing import Any, Callable, Generic, TypeVar
+from typing import Callable, Generic, TypeVar
 
 import openpyxl
 from loguru import logger
@@ -11,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from .dialog import ValidationErrorDialog
 from .interfaces import IParser
 from .query import statement_type_routing
-from .utils import PDFReader
+from .utils import PDFReader, PluginManager
 from .validation import Statement, ValidationError, validate_statement
 
 T = TypeVar("T")
@@ -24,8 +24,15 @@ class BaseRouter(Generic[T]):
         Generic (T): T adopts the type passed to it when a child class inherits this class
     """
 
-    def __init__(self, Session: sessionmaker, fpath: Path, hard_fail=True):
+    def __init__(
+        self,
+        Session: sessionmaker,
+        plugin_manager: PluginManager,
+        fpath: Path,
+        hard_fail=True,
+    ):
         self.Session = Session
+        self.plugin_manager = plugin_manager
         self.fpath = fpath
         self.hard_fail = hard_fail
 
@@ -91,7 +98,7 @@ class BaseRouter(Generic[T]):
             raise ValidationError(err)
         return statement
 
-    def load_parser(self, entry_point: str) -> Callable[[T], Statement]:
+    def load_parser_old(self, entry_point: str) -> Callable[[T], Statement]:
         """
         Load a parser dynamically and validate its signature.
 
@@ -124,6 +131,20 @@ class BaseRouter(Generic[T]):
 
         return parser
 
+    def load_parser(self, entry_point: str):
+        """
+        Dynamically loads a parser class from the specified path, using precompiled .pyc files.
+        """
+        # Get the parser class from the plugin manager
+        parser_name, class_name = entry_point.split(":")
+        ParserClass = self.plugin_manager.get_parser(parser_name, class_name)
+        if not ParserClass:
+            raise ImportError(
+                f"Class '{class_name}' not found in plugin '{parser_name}'."
+            )
+
+        return ParserClass
+
     def run_parser(self, parser: IParser, input_data: T) -> Statement:
         """
         Run the parser and enforce return type.
@@ -150,8 +171,14 @@ class PDFRouter(BaseRouter[PDFReader]):
         BaseRouter (PDFReader): _description_
     """
 
-    def __init__(self, Session: sessionmaker, fpath: Path, **kwargs):
-        super().__init__(Session, fpath, **kwargs)
+    def __init__(
+        self,
+        Session: sessionmaker,
+        plugin_manager: PluginManager,
+        fpath: Path,
+        **kwargs,
+    ):
+        super().__init__(Session, plugin_manager, fpath, **kwargs)
 
     def parse(self) -> Statement:
         """Opens the PDF file, determines its type, and routes its reader
@@ -170,8 +197,14 @@ class PDFRouter(BaseRouter[PDFReader]):
 class CSVRouter(BaseRouter[list[list[str]]]):
     ENCODING = "utf-8-sig"
 
-    def __init__(self, Session: sessionmaker, fpath: Path, **kwargs):
-        super().__init__(Session, fpath, **kwargs)
+    def __init__(
+        self,
+        Session: sessionmaker,
+        plugin_manager: PluginManager,
+        fpath: Path,
+        **kwargs,
+    ):
+        super().__init__(Session, plugin_manager, fpath, **kwargs)
 
     def parse(self) -> Statement:
         """Opens the CSV file, determines its type, and routes its contents
@@ -206,8 +239,14 @@ class CSVRouter(BaseRouter[list[list[str]]]):
 
 
 class XLSXRouter(BaseRouter):
-    def __init__(self, Session: sessionmaker, fpath: Path, **kwargs):
-        super().__init__(Session, fpath, **kwargs)
+    def __init__(
+        self,
+        Session: sessionmaker,
+        plugin_manager: PluginManager,
+        fpath: Path,
+        **kwargs,
+    ):
+        super().__init__(Session, plugin_manager, fpath, **kwargs)
 
     def parse(self) -> Statement:
         """Opens the XLSX file, determines its type, and routes its contents
@@ -254,7 +293,9 @@ register_router(".csv", CSVRouter)
 register_router(".xlsx", XLSXRouter)
 
 
-def parse_any(Session: sessionmaker, fpath: Path, **kwargs) -> Statement:
+def parse_any(
+    Session: sessionmaker, plugin_manager: PluginManager, fpath: Path, **kwargs
+) -> Statement:
     """Routes the file to the appropriate parser based on its extension.
 
     Args:
@@ -269,6 +310,6 @@ def parse_any(Session: sessionmaker, fpath: Path, **kwargs) -> Statement:
     """
     suffix = fpath.suffix.lower()
     if suffix in ROUTERS:
-        router = ROUTERS[suffix](Session, fpath, **kwargs)
+        router = ROUTERS[suffix](Session, plugin_manager, fpath, **kwargs)
         return router.parse()
     raise ValueError(f"Unsupported file extension: {suffix}")
