@@ -44,6 +44,9 @@ REM Some useful flags:
 REM --log-level=DEBUG ^
 REM --debug imports ^
 
+REM Create Install Package as dist\pyguibank_version_setup.exe
+makensis /V4 pyguibank_setup.nsi
+
 REM Deactivate the conda environment
 call conda deactivate
 
