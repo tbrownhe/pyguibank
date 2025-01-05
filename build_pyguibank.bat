@@ -1,16 +1,21 @@
 @echo off
 
-SET "PROJ_DIR=%~dp0"
-SET "SRCDIR=%PROJ_DIR%src\"
+SET "SRCDIR=%~dp0src\"
 SET "CONDA_ENV_PATH=%USERPROFILE%\.conda\envs\pyguibank"
 SET "CONDA_PATH=%USERPROFILE%\miniconda3\Scripts\activate.bat"
 SET "CONDA_ENV=pyguibank"
 
 REM Navigate to the project src directory
-cd /d %PROJ_DIR%
+cd /d %~dp0
 
 REM Activate the conda environment
 call "%CONDA_PATH%" %CONDA_ENV%
+
+REM 
+python -m compileall src\plugins
+
+REM Compile plugins and copy into dist\plugins
+python move_plugins.py
 
 REM Build the executable
 pyinstaller ^
@@ -18,25 +23,26 @@ pyinstaller ^
     --noconfirm ^
     --noconsole ^
     -n "PyGuiBank" ^
-    --distpath "%~dp0\dist" ^
-    --workpath "%~dp0\build" ^
+    --workpath "build" ^
+    --distpath "dist" ^
     --paths %SRCDIR% ^
-    --add-data "%PROJ_DIR%config.ini;." ^
-    --add-data "%PROJ_DIR%init_db.json;." ^
-    --add-data "%PROJ_DIR%pyguibank.png;." ^
-    --add-data "%PROJ_DIR%pipeline.mdl;." ^
-    --add-data "%PROJ_DIR%pyguibank.db;." ^
+    --add-data "config.ini;." ^
+    --add-data "init_db.json;." ^
+    --add-data "init_accounts.json;." ^
+    --add-data "pyguibank.png;." ^
+    --add-data "pipeline.mdl;." ^
+    --add-data "dist\plugins;plugins" ^
+    --add-data "pyguibank.db;." ^
     --hidden-import=openpyxl.cell._writer ^
     --hidden-import=scipy._lib.array_api_compat.numpy.fft ^
     --hidden-import=scipy.special._special_ufuncs ^
-    --splash "%PROJ_DIR%pyguibank.png" ^
-    --icon "%PROJ_DIR%pyguibank.png" ^
+    --splash "pyguibank.png" ^
+    --icon "pyguibank.png" ^
     "%SRCDIR%pyguibank.py"
 
 REM Some useful flags:
 REM --log-level=DEBUG ^
 REM --debug imports ^
-REM --noconsole ^
 
 REM Deactivate the conda environment
 call conda deactivate
