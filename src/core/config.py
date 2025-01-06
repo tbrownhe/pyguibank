@@ -53,13 +53,13 @@ def read_config():
                 logger.error(f"Failed to read config file at {CONFIG_PATH}: {e}")
                 raise
 
-        # If the config file doesn't exist, show the PreferencesDialog
+        # If the config file doesn't exist, show the PreferencesDialog with default values
         dialog = PreferencesDialog(defaults=True)
         if dialog.exec_() == QDialog.Accepted:
-            # PreferencesDialog accepted: try reading the config again
+            # Try reading the config again
             continue
         else:
-            # PreferencesDialog rejected: exit gracefully or raise an error
+            # Exit cleanly
             QMessageBox.warning(
                 None,
                 "Configuration Required",
@@ -69,19 +69,10 @@ def read_config():
 
 
 def default_config() -> ConfigParser:
-    if system() == "Windows":
-        db_dir = Path.home() / "AppData" / "Local" / "PyGuiBank"
-    elif system() == "Darwin":
-        # macOS
-        db_dir = CONFIG_PATH.parent
-    else:
-        # Linux or other Unix-like systems
-        db_dir = Path.home() / ".local" / "share" / "PyGuiBank"
-
     # Define paths
     user_home = Path.home()
-    db_path = db_dir / "pyguibank.db"
-    model_path = Path("default_pipeline.mdl").resolve()  # Packaged with PyGuiBank
+    model_path = Path("default_pipeline.mdl").resolve()  # Packaged with PyGuiBan
+    db_path = user_home / "Documents" / "PyGuiBank" / "pyguibank.db"
     imports_dir = user_home / "Documents" / "PyGuiBank" / "Imports"
     reports_dir = user_home / "Documents" / "PyGuiBank" / "Reports"
 
@@ -120,9 +111,6 @@ class PreferencesDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Preferences")
         self.setWindowModality(Qt.ApplicationModal)
-        # self.resize(500, 400)
-
-        self.config = default_config() if defaults else read_config()
 
         # Main layout
         main_layout = QVBoxLayout(self)
@@ -210,9 +198,6 @@ class PreferencesDialog(QDialog):
         grid_layout.addWidget(report_dir_button, row, 2)
         row += 1
 
-        # Populate the fields with the loaded config
-        self.populate_fields()
-
         # Buttons
         button_layout = QHBoxLayout()
         main_layout.addLayout(button_layout)
@@ -232,6 +217,10 @@ class PreferencesDialog(QDialog):
         # Set the window size
         hint = main_layout.sizeHint()
         self.setFixedSize(2 * hint.width(), hint.height())
+
+        # Populate the fields with the config
+        self.config = default_config() if defaults else read_config()
+        self.populate_fields()
 
     def populate_fields(self):
         self.db_path_edit.setText(self.config.get("DATABASE", "db_path"))
@@ -321,6 +310,7 @@ class PreferencesDialog(QDialog):
         create_directory(Path(self.config.get("REPORTS", "report_dir")))
 
         # Write config to file
+        create_directory(CONFIG_PATH.parent)
         try:
             with CONFIG_PATH.open("w") as config_file:
                 self.config.write(config_file)

@@ -26,13 +26,11 @@ pyinstaller ^
     --workpath "build" ^
     --distpath "dist" ^
     --paths %SRCDIR% ^
-    --add-data "config.ini;." ^
     --add-data "init_db.json;." ^
     --add-data "init_accounts.json;." ^
     --add-data "pyguibank.png;." ^
     --add-data "default_pipeline.mdl;." ^
     --add-data "dist\plugins;plugins" ^
-    --add-data "pyguibank.db;." ^
     --hidden-import=openpyxl.cell._writer ^
     --hidden-import=scipy._lib.array_api_compat.numpy.fft ^
     --hidden-import=scipy.special._special_ufuncs ^
@@ -43,7 +41,7 @@ pyinstaller ^
 REM Some useful flags:
 REM --log-level=DEBUG ^
 REM --debug imports ^
-
+REM --add-data "pyguibank.db;." ^
 REM Create Install Package as dist\pyguibank_version_setup.exe
 makensis /V4 pyguibank_setup.nsi
 
