@@ -1,4 +1,3 @@
-import configparser
 import hashlib
 import importlib.util
 import os
@@ -219,23 +218,6 @@ def resource_path(relative_path: Path):
     """Get absolute path to resource, works for PyInstaller bundles."""
     base_path = getattr(sys, "_MEIPASS", os.path.abspath("."))
     return Path(base_path) / relative_path
-
-
-def read_config(config_path: Path):
-    """
-    Uses ConfigParser to get the contents of the config.ini file.
-    """
-    # Check to see if the config file exists
-    if not config_path.exists:
-        raise ValueError(
-            "Please create and populate a config.txt file in the root directory."
-        )
-
-    # Open the config file
-    config = configparser.ConfigParser()
-    config.read(config_path)
-
-    return config
 
 
 def open_file_in_os(fpath: Path):

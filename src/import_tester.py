@@ -13,9 +13,10 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from core.parse import parse_any
-from core.utils import PDFReader, read_config
+from core.config import read_config
 from core.orm import create_database
+from core.parse import parse_any
+from core.utils import PDFReader
 
 
 def display_nested_dict(output_display: QTextEdit, nested_dict: dict, level=0):

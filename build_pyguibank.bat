@@ -30,7 +30,7 @@ pyinstaller ^
     --add-data "init_db.json;." ^
     --add-data "init_accounts.json;." ^
     --add-data "pyguibank.png;." ^
-    --add-data "pipeline.mdl;." ^
+    --add-data "default_pipeline.mdl;." ^
     --add-data "dist\plugins;plugins" ^
     --add-data "pyguibank.db;." ^
     --hidden-import=openpyxl.cell._writer ^

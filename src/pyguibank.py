@@ -38,17 +38,17 @@ from PyQt5.QtWidgets import (
 from sqlalchemy.orm import Session
 
 from core import categorize, learn, orm, plot, query, reports
+from core.config import PreferencesDialog, read_config
 from core.dialog import (
     AppreciationCalculator,
     BalanceCheckDialog,
     CompletenessDialog,
     EditAccounts,
     InsertTransaction,
-    PreferencesDialog,
     RecurringTransactionsDialog,
 )
 from core.statements import StatementProcessor
-from core.utils import PluginManager, open_file_in_os, read_config, resource_path
+from core.utils import PluginManager, open_file_in_os, resource_path
 
 # Set Bindings
 os.environ["QT_API"] = "PyQt5"
@@ -456,6 +456,8 @@ class PyGuiBank(QMainWindow):
         ).resolve()
         self.plugin_manager.load_plugins(plugin_dir)
 
+        #
+
     def exception_hook(self, exc_type, exc_value, exc_traceback):
         """
         Handle uncaught exceptions by displaying an error dialog with traceback.
@@ -509,8 +511,7 @@ class PyGuiBank(QMainWindow):
         dialog.exec_()
 
     def update_from_config(self):
-        self.config_path = resource_path(Path("") / "config.ini")
-        self.config = read_config(self.config_path)
+        self.config = read_config()
         self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
         self.ensure_db()
 
@@ -538,7 +539,7 @@ class PyGuiBank(QMainWindow):
         open_file_in_os(self.db_path)
 
     def preferences(self):
-        dialog = PreferencesDialog(self.config_path)
+        dialog = PreferencesDialog()
         if dialog.exec_() == QDialog.Accepted:
             self.update_from_config()
             with self.Session() as session:
