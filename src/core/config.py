@@ -74,7 +74,7 @@ def read_config():
 def default_config() -> ConfigParser:
     # Define paths
     user_home = Path.home()
-    model_path = Path("default_pipeline.mdl").resolve()  # Packaged with PyGuiBan
+    model_path = Path("assets/default_pipeline.mdl").resolve()  # Packaged with PyGuiBan
     db_path = user_home / "Documents" / "PyGuiBank" / "pyguibank.db"
     imports_dir = user_home / "Documents" / "PyGuiBank" / "Imports"
     reports_dir = user_home / "Documents" / "PyGuiBank" / "Reports"
