@@ -11,9 +11,6 @@ cd /d %~dp0
 REM Activate the conda environment
 call "%CONDA_PATH%" %CONDA_ENV%
 
-REM 
-python -m compileall src\plugins
-
 REM Compile plugins and copy into dist\plugins
 python move_plugins.py
 
@@ -26,8 +23,7 @@ pyinstaller ^
     --workpath "build" ^
     --distpath "dist" ^
     --paths %SRCDIR% ^
-    --add-data "init_db.json;." ^
-    --add-data "init_accounts.json;." ^
+    --add-data "init_statement_types.json;." ^
     --add-data "pyguibank.png;." ^
     --add-data "default_pipeline.mdl;." ^
     --add-data "dist\plugins;plugins" ^
@@ -38,10 +34,6 @@ pyinstaller ^
     --icon "pyguibank.png" ^
     "%SRCDIR%pyguibank.py"
 
-REM Some useful flags:
-REM --log-level=DEBUG ^
-REM --debug imports ^
-REM --add-data "pyguibank.db;." ^
 REM Create Install Package as dist\pyguibank_version_setup.exe
 makensis /V4 pyguibank_setup.nsi
 

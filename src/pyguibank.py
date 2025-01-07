@@ -221,8 +221,8 @@ class PyGuiBank(QMainWindow):
 
         # File Menu
         file_menu = menubar.addMenu("File")
-        file_menu.addAction("Open Database", self.open_db)
         file_menu.addAction("Preferences", self.preferences)
+        file_menu.addAction("Open Database", self.open_db)
         file_menu.addAction(
             "Export Database Configuration", self.export_init_statement_types
         )
@@ -529,7 +529,7 @@ class PyGuiBank(QMainWindow):
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Information)
             msg_box.setWindowTitle("New Database Created")
-            msg_box.setText(f"Initialized new database at {self.db_path}")
+            msg_box.setText(f"Initialized new database at <pre>{self.db_path}</pre>")
             msg_box.setStandardButtons(QMessageBox.Ok)
             msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowStaysOnTopHint)
             msg_box.exec_()
