@@ -2,7 +2,10 @@
 
 ; Basic info. Admin is required for installing into Program Files.
 Name "PyGuiBank"
-Outfile "dist\pyguibank_version_setup.exe"
+
+; Output file directory relative to this .nsi file. Dir must already exist.
+Outfile "..\dist\pyguibank_version_setup.exe"
+
 ; RequestExecutionLevel admin
 Unicode True
 InstallDir "$PROGRAMFILES64\PyGuiBank"
@@ -31,8 +34,8 @@ Section "PyGuiBank" SEC02
     ; This section contains the main program files
     SetOutPath $INSTDIR
 
-    ; Output of PyInstaller
-    File /r ".\dist\PyGuiBank\*.*"
+    ; Output of PyInstaller relative to this .nsi file
+    File /r "..\dist\PyGuiBank\*.*"
 
     ; Write registry data so windows can track the installation and uninstaller
     WriteRegStr HKLM "SOFTWARE\PyGuiBank" "Install_Dir" "$INSTDIR"
