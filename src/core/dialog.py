@@ -127,7 +127,9 @@ class EditAccounts(QDialog):
         self.account_type_combo.addItems(account_types)
 
         self.appreciation_edit = QLineEdit(self)
-        self.appreciation_edit.setPlaceholderText("Enter annual appreciation rate (%)")
+        self.appreciation_edit.setPlaceholderText(
+            "Enter annual appreciation rate (%) for TangibleAssets only"
+        )
         self.appreciation_edit.setEnabled(False)
 
         self.account_type_combo.currentTextChanged.connect(

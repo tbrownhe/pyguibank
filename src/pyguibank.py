@@ -1,4 +1,3 @@
-import json
 import os
 import sys
 import traceback
@@ -8,8 +7,6 @@ from pathlib import Path
 
 import matplotlib.dates as mdates
 import pandas as pd
-from jsonschema import ValidationError
-from jsonschema import validate as validate_json
 from loguru import logger
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
@@ -37,8 +34,7 @@ from PyQt5.QtWidgets import (
 )
 from sqlalchemy.orm import Session
 
-from core import categorize, learn, orm, plot, query, reports
-from core.config import PreferencesDialog, read_config
+from core import categorize, config, learn, orm, plot, query, reports
 from core.dialog import (
     AppreciationCalculator,
     BalanceCheckDialog,
@@ -49,6 +45,7 @@ from core.dialog import (
 )
 from core.statements import StatementProcessor
 from core.utils import PluginManager, open_file_in_os, resource_path
+from version import __version__
 
 # Set Bindings
 os.environ["QT_API"] = "PyQt5"
@@ -226,8 +223,10 @@ class PyGuiBank(QMainWindow):
         file_menu = menubar.addMenu("File")
         file_menu.addAction("Open Database", self.open_db)
         file_menu.addAction("Preferences", self.preferences)
-        file_menu.addAction("Export Database Configuration", self.export_db_config)
-        file_menu.addAction("Export Account Configuration", self.export_account_config)
+        file_menu.addAction(
+            "Export Database Configuration", self.export_init_statement_types
+        )
+        file_menu.addAction("Export Account Configuration", self.export_init_accounts)
 
         # Accounts Menu
         accounts_menu = menubar.addMenu("Accounts")
@@ -456,8 +455,6 @@ class PyGuiBank(QMainWindow):
         ).resolve()
         self.plugin_manager.load_plugins(plugin_dir)
 
-        #
-
     def exception_hook(self, exc_type, exc_value, exc_traceback):
         """
         Handle uncaught exceptions by displaying an error dialog with traceback.
@@ -511,9 +508,14 @@ class PyGuiBank(QMainWindow):
         dialog.exec_()
 
     def update_from_config(self):
-        self.config = read_config()
+        self.config = config.read_config()
         self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
         self.ensure_db()
+
+    def init_db_tables(self):
+        with self.Session() as session:
+            config.import_init_statement_types(session)
+            config.import_init_accounts(session)
 
     def ensure_db(self):
         # Ensure db file exists
@@ -523,7 +525,7 @@ class PyGuiBank(QMainWindow):
                 query.optimize_db(session)
         else:
             self.Session = orm.create_database(self.db_path)
-            self.import_db_config()
+            self.init_db_tables()
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Information)
             msg_box.setWindowTitle("New Database Created")
@@ -535,124 +537,55 @@ class PyGuiBank(QMainWindow):
     #########################
     ### MENUBAR FUNCTIONS ###
     #########################
+    def about(self):
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.setText(f"PyGuiBank v{__version__}\n© 2024 Tobias Brown-Heft")
+        msg_box.setWindowTitle("About")
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec_()
+
     def open_db(self):
         open_file_in_os(self.db_path)
 
     def preferences(self):
-        dialog = PreferencesDialog()
+        dialog = config.PreferencesDialog()
         if dialog.exec_() == QDialog.Accepted:
             self.update_from_config()
             with self.Session() as session:
                 self.update_main_gui(session)
 
-    def export_db_config(self):
-        with self.Session() as session:
-            account_types = query.account_types_table(session)
-            statement_types = query.statement_types_table(session)
-
-        data = {"AccountTypes": account_types, "StatementTypes": statement_types}
-        dpath = Path("") / "init_db.json"
-        with dpath.open("w") as f:
-            json.dump(data, f, indent=2)
-
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Information)
-        msg_box.setText("Successfully exported database configuration.")
-        msg_box.setWindowTitle("Configuration Saved")
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
-
-    def export_account_config(self):
-        with self.Session() as session:
-            accounts = query.accounts_table(session)
-            account_numbers = query.account_numbers_table(session)
-
-        data = {"Accounts": accounts, "AccountNumbers": account_numbers}
-        dpath = resource_path(Path("") / "init_accounts.json")
-        with dpath.open("w") as f:
-            json.dump(data, f, indent=2)
-
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Information)
-        msg_box.setText("Successfully exported Accounts configuration.")
-        msg_box.setWindowTitle("Configuration Saved")
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
-
-    def validate_db_config(self, data: dict):
-        DB_CONFIG_SCHEMA = {
-            "type": "object",
-            "properties": {
-                "AccountTypes": {"type": "array"},
-                "StatementTypes": {"type": "array"},
-            },
-            "required": ["AccountTypes", "StatementTypes"],
-        }
-        try:
-            validate_json(instance=data, schema=DB_CONFIG_SCHEMA)
-        except ValidationError as e:
-            raise ValueError(f"Invalid configuration format: {e}")
-
-    def validate_accounts_config(self, data: dict):
-        DB_CONFIG_SCHEMA = {
-            "type": "object",
-            "properties": {
-                "Accounts": {"type": "array"},
-                "AccountNumbers": {"type": "array"},
-            },
-            "required": ["Accounts", "AccountNumbers"],
-        }
-        try:
-            validate_json(instance=data, schema=DB_CONFIG_SCHEMA)
-        except ValidationError as e:
-            raise ValueError(f"Invalid configuration format: {e}")
-
-    def import_db_config(self):
-        # Import statement search parameters
-        fpath = resource_path(Path("") / "init_db.json")
-        with fpath.open("r") as f:
-            data = json.load(f)
-
-        self.validate_db_config(data)
-        with self.Session() as session:
-            query.insert_rows_batched(
-                session,
-                orm.AccountTypes,
-                data["AccountTypes"],
-            )
-            query.insert_rows_batched(
-                session,
-                orm.StatementTypes,
-                data["StatementTypes"],
-            )
-
-        # Import account configuration, if available
-        fpath = Path("") / "init_accounts.json"
-        if not fpath.exists():
+    def export_init_statement_types(self):
+        reply = QMessageBox.question(
+            self,
+            "Export Database Config?",
+            (
+                "This will store the statement search configuration of"
+                f" <pre>{self.db_path}</pre> so any new databases use the same settings."
+            ),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
             return
-        with fpath.open("r") as f:
-            data = json.load(f)
-
-        self.validate_accounts_config(data)
         with self.Session() as session:
-            query.insert_rows_batched(
-                session,
-                orm.Accounts,
-                data["Accounts"],
-            )
-            query.insert_rows_batched(
-                session,
-                orm.AccountNumbers,
-                data["AccountNumbers"],
-            )
+            config.export_init_statement_types(session)
 
-    def about(self):
-        msg_box = QMessageBox()
-        msg_box.setIcon(QMessageBox.Information)
-        msg_box.setText("Copyright Tobias Brown-Heft, 2024")
-        msg_box.setWindowTitle("About")
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
+    def export_init_accounts(self):
+        reply = QMessageBox.question(
+            self,
+            "Export Accounts Config?",
+            (
+                "This will store the Accounts list and any associated Account Numbers"
+                f" from <pre>{self.db_path}</pre> so any new databases use the same settings."
+            ),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        with self.Session() as session:
+            config.export_init_accounts(session)
 
     def edit_accounts(self):
         dialog = EditAccounts(self.Session)
@@ -912,7 +845,7 @@ class PyGuiBank(QMainWindow):
 
     def update_main_gui(self, session: Session):
         """Update all tables, checklists, and charts in the main GUI window"""
-        self.setWindowTitle(f"PyGuiBank - {self.db_path.name}")
+        self.setWindowTitle(f"PyGuiBank v{__version__} - {self.db_path}")
         self.update_balances_table(session)
         self.update_accounts_checklist(session)
         self.update_category_checklist(session)

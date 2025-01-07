@@ -1,10 +1,13 @@
 import configparser
+import json
 import os
 import sys
 from configparser import ConfigParser
 from pathlib import Path
 from platform import system
 
+from jsonschema import ValidationError
+from jsonschema import validate as validate_json
 from loguru import logger
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
@@ -19,12 +22,12 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QVBoxLayout,
 )
+from sqlalchemy.orm import Session
+
+from . import orm, query
 
 # Set the config path. Not user configurable.
-if not hasattr(sys, "_MEIPASS"):
-    # Dev only
-    CONFIG_PATH = Path("config.ini").resolve()
-elif os.getenv("PYGUIBANK_CONFIG_PATH"):
+if os.getenv("PYGUIBANK_CONFIG_PATH"):
     CONFIG_PATH = Path(os.getenv("PYGUIBANK_CONFIG_PATH"))
 elif system() == "Windows":
     CONFIG_PATH = Path.home() / "AppData/Roaming/PyGuiBank/config.ini"
@@ -282,7 +285,7 @@ class PreferencesDialog(QDialog):
         # Confirmation dialog
         reply = QMessageBox.question(
             self,
-            "Confirm Exit",
+            "Confirm Save",
             "Are you sure you want to save the setup?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
@@ -335,3 +338,131 @@ class PreferencesDialog(QDialog):
         )
         if reply == QMessageBox.Yes:
             super().reject()
+
+
+def validate_init_db(data: dict):
+    DB_CONFIG_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "AccountTypes": {"type": "array"},
+            "StatementTypes": {"type": "array"},
+        },
+        "required": ["AccountTypes", "StatementTypes"],
+    }
+    try:
+        validate_json(instance=data, schema=DB_CONFIG_SCHEMA)
+    except ValidationError as e:
+        raise ValueError(f"Invalid configuration format: {e}")
+
+
+def validate_init_accounts(data: dict):
+    DB_CONFIG_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "Accounts": {"type": "array"},
+            "AccountNumbers": {"type": "array"},
+        },
+        "required": ["Accounts", "AccountNumbers"],
+    }
+    try:
+        validate_json(instance=data, schema=DB_CONFIG_SCHEMA)
+    except ValidationError as e:
+        raise ValueError(f"Invalid configuration format: {e}")
+
+
+def export_init_statement_types(session: Session):
+    account_types = query.account_types_table(session)
+    statement_types = query.statement_types_table(session)
+
+    data = {"AccountTypes": account_types, "StatementTypes": statement_types}
+    dpath = CONFIG_PATH.parent / "init_statement_types.json"
+    with dpath.open("w") as f:
+        json.dump(data, f, indent=2)
+
+    msg_box = QMessageBox()
+    msg_box.setIcon(QMessageBox.Information)
+    msg_box.setText("Successfully exported database configuration.")
+    msg_box.setWindowTitle("Configuration Saved")
+    msg_box.setStandardButtons(QMessageBox.Ok)
+    msg_box.exec_()
+
+
+def export_init_accounts(session: Session):
+    accounts = query.accounts_table(session)
+    account_numbers = query.account_numbers_table(session)
+
+    data = {"Accounts": accounts, "AccountNumbers": account_numbers}
+    dpath = CONFIG_PATH.parent / "init_accounts.json"
+    with dpath.open("w") as f:
+        json.dump(data, f, indent=2)
+
+    msg_box = QMessageBox()
+    msg_box.setIcon(QMessageBox.Information)
+    msg_box.setText("Successfully exported Accounts configuration.")
+    msg_box.setWindowTitle("Configuration Saved")
+    msg_box.setStandardButtons(QMessageBox.Ok)
+    msg_box.exec_()
+
+
+def import_init_statement_types(session: Session, parent=None):
+    """Import statement search parameters"""
+    fpath = CONFIG_PATH.parent / "init_statement_types.json"
+    if not fpath.exists():
+        fpath = Path("init_statement_types.json")
+    if not fpath.exists():
+        QMessageBox.warning(
+            parent,
+            "No init_db.json",
+            "Database settings init_db.json could not be found.",
+        )
+        logger.info(
+            "No init_statement_types.json was found."
+            " User will need to create new accounts."
+        )
+        return
+
+    with fpath.open("r") as f:
+        data = json.load(f)
+
+    validate_init_db(data)
+
+    query.insert_rows_batched(
+        session,
+        orm.AccountTypes,
+        data["AccountTypes"],
+    )
+    query.insert_rows_batched(
+        session,
+        orm.StatementTypes,
+        data["StatementTypes"],
+    )
+
+
+def import_init_accounts(session: Session):
+    """Import account configuration, if available"""
+    fpath = CONFIG_PATH.parent / "init_statement_types.json"
+    if not fpath.exists():
+        fpath = Path("init_accounts.json")
+    if not fpath.exists():
+        logger.info(
+            "No init_accounts.json was found. User will need to create new accounts"
+        )
+        return
+    fpath = Path("") / "init_accounts.json"
+    if not fpath.exists():
+        return
+    with fpath.open("r") as f:
+        data = json.load(f)
+
+    validate_init_accounts(data)
+
+    query.insert_rows_batched(
+        session,
+        orm.Accounts,
+        data["Accounts"],
+    )
+    query.insert_rows_batched(
+        session,
+        orm.AccountNumbers,
+        data["AccountNumbers"],
+    )
