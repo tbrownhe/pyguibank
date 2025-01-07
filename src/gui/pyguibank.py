@@ -1,7 +1,5 @@
-import os
 import sys
 import traceback
-from contextlib import suppress
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -12,7 +10,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 from PyQt5.QtCore import QAbstractTableModel, Qt
-from PyQt5.QtGui import QColor, QFontMetrics, QIcon
+from PyQt5.QtGui import QColor, QFontMetrics
 from PyQt5.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -44,11 +42,8 @@ from core.dialog import (
     RecurringTransactionsDialog,
 )
 from core.statements import StatementProcessor
-from core.utils import PluginManager, open_file_in_os, resource_path
+from core.utils import PluginManager, open_file_in_os
 from version import __version__
-
-# Set Bindings
-os.environ["QT_API"] = "PyQt5"
 
 
 class MatplotlibCanvas(FigureCanvas):
@@ -999,22 +994,3 @@ class PyGuiBank(QMainWindow):
             xlabel="Date",
             ylabel="Amount ($)",
         )
-
-
-if __name__ == "__main__":
-    # Close the splash screen
-    with suppress(ModuleNotFoundError):
-        import pyi_splash  # type: ignore
-
-        pyi_splash.close()
-
-    # Kick off the GUI
-    try:
-        app = QApplication(sys.argv)
-        app.setWindowIcon(QIcon(str(resource_path("pyguibank.png"))))
-        window = PyGuiBank()
-        window.show()
-        sys.exit(app.exec_())
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        sys.exit(1)
