@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "pyguibank"
+version = "1.0.0"
+description = "A desktop app for personal finance with plugin-based statement parsing."
+authors = ["Your Name <your.email@example.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+PyQt5 = "^5.15"
+sqlalchemy = "^1.4"
+pandas = "^1.5"
+loguru = "^0.7"
+scikit-learn = "^1.2"
+matplotlib = "^3.7"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
