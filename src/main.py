@@ -8,7 +8,7 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 
 from core.utils import resource_path
-from gui.pyguibank import PyGuiBank
+from gui.main_window import PyGuiBank
 
 # Set environment variables
 # Specify the Qt bindings to use
