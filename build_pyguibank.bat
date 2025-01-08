@@ -5,16 +5,16 @@ SET "CONDA_ENV_PATH=%USERPROFILE%\.conda\envs\pyguibank"
 SET "CONDA_PATH=%USERPROFILE%\miniconda3\Scripts\activate.bat"
 SET "CONDA_ENV=pyguibank"
 
-REM Navigate to the project src directory
+:: Navigate to the project src directory
 cd /d %~dp0
 
-REM Activate the conda environment
+:: Activate the conda environment
 call "%CONDA_PATH%" %CONDA_ENV%
 
-REM Compile plugins and copy into dist\plugins
+:: Compile plugins and copy into dist\plugins
 python .\scripts\build_plugins.py
 
-REM Build the executable
+:: Build the executable
 pyinstaller ^
     --clean ^
     --noconfirm ^
@@ -32,10 +32,17 @@ pyinstaller ^
     --icon "assets\pyguibank.png" ^
     "%SRCDIR%main.py"
 
-REM Create Install Package as dist\pyguibank_version_setup.exe
+:: Create Install Package as dist\pyguibank_version_setup.exe
 makensis /V4 .\scripts\win64_installer.nsi
 
-REM Deactivate the conda environment
+:: Rename the file with the version.py version
+for /f "tokens=2 delims== " %%A in ('findstr "^__version__" "src\version.py"') do (
+    set VERSION=%%~A
+)
+set VERSION=%VERSION:"=%
+ren "dist\pyguibank_version_setup.exe" "pyguibank_%VERSION%_setup.exe"
+
+:: Deactivate the conda environment
 call conda deactivate
 
 @echo Script execution completed!
