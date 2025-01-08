@@ -1,14 +1,146 @@
 from pathlib import Path
 
 from loguru import logger
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QDialog, QFileDialog, QPushButton, QTextEdit, QVBoxLayout
+from PyQt5.QtGui import QBrush, QColor, QFont
+from PyQt5.QtWidgets import (
+    QDesktopWidget,
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QVBoxLayout,
+)
 from sqlalchemy.orm import sessionmaker
 
 from core.config import read_config
 from core.parse import parse_any
 from core.plugins import PluginManager
 from core.utils import PDFReader
+
+
+class PluginManagerDialog(QDialog):
+    def __init__(self, plugin_manager: PluginManager, parent=None):
+        super().__init__(parent)
+        self.plugin_manager = plugin_manager
+        self.setWindowTitle("Plugin Manager")
+
+        # Main layout
+        main_layout = QVBoxLayout(self)
+
+        # Plugins Table
+        self.table = QTableWidget()
+        self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(
+            ["Plugin Name", "Statement Type", "Location"]
+        )
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SingleSelection)
+        self.table.horizontalHeader().setStretchLastSection(True)
+
+        # Set font for better readability
+        font = QFont("Arial", 10)
+        self.table.setFont(font)
+
+        # Populate the table with plugin data
+        self.load_plugins()
+        main_layout.addWidget(self.table)
+
+        # Buttons layout
+        buttons_layout = QHBoxLayout()
+
+        self.find_plugins_button = QPushButton("Find More Plugins")
+        self.find_plugins_button.clicked.connect(self.find_more_plugins)
+        buttons_layout.addWidget(self.find_plugins_button)
+
+        self.close_button = QPushButton("Close")
+        self.close_button.clicked.connect(self.close)
+        buttons_layout.addWidget(self.close_button)
+
+        main_layout.addLayout(buttons_layout)
+
+        # Resize the window to fit the table
+        self.resize_to_table()
+
+    def load_plugins(self):
+        """
+        Populate the table with available plugin data.
+        """
+        self.table.setRowCount(0)
+        for plugin_name, module in self.plugin_manager.plugins.items():
+            row_position = self.table.rowCount()
+            self.table.insertRow(row_position)
+
+            # Plugin Name
+            plugin_item = QTableWidgetItem(plugin_name)
+            self.table.setItem(row_position, 0, plugin_item)
+
+            # Extract STATEMENT_TYPE from the Parser class
+            try:
+                parser_class = getattr(module, "Parser", None)
+                if parser_class:
+                    statement_type = getattr(
+                        parser_class, "STATEMENT_TYPE", "ERROR: IParser not used"
+                    )
+                else:
+                    statement_type = "ERROR: 'Parser(IParser)' class not found"
+            except Exception as e:
+                logger.error(
+                    f"Failed to retrieve STATEMENT_TYPE for {plugin_name}: {e}"
+                )
+                statement_type = f"ERROR: {e}"
+
+            statement_item = QTableWidgetItem(statement_type)
+            self.table.setItem(row_position, 1, statement_item)
+
+            # File Location
+            location = getattr(module, "__file__", "N/A")
+            location_item = QTableWidgetItem(location)
+            self.table.setItem(row_position, 2, location_item)
+
+            # Apply background color for cells that start with "ERROR"
+            for item in [plugin_item, statement_item, location_item]:
+                if item.text().startswith("ERROR"):
+                    item.setBackground(QBrush(QColor(255, 182, 193)))  # Light red
+
+        # Resize table columns to fit content
+        self.table.resizeColumnsToContents()
+
+    def resize_to_table(self):
+        """
+        Resize the dialog to fit the table, up to 90% of the screen width and height.
+        """
+        table_width = (
+            sum(self.table.columnWidth(col) for col in range(self.table.columnCount()))
+            + 50
+        )
+        table_height = (
+            self.table.verticalHeader().length()
+            + self.table.horizontalHeader().height()
+            + 75
+        )
+
+        # Get screen dimensions
+        screen_rect = QDesktopWidget().screenGeometry()
+        screen_width = screen_rect.width()
+        screen_height = screen_rect.height()
+
+        # Limit dimensions to 90% of the screen size
+        max_width = int(screen_width * 0.9)
+        max_height = int(screen_height * 0.9)
+
+        # Set dialog size
+        self.resize(min(table_width, max_width), min(table_height, max_height))
+
+    def find_more_plugins(self):
+        """
+        Placeholder for the 'Find More Plugins' functionality.
+        """
+        # This can be expanded in the future to show a plugin search dialog
+        print("Find More Plugins button clicked.")
 
 
 def display_nested_dict(output_display: QTextEdit, nested_dict: dict, level=0):

@@ -37,7 +37,7 @@ from core.plugins import PluginManager
 from core.statements import StatementProcessor
 from core.utils import open_file_in_os
 from gui.accounts import AppreciationDialog, BalanceCheckDialog, EditAccountsDialog
-from gui.plugins import ParseTestDialog
+from gui.plugins import ParseTestDialog, PluginManagerDialog
 from gui.statements import CompletenessDialog
 from gui.transactions import InsertTransactionDialog, RecurringTransactionsDialog
 from version import __version__
@@ -222,6 +222,7 @@ class PyGuiBank(QMainWindow):
 
         # Plugins Menu
         plugins_menu = menubar.addMenu("Plugins")
+        plugins_menu.addAction("Plugin Manager", self.manage_plugins)
         plugins_menu.addAction("Troubleshoot Parsing", self.parse_test)
 
         # Accounts Menu
@@ -265,9 +266,6 @@ class PyGuiBank(QMainWindow):
         # Help Menu
         help_menu = menubar.addMenu("Help")
         help_menu.addAction("About", self.about)
-
-        # INITIALIZE CONFIGURATION ################
-        self.update_from_config()
 
         ##################
         # CENTRAL WIDGET #
@@ -440,16 +438,8 @@ class PyGuiBank(QMainWindow):
 
         self.setCentralWidget(central_widget)
 
-        # Initialize all tables, checklists, and graphs
-        with self.Session() as session:
-            self.update_main_gui(session)
-
-        # Initialize the plugin manager
-        self.plugin_manager = PluginManager()
-        plugin_dir = (
-            Path("plugins") if hasattr(sys, "_MEIPASS") else Path("src/plugins")
-        ).resolve()
-        self.plugin_manager.load_plugins(plugin_dir)
+        # INITIALIZE #########################
+        self.initialize_all_elements()
 
     def exception_hook(self, exc_type, exc_value, exc_traceback):
         """
@@ -502,6 +492,18 @@ class PyGuiBank(QMainWindow):
         dialog.setLayout(layout)
         dialog.resize(max_width, max_height)
         dialog.exec_()
+
+    def initialize_all_elements(self):
+        # Make sure the config file exists and load into memory
+        self.update_from_config()
+
+        # Update all tables, checklists, and graphs
+        with self.Session() as session:
+            self.update_main_gui(session)
+
+        # Initialize the plugin manager
+        self.plugin_manager = PluginManager()
+        self.plugin_manager.load_plugins()
 
     def update_from_config(self):
         self.config = config.read_config()
@@ -582,6 +584,11 @@ class PyGuiBank(QMainWindow):
             return
         with self.Session() as session:
             config.export_init_accounts(session)
+
+    def manage_plugins(self):
+        dialog = PluginManagerDialog(self.plugin_manager)
+        if dialog.exec_() == QDialog.Accepted:
+            return
 
     def parse_test(self):
         dialog = ParseTestDialog(self.Session, self.plugin_manager)

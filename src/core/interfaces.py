@@ -14,6 +14,8 @@ class IParser(Protocol):
         Statement: The parsed statement data.
     """
 
+    STATEMENT_TYPE = "STATEMENT_TYPE must be overridden by each plugin"
+
     def parse(self, input_data: Any) -> Statement:
         raise ValidationError(
             "All children of IParser must override the parse() method"
