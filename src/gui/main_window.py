@@ -36,6 +36,7 @@ from core import categorize, config, learn, orm, plot, query, reports
 from core.statements import StatementProcessor
 from core.utils import PluginManager, open_file_in_os
 from gui.accounts import AppreciationDialog, BalanceCheckDialog, EditAccountsDialog
+from gui.plugins import ParseTestDialog
 from gui.statements import CompletenessDialog
 from gui.transactions import InsertTransactionDialog, RecurringTransactionsDialog
 from version import __version__
@@ -217,6 +218,10 @@ class PyGuiBank(QMainWindow):
             "Export Database Configuration", self.export_init_statement_types
         )
         file_menu.addAction("Export Account Configuration", self.export_init_accounts)
+
+        # Plugins Menu
+        plugins_menu = menubar.addMenu("Plugins")
+        plugins_menu.addAction("Troubleshoot Parsing", self.parse_test)
 
         # Accounts Menu
         accounts_menu = menubar.addMenu("Accounts")
@@ -576,6 +581,11 @@ class PyGuiBank(QMainWindow):
             return
         with self.Session() as session:
             config.export_init_accounts(session)
+
+    def parse_test(self):
+        dialog = ParseTestDialog(self.Session, self.plugin_manager)
+        if dialog.exec_() == QDialog.Accepted:
+            return
 
     def edit_accounts(self):
         dialog = EditAccountsDialog(self.Session)
