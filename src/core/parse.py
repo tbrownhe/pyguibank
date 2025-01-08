@@ -8,7 +8,8 @@ import openpyxl
 from loguru import logger
 from sqlalchemy.orm import sessionmaker
 
-from .dialog import ValidationErrorDialog
+from gui.statements import ValidationErrorDialog
+
 from .interfaces import IParser
 from .query import statement_type_routing
 from .utils import PDFReader, PluginManager

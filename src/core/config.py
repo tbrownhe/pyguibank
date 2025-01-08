@@ -24,7 +24,7 @@ from PyQt5.QtWidgets import (
 )
 from sqlalchemy.orm import Session
 
-from . import orm, query
+from core import orm, query
 
 # Set the config path. Not user configurable.
 if os.getenv("PYGUIBANK_CONFIG_PATH"):

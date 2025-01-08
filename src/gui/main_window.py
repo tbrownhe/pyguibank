@@ -33,16 +33,11 @@ from PyQt5.QtWidgets import (
 from sqlalchemy.orm import Session
 
 from core import categorize, config, learn, orm, plot, query, reports
-from core.dialog import (
-    AppreciationCalculator,
-    BalanceCheckDialog,
-    CompletenessDialog,
-    EditAccounts,
-    InsertTransaction,
-    RecurringTransactionsDialog,
-)
 from core.statements import StatementProcessor
 from core.utils import PluginManager, open_file_in_os
+from gui.accounts import AppreciationDialog, BalanceCheckDialog, EditAccountsDialog
+from gui.statements import CompletenessDialog
+from gui.transactions import InsertTransactionDialog, RecurringTransactionsDialog
 from version import __version__
 
 
@@ -583,19 +578,19 @@ class PyGuiBank(QMainWindow):
             config.export_init_accounts(session)
 
     def edit_accounts(self):
-        dialog = EditAccounts(self.Session)
+        dialog = EditAccountsDialog(self.Session)
         if dialog.exec_() == QDialog.Accepted:
             # Update all GUI elements
             with self.Session() as session:
                 self.update_main_gui(session)
 
     def appreciation_calc(self):
-        dialog = AppreciationCalculator()
+        dialog = AppreciationDialog()
         if dialog.exec_() == QDialog.Accepted:
             pass
 
     def insert_transaction(self):
-        dialog = InsertTransaction(self.Session)
+        dialog = InsertTransactionDialog(self.Session)
         if dialog.exec_() == QDialog.Accepted:
             # Update all GUI elements
             with self.Session() as session:
@@ -669,7 +664,7 @@ class PyGuiBank(QMainWindow):
             if balance_dialog.exec_() != QDialog.Accepted:
                 continue
 
-            insert_dialog = InsertTransaction(
+            insert_dialog = InsertTransactionDialog(
                 self.Session, account_name=account_name, close_account=True
             )
             if insert_dialog.exec_() == QDialog.Accepted:

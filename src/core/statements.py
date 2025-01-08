@@ -7,8 +7,9 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QDialog, QMessageBox, QProgressDialog
 from sqlalchemy.orm import Session, sessionmaker
 
+from gui.accounts import AssignAccountNumber
+
 from . import query
-from .dialog import AssignAccountNumber
 from .orm import Statements, Transactions
 from .parse import parse_any
 from .utils import PluginManager, hash_file
@@ -104,10 +105,11 @@ class StatementProcessor:
         msg_box = QMessageBox(parent)
         msg_box.setIcon(QMessageBox.Information)
         msg_box.setText(
-            f"Successfully imported {success} of {total} files in {self.import_dir}."
-            f"\n{duplicate} duplicate files were found,"
-            f"\n{fail} files failed to import, and"
-            f"\n{remain} files remain to be imported."
+            f"Successfully imported {success} of {total} files in\n"
+            f"{self.import_dir}\n\n"
+            f"{duplicate} duplicate files were found,\n"
+            f"{fail} files failed to import, and\n"
+            f"{remain} files remain to be imported."
         )
         msg_box.setWindowTitle("Import Summary")
         msg_box.setStandardButtons(QMessageBox.Ok)
