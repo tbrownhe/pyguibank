@@ -7,6 +7,7 @@ from loguru import logger
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 
+from core.init import initialize_plugins
 from core.utils import resource_path
 from gui.main_window import PyGuiBank
 
@@ -23,6 +24,9 @@ if sys.platform == "win32":
 elif sys.platform == "darwin":
     # macOS-specific scaling (already set above for consistency)
     os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+
+# Copy any bundled plugins to the user's plugin folder if it doesn't exist yet
+initialize_plugins()
 
 
 def handle_signal(signal, frame):

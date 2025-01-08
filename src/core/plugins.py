@@ -1,12 +1,15 @@
 import importlib.util
 from pathlib import Path
+from core.config import CONFIG_PATH
+
+PLUGIN_DIR = (CONFIG_PATH.parent / "plugins").resolve()
 
 
 class PluginManager:
     def __init__(self):
         self.plugins = None
 
-    def load_plugins(self, plugin_dir: Path):
+    def load_plugins(self, plugin_dir: Path = PLUGIN_DIR):
         """
         Load all plugins in the specified path.
         """
@@ -48,3 +51,7 @@ class PluginManager:
         if not module:
             raise ImportError(f"Plugin '{parser_name}' not loaded.")
         return getattr(module, class_name, None)
+
+    def list_plugins(self):
+        for name, module in self.plugins.items():
+            print(name, module)
