@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import joblib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -18,7 +19,6 @@ from sklearn.model_selection import cross_val_score, train_test_split
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
 from tqdm import tqdm
-import joblib
 
 """
 Most of this was lifted from these:

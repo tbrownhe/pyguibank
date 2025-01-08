@@ -1,6 +1,6 @@
 from typing import Any, Protocol, runtime_checkable
 
-from .validation import Statement, ValidationError
+from core.validation import Statement, ValidationError
 
 
 @runtime_checkable

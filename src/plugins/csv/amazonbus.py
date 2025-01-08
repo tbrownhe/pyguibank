@@ -2,7 +2,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Union
 
-# from .db import execute_sql_query
 from core.utils import convert_amount_to_float
 
 

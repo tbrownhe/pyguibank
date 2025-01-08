@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import asc, distinct, func, or_, select, text
 
-from .orm import (
+from core.orm import (
     AccountNumbers,
     Accounts,
     AccountTypes,

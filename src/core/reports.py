@@ -1,11 +1,10 @@
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
-
 from sqlalchemy.orm import Session
-from .query import shopping, transactions
-from .utils import open_file_in_os
+
+from core.query import shopping, transactions
+from core.utils import open_file_in_os
 
 
 def shopping_report(session: Session, months: int = 12) -> None:

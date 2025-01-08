@@ -5,9 +5,9 @@ import matplotlib.dates as mdates
 import pandas as pd
 from matplotlib import pyplot as plt
 from matplotlib.ticker import MultipleLocator
-
-from . import query
 from sqlalchemy.orm import Session
+
+from core import query
 
 
 def forward_fill_exponential(
