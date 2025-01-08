@@ -33,8 +33,9 @@ from PyQt5.QtWidgets import (
 from sqlalchemy.orm import Session
 
 from core import categorize, config, learn, orm, plot, query, reports
+from core.plugins import PluginManager
 from core.statements import StatementProcessor
-from core.utils import PluginManager, open_file_in_os
+from core.utils import open_file_in_os
 from gui.accounts import AppreciationDialog, BalanceCheckDialog, EditAccountsDialog
 from gui.plugins import ParseTestDialog
 from gui.statements import CompletenessDialog

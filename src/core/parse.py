@@ -8,12 +8,12 @@ import openpyxl
 from loguru import logger
 from sqlalchemy.orm import sessionmaker
 
+from core.interfaces import IParser
+from core.plugins import PluginManager
+from core.query import statement_type_routing
+from core.utils import PDFReader
+from core.validation import Statement, ValidationError, validate_statement
 from gui.statements import ValidationErrorDialog
-
-from .interfaces import IParser
-from .query import statement_type_routing
-from .utils import PDFReader, PluginManager
-from .validation import Statement, ValidationError, validate_statement
 
 T = TypeVar("T")
 

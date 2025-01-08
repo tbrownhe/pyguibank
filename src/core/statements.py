@@ -7,13 +7,13 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QDialog, QMessageBox, QProgressDialog
 from sqlalchemy.orm import Session, sessionmaker
 
+from core import query
+from core.orm import Statements, Transactions
+from core.parse import parse_any
+from core.plugins import PluginManager
+from core.utils import hash_file
+from core.validation import Statement, Transaction
 from gui.accounts import AssignAccountNumber
-
-from . import query
-from .orm import Statements, Transactions
-from .parse import parse_any
-from .utils import PluginManager, hash_file
-from .validation import Statement, Transaction
 
 
 class StatementProcessor:

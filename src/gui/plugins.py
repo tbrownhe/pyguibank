@@ -2,18 +2,13 @@ from pathlib import Path
 
 from loguru import logger
 from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import (
-    QDialog,
-    QFileDialog,
-    QPushButton,
-    QTextEdit,
-    QVBoxLayout,
-)
+from PyQt5.QtWidgets import QDialog, QFileDialog, QPushButton, QTextEdit, QVBoxLayout
 from sqlalchemy.orm import sessionmaker
 
 from core.config import read_config
 from core.parse import parse_any
-from core.utils import PDFReader, PluginManager
+from core.plugins import PluginManager
+from core.utils import PDFReader
 
 
 def display_nested_dict(output_display: QTextEdit, nested_dict: dict, level=0):
