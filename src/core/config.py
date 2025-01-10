@@ -80,20 +80,13 @@ def default_config() -> ConfigParser:
     return config
 
 
-class CustomJSONEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, Decimal):
-            return float(obj)  # Convert Decimal to float
-        return super().default(obj)
-
-
 def export_init_statement_types(session: Session):
     account_types = query.account_types_table(session)
     statement_types = query.statement_types_table(session)
 
     data = {"AccountTypes": account_types, "StatementTypes": statement_types}
     with settings.statement_types_json.open("w") as f:
-        json.dump(data, f, indent=2, cls=CustomJSONEncoder)
+        json.dump(data, f, indent=2)
 
     msg_box = QMessageBox()
     msg_box.setIcon(QMessageBox.Information)
@@ -109,7 +102,7 @@ def export_init_accounts(session: Session):
 
     data = {"Accounts": accounts, "AccountNumbers": account_numbers}
     with settings.accounts_json.open("w") as f:
-        json.dump(data, f, indent=2, cls=CustomJSONEncoder)
+        json.dump(data, f, indent=2)
 
     msg_box = QMessageBox()
     msg_box.setIcon(QMessageBox.Information)

@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import select, cast, Float
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import asc, distinct, func, or_, select, text
@@ -49,7 +49,7 @@ def accounts_table(session: Session) -> list[dict]:
         Accounts.AccountTypeID,
         Accounts.Company,
         Accounts.Description,
-        Accounts.AppreciationRate,
+        cast(Accounts.AppreciationRate, Float).label("AppreciationRate"),
     )
 
     # Fetch all data
