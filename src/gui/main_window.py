@@ -38,6 +38,7 @@ from core.statements import StatementProcessor
 from core.utils import open_file_in_os
 from gui.accounts import AppreciationDialog, BalanceCheckDialog, EditAccountsDialog
 from gui.plugins import ParseTestDialog, PluginManagerDialog
+from gui.preferences import PreferencesDialog
 from gui.statements import CompletenessDialog
 from gui.transactions import InsertTransactionDialog, RecurringTransactionsDialog
 from version import __version__
@@ -510,11 +511,6 @@ class PyGuiBank(QMainWindow):
         self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
         self.ensure_db()
 
-    def init_db_tables(self):
-        with self.Session() as session:
-            config.import_init_statement_types(session)
-            config.import_init_accounts(session)
-
     def ensure_db(self):
         # Ensure db file exists
         if self.db_path.exists():
@@ -532,6 +528,11 @@ class PyGuiBank(QMainWindow):
             msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowStaysOnTopHint)
             msg_box.exec_()
 
+    def init_db_tables(self):
+        with self.Session() as session:
+            config.import_init_statement_types(session)
+            config.import_init_accounts(session)
+
     #########################
     ### MENUBAR FUNCTIONS ###
     #########################
@@ -547,7 +548,7 @@ class PyGuiBank(QMainWindow):
         open_file_in_os(self.db_path)
 
     def preferences(self):
-        dialog = config.PreferencesDialog()
+        dialog = PreferencesDialog()
         if dialog.exec_() == QDialog.Accepted:
             self.update_from_config()
             with self.Session() as session:

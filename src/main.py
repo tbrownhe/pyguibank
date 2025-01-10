@@ -2,28 +2,36 @@ import os
 import signal
 import sys
 from contextlib import suppress
+from pathlib import Path
+from platform import system
 
+from dotenv import load_dotenv
 from loguru import logger
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 
-from core.init import initialize_plugins
-from core.utils import resource_path
-from gui.main_window import PyGuiBank
+# Load .env file if present
+dotenv_path = Path(__file__).parents[1] / ".env"
+if dotenv_path.exists():
+    load_dotenv(dotenv_path, override=True)
+    logger.info(f"Loaded .env from {dotenv_path}")
 
-# Set environment variables
-# Specify the Qt bindings to use
-os.environ.setdefault("QT_API", "PyQt5")
-# Enable HiDPI scaling for PyQt apps
-os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+# Set PyQt environment variables
+os.environ.setdefault("QT_API", "PyQt5")  # Specify the Qt bindings to use
+os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"  # Enable HiDPI scaling for PyQt apps
 
 # Platform-specific environment configurations
-if sys.platform == "win32":
+if system() == "Windows":
     # Use Windows-specific platform plugin
     os.environ["QT_QPA_PLATFORM"] = "windows"
-elif sys.platform == "darwin":
+elif system == "Darwin":
     # macOS-specific scaling (already set above for consistency)
     os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+
+# Then load modules that may depend on env vars
+from core.initialize import initialize_plugins
+from core.utils import resource_path
+from gui.main_window import PyGuiBank
 
 # Copy any bundled plugins to the user's plugin folder if it doesn't exist yet
 initialize_plugins()

@@ -49,6 +49,7 @@ def accounts_table(session: Session) -> list[dict]:
         Accounts.AccountTypeID,
         Accounts.Company,
         Accounts.Description,
+        Accounts.AppreciationRate,
     )
 
     # Fetch all data

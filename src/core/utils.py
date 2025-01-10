@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Union
 
 import pdfplumber
+from loguru import logger
 
 
 class PDFReader:
@@ -184,6 +185,19 @@ def open_file_in_os(fpath: Path):
             raise ValueError("Unsupported OS type %s" % name)
     except Exception:
         print(f"{fpath} could not be opened. It may be open already.")
+
+
+def create_directory(folder: Path):
+    folder = folder.resolve()
+    if folder.exists():
+        logger.info(f"Directory exists: {folder}")
+        return
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Directory created: {folder}")
+    except OSError as e:
+        logger.error(f"Error creating directory {folder}: {e}")
+        raise
 
 
 def find_line_startswith(
