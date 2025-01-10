@@ -6,6 +6,8 @@ from core.validation import Statement, ValidationError
 @runtime_checkable
 class IParser(Protocol):
     """Enforces consistent design inputs and outputs for all parsers.
+    Class variables listed here must all be overridden by individual parsers.
+    Validation during plugin import will refuse empty strings.
 
     Args:
         input_data (Any): The data to parse (PDFReader, CSV array, XLSX sheets, etc.).
@@ -14,7 +16,10 @@ class IParser(Protocol):
         Statement: The parsed statement data.
     """
 
-    STATEMENT_TYPE = "STATEMENT_TYPE must be overridden by each plugin"
+    STATEMENT_TYPE = ""
+    VERSION = ""
+    DESCRIPTION = ""
+    SEARCH_STRING = ""
 
     def parse(self, input_data: Any) -> Statement:
         raise ValidationError(

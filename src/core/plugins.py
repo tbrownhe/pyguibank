@@ -1,10 +1,12 @@
 import importlib.util
-import os
 from pathlib import Path
+from typing import Optional
 
 import requests
 from loguru import logger
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from core.interfaces import IParser
 from core.settings import settings
 
 
@@ -42,74 +44,122 @@ def download_plugin(file_type: str, plugin_name: str, save_path: Path):
         print(f"Error downloading plugin {plugin_name}: {e}")
 
 
-"""
-if True:
-    plugins = get_plugins()
-    if plugins:
-        print("Available Plugins:")
-        for i, plugin in enumerate(plugins):
-            print("Plugin", i + 1)
-            for key, value in plugin.items():
-                print(f"  {key}: {value}")
-    else:
-        print("No plugins available or an error occurred.")
-else:
-    file_type, plugin_name, save_path = (
-        "pdf",
-        "capitaloneauto",
-        Path("capitaloneauto.pyc"),
+class PluginMetadata(BaseModel):
+    plugin_name: str
+    statement_type: str
+    version: str
+    description: Optional[str] = Field(
+        "", description="A short description of the plugin."
     )
-    download_plugin(file_type, plugin_name, save_path)
-"""
+    search_string: str
+    file_path: str
+
+    # Validator to reject empty string values
+    @field_validator(
+        "plugin_name", "statement_type", "version", "search_string", mode="before"
+    )
+    def no_error_or_empty(cls, value, field):
+        """
+        Ensure no field is an empty string.
+        """
+        # field_name = field.field_name
+        if value == "":
+            raise ValueError(f"Field '{field.field_name}' cannot be empty.")
+        return value
+
+    # Validator to set default description
+    @field_validator("description", mode="before")
+    def default_description(cls, value):
+        """
+        If description is empty, set a default value.
+        """
+        return value or "No description provided."
 
 
 class PluginManager:
     def __init__(self):
         self.plugins = None
+        self.metadata = None
 
     def load_plugins(self):
         """
         Load all plugins in the specified path.
         """
         self.plugins = {}
-        for plugin_file in settings.plugin_dir.glob("**/*.pyc"):
-            module_name = plugin_file.stem.split(".")[0]
-            if module_name == "__init__":
-                continue
-            package = (
-                plugin_file.parents[1].stem
-                if plugin_file.parents[0].stem == "__pycache__"
-                else plugin_file.parents[0].stem
-            )
-            plugin_name = ".".join([package, module_name])
-            module = self.load_module_from_file(plugin_name, plugin_file)
-            if module:
-                self.plugins[plugin_name] = module
+        self.metadata = {}
 
-    def load_module_from_file(self, plugin_name: str, filepath: Path):
+        for plugin_file in settings.plugin_dir.glob("**/*.pyc"):
+            # plugin_name like 'pdf.citibank'
+            module_name = plugin_file.stem
+            if module_name.split(".")[0] == "__init__":
+                continue
+            file_type = plugin_file.parent.name
+            plugin_name = ".".join([file_type, module_name])
+
+            # Retrieve the Parser(Iparser) class from the plugin and store it
+            ParserClass, metadata = self.load_module_from_file(plugin_name, plugin_file)
+            if ParserClass:
+                self.plugins[plugin_name] = ParserClass
+                self.metadata[plugin_name] = metadata
+
+    def load_module_from_file(self, plugin_name: str, plugin_file: Path):
         """
         Load a Python module from a .pyc file.
         """
         try:
-            spec = importlib.util.spec_from_file_location(plugin_name, filepath)
-            if spec and spec.loader:
-                module = importlib.util.module_from_spec(spec)
-                # sys.modules[plugin_name] = module
-                spec.loader.exec_module(module)
-                return module
-        except Exception as e:
-            print(f"Failed to load plugin {plugin_name}: {e}")
-        return None
+            # Load the module and spec
+            spec = importlib.util.spec_from_file_location(plugin_name, plugin_file)
+            if not spec or not spec.loader:
+                raise ImportError(f"Cannot load module from {plugin_file}")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
 
-    def get_parser(self, parser_name: str, class_name: str):
+            # Get the class called Parser(IParser) from the module
+            ParserClass = getattr(module, "Parser", None)
+            if not ParserClass:
+                raise ValueError(f"Parser class not found in {plugin_file}")
+            if not isinstance(ParserClass, IParser):
+                raise TypeError(f"{ParserClass} must implement IParser")
+
+            # Extract and validate the metadata
+            metadata = {
+                "plugin_name": plugin_name,
+                "statement_type": getattr(ParserClass, "STATEMENT_TYPE", ""),
+                "version": getattr(ParserClass, "VERSION", ""),
+                "description": getattr(ParserClass, "DESCRIPTION", ""),
+                "search_string": getattr(ParserClass, "SEARCH_STRING", ""),
+                "file_path": str(plugin_file),
+            }
+
+            # Validate metadata
+            metadata = PluginMetadata(**metadata)
+
+            return ParserClass, metadata
+        except ValidationError as e:
+            logger.error(f"Validation error for plugin {plugin_name}: {e}")
+            return None, None
+        except Exception as e:
+            logger.error(f"Failed to load plugin {plugin_name}: {e}")
+            return None, None
+
+    def get_parser(self, plugin_name: str):
         """
         Retrieve a specific parser class from the preloaded plugins.
         """
-        module = self.plugins.get(parser_name)
-        if not module:
-            raise ImportError(f"Plugin '{parser_name}' not loaded.")
-        return getattr(module, class_name, None)
+        ParserClass = self.plugins.get(plugin_name)
+        if not ParserClass:
+            raise ImportError(f"Plugin '{plugin_name}' not loaded.")
+        return ParserClass
 
     def list_plugins(self):
-        for name, module in self.plugins.items():
-            print(name, module)
+        for plugin_name, ParserClass in self.plugins.items():
+            print(plugin_name, ParserClass)
+
+    def list_metadata(self):
+        """
+        Display validated metadata for all plugins.
+        """
+        for plugin_name, metadata in self.metadata.items():
+            print(f"Plugin: {plugin_name}")
+            for key, value in metadata.items():
+                print(f"  {key}: {value}")

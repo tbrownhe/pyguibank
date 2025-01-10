@@ -138,11 +138,13 @@ class BaseRouter(Generic[T]):
         """
         # Get the parser class from the plugin manager
         parser_name, class_name = entry_point.split(":")
-        ParserClass = self.plugin_manager.get_parser(parser_name, class_name)
+        ParserClass = self.plugin_manager.get_parser(parser_name)
+
+        # PluginManager already does this validation at plugin load, but let's run it again.
         if not ParserClass:
-            raise ImportError(
-                f"Class '{class_name}' not found in plugin '{parser_name}'."
-            )
+            raise ImportError(f"Parser(IParser) not found in plugin '{parser_name}'.")
+        if not isinstance(ParserClass, IParser):
+            raise TypeError(f"{ParserClass} must implement IParser")
 
         return ParserClass
 
