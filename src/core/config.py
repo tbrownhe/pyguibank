@@ -1,24 +1,11 @@
 import configparser
 import json
 from configparser import ConfigParser
-from decimal import Decimal
 from pathlib import Path
 
 from loguru import logger
 from pydantic import BaseModel, ValidationError
-from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (
-    QCheckBox,
-    QDialog,
-    QFileDialog,
-    QGridLayout,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QMessageBox,
-    QPushButton,
-    QVBoxLayout,
-)
+from PyQt5.QtWidgets import QMessageBox
 from sqlalchemy.orm import Session
 
 from core import orm, query
