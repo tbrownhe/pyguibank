@@ -50,7 +50,6 @@ if __name__ == "__main__":
     with suppress(ModuleNotFoundError):
         import pyi_splash  # type: ignore
 
-        pyi_splash.update_text("Loading PyGuiBank...")
         pyi_splash.close()
 
     # Kick off the GUI
