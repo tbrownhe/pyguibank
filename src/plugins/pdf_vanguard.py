@@ -19,7 +19,7 @@ class Parser(IParser):
     VERSION = "0.1.0"
     SUFFIX = ".pdf"
     COMPANY = "Vanguard"
-    STATEMENT_TYPE = "Vanguard 401(k)"
+    STATEMENT_TYPE = "Retirement Savings Account Quarterly Statement"
     SEARCH_STRING = "vanguard.com&&account summary"
     INSTRUCTIONS = (
         "Login to https://investor.vanguard.com/, then click 'See my statements'."
