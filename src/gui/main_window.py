@@ -33,6 +33,7 @@ from PyQt5.QtWidgets import (
 from sqlalchemy.orm import Session
 
 from core import categorize, config, learn, orm, plot, query, reports
+from core.initialize import seed_account_types
 from core.plugins import PluginManager
 from core.statements import StatementProcessor
 from core.utils import open_file_in_os
@@ -530,7 +531,12 @@ class PyGuiBank(QMainWindow):
 
     def init_db_tables(self):
         with self.Session() as session:
-            config.import_init_statement_types(session)
+            query.insert_rows_batched(
+                session,
+                orm.AccountTypes,
+                seed_account_types(),
+            )
+            # config.import_init_statement_types(session)
             config.import_init_accounts(session)
 
     #########################

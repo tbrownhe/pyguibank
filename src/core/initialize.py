@@ -28,3 +28,21 @@ def initialize_plugins():
                 )
     except Exception as e:
         logger.error(f"Failed to initialize plugins: {e}")
+
+
+def seed_account_types():
+    account_types = [
+        {"AccountTypeID": 1, "AccountType": "Checking", "AssetType": "Asset"},
+        {"AccountTypeID": 2, "AccountType": "Savings", "AssetType": "Asset"},
+        {"AccountTypeID": 3, "AccountType": "Credit Card", "AssetType": "Debt"},
+        {"AccountTypeID": 4, "AccountType": "401k", "AssetType": "Asset"},
+        {"AccountTypeID": 5, "AccountType": "HSA", "AssetType": "Asset"},
+        {"AccountTypeID": 6, "AccountType": "Loan", "AssetType": "Debt"},
+        {"AccountTypeID": 7, "AccountType": "Shopping", "AssetType": "Spending"},
+        {
+            "AccountTypeID": 8,
+            "AccountType": "TangibleAsset",
+            "AssetType": "TangibleAsset",
+        },
+    ]
+    return account_types

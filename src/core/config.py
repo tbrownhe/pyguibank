@@ -67,22 +67,6 @@ def default_config() -> ConfigParser:
     return config
 
 
-def export_init_statement_types(session: Session):
-    account_types = query.account_types_table(session)
-    statement_types = query.statement_types_table(session)
-
-    data = {"AccountTypes": account_types, "StatementTypes": statement_types}
-    with settings.statement_types_json.open("w") as f:
-        json.dump(data, f, indent=2)
-
-    msg_box = QMessageBox()
-    msg_box.setIcon(QMessageBox.Information)
-    msg_box.setText("Successfully exported database configuration.")
-    msg_box.setWindowTitle("Configuration Saved")
-    msg_box.setStandardButtons(QMessageBox.Ok)
-    msg_box.exec_()
-
-
 def export_init_accounts(session: Session):
     accounts = query.accounts_table(session)
     account_numbers = query.account_numbers_table(session)
@@ -97,27 +81,6 @@ def export_init_accounts(session: Session):
     msg_box.setWindowTitle("Configuration Saved")
     msg_box.setStandardButtons(QMessageBox.Ok)
     msg_box.exec_()
-
-
-class AccountType(BaseModel):
-    AccountTypeID: int
-    AccountType: str
-    AssetType: str
-
-
-class StatementType(BaseModel):
-    AccountTypeID: int
-    Company: str
-    Description: str
-    Extension: str
-    SearchString: str
-    Parser: str
-    EntryPoint: str
-
-
-class StatementTypeConfig(BaseModel):
-    AccountTypes: list[AccountType]
-    StatementTypes: list[StatementType]
 
 
 class Account(BaseModel):
@@ -152,44 +115,6 @@ def validate_using_model(fpath: Path, model: BaseModel):
     except ValidationError as e:
         logger.error(f"Validation error: {e}")
         raise ValueError(f"Invalid configuration format: {e}")
-
-
-def import_init_statement_types(session: Session, parent=None):
-    """Import statement search parameters"""
-    # Try to grab from default location
-    fpath = settings.statement_types_json
-    if not fpath.exists():
-        # Try to grab from bundled assets
-        fpath = Path("assets") / fpath.name
-    if not fpath.exists():
-        QMessageBox.warning(
-            parent,
-            f"No {fpath.name}",
-            f"Database settings file {fpath.name} could not be found.",
-        )
-        return
-
-    # Import and validate data
-    try:
-        validated_data = validate_using_model(fpath, StatementTypeConfig)
-    except Exception as e:
-        logger.error(f"Validation error: {e}")
-        raise
-
-    # Convert Pydantic models to dicts for database insertion
-    account_types = [item.dict() for item in validated_data.AccountTypes]
-    statement_types = [item.dict() for item in validated_data.StatementTypes]
-
-    query.insert_rows_batched(
-        session,
-        orm.AccountTypes,
-        account_types,
-    )
-    query.insert_rows_batched(
-        session,
-        orm.StatementTypes,
-        statement_types,
-    )
 
 
 def import_init_accounts(session: Session, parent=None):
