@@ -141,11 +141,6 @@ def import_init_accounts(session: Session, parent=None):
         QMessageBox.No,
     )
     if reply == QMessageBox.No:
-        QMessageBox.information(
-            parent,
-            f"Database Without Account Info",
-            "Database will be initialized without account information.",
-        )
         return
 
     # Import and validate data
@@ -154,12 +149,6 @@ def import_init_accounts(session: Session, parent=None):
     except Exception as e:
         logger.error(f"Validation error: {e}")
         raise
-
-    QMessageBox.information(
-        parent,
-        f"Database With Account Info",
-        "Database will be initialized with previous account information.",
-    )
 
     # Convert Pydantic models to dicts for database insertion
     accounts = [item.dict() for item in validated_data.Accounts]
