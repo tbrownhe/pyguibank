@@ -15,8 +15,9 @@ from core.validation import Account, Statement, Transaction
 
 class Parser(IParser):
     # Plugin metadata required by IParser
-    SUFFIX = ".pdf"
+    PLUGIN_NAME = "pdf_occucc"
     VERSION = "0.1.0"
+    SUFFIX = ".pdf"
     COMPANY = "Oregon Community Credit Union"
     STATEMENT_TYPE = "NICE Credit Card Monthly Statement"
     SEARCH_STRING = "www.myoccu.org&&cardservices"

@@ -9,8 +9,9 @@ from core.validation import Account, Statement, Transaction
 
 class Parser(IParser):
     # Plugin metadata required by IParser
-    SUFFIX = ".csv"
+    PLUGIN_NAME = "csv_mohela"
     VERSION = "0.1.0"
+    SUFFIX = ".csv"
     COMPANY = "MOHELA Student Loan Servicing"
     STATEMENT_TYPE = "Life of Loan Statement"
     SEARCH_STRING = '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">'

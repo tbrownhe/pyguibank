@@ -15,8 +15,9 @@ from core.validation import Account, Statement, Transaction
 
 class Parser(IParser):
     # Plugin metadata required by IParser
-    SUFFIX = ".pdf"
+    PLUGIN_NAME = "pdf_vanguard"
     VERSION = "0.1.0"
+    SUFFIX = ".pdf"
     COMPANY = "Vanguard"
     STATEMENT_TYPE = "Vanguard 401(k)"
     SEARCH_STRING = "vanguard.com&&account summary"

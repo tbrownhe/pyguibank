@@ -17,11 +17,12 @@ from core.validation import Account, Statement, Transaction
 
 class Parser(IParser):
     # Plugin metadata required by IParser
-    SUFFIX = ".pdf"
+    PLUGIN_NAME = "pdf_wfbankpersonal"
     VERSION = "0.1.0"
+    SUFFIX = ".pdf"
     COMPANY = "Wells Fargo"
     STATEMENT_TYPE = "Personal Banking Monthly Statement"
-    SEARCH_STRING = "(wells fargo everyday checking)||(wells fargo way2save)"
+    SEARCH_STRING = "wells fargo everyday checking||wells fargo way2save"
     INSTRUCTIONS = (
         "Login to https://www.wellsfargo.com/, then navigate to"
         " Accounts > 'View Statements and Documents' > 'Statements and Disclosures'."

@@ -16,8 +16,9 @@ from core.validation import Account, Statement, Transaction
 
 class Parser(IParser):
     # Plugin metadata required by IParser
-    SUFFIX = ".pdf"
+    PLUGIN_NAME = "pdf_citicc"
     VERSION = "0.1.0"
+    SUFFIX = ".pdf"
     COMPANY = "Citibank"
     STATEMENT_TYPE = "Credit Account Monthly Statement"
     SEARCH_STRING = "www.citicards.com"

@@ -15,8 +15,9 @@ from core.validation import Account, Statement, Transaction
 
 class Parser(IParser):
     # Plugin metadata required by IParser
-    SUFFIX = ".pdf"
+    PLUGIN_NAME = "pdf_yamahafin"
     VERSION = "0.1.0"
+    SUFFIX = ".pdf"
     COMPANY = "Yamaha Motor Finance"
     STATEMENT_TYPE = "Yamaha Motor Finance"
     SEARCH_STRING = "yamaha motor finance"

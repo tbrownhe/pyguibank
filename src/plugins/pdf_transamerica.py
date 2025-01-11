@@ -15,8 +15,9 @@ from core.validation import Account, Statement, Transaction
 
 class Parser(IParser):
     # Plugin metadata required by IParser
-    SUFFIX = ".pdf"
+    PLUGIN_NAME = "pdf_transamerica"
     VERSION = "0.1.0"
+    SUFFIX = ".pdf"
     COMPANY = "Transamerica"
     STATEMENT_TYPE = "Retirement Savings Account Quarterly Statement"
     SEARCH_STRING = "transamerica&&retirement account statement"

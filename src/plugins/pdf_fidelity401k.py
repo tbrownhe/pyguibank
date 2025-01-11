@@ -14,8 +14,9 @@ from core.validation import Account, Statement, Transaction
 
 class Parser(IParser):
     # Plugin metadata required by IParser
-    SUFFIX = ".pdf"
+    PLUGIN_NAME = "pdf_fidelity401k"
     VERSION = "0.1.0"
+    SUFFIX = ".pdf"
     COMPANY = "Fidelity"
     STATEMENT_TYPE = "Fidelity Retirement Savings Monthly Statement"
     SEARCH_STRING = "Fidelity Brokerage Services&&Retirement Savings Statement"

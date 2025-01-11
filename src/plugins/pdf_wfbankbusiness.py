@@ -17,8 +17,9 @@ from core.validation import Account, Statement, Transaction
 
 class Parser(IParser):
     # Plugin metadata required by IParser
-    SUFFIX = ".pdf"
+    PLUGIN_NAME = "pdf_wfbankbusiness"
     VERSION = "0.1.0"
+    SUFFIX = ".pdf"
     COMPANY = "Wells Fargo"
     STATEMENT_TYPE = "Personal Banking Monthly Statement"
     SEARCH_STRING = (

@@ -10,8 +10,9 @@ from core.validation import Account, Statement, Transaction
 
 class Parser(IParser):
     # Plugin metadata required by IParser
-    SUFFIX = ".pdf"
+    PLUGIN_NAME = "pdf_wfploan"
     VERSION = "0.1.0"
+    SUFFIX = ".pdf"
     COMPANY = "Wells Fargo"
     STATEMENT_TYPE = "Personal Loan Monthly Statement"
     SEARCH_STRING = "wells fargo&&personal loan statement"
