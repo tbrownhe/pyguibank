@@ -17,8 +17,9 @@ class IParser(Protocol):
     """
 
     # Plugin metadata
-    SUFFIX = ""
+    PLUGIN_NAME = ""
     VERSION = ""
+    SUFFIX = ""
     COMPANY = ""
     STATEMENT_TYPE = ""
     SEARCH_STRING = ""
