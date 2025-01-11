@@ -319,7 +319,7 @@ class Statement:
     start_date: datetime
     end_date: datetime
     accounts: list[Account]
-    stid: Optional[int] = None
+    plugin_name: Optional[str] = None
     fpath: Optional[Path] = None
     dpath: Optional[Path] = None
     md5hash: Optional[str] = None
@@ -343,8 +343,10 @@ class Statement:
             errors.append(f"accounts must be list, got {type(self.accounts).__name__}")
         if not all(isinstance(acc, Account) for acc in self.accounts):
             errors.append("All items in accounts must be instances of Account")
-        if self.stid is not None and not isinstance(self.stid, int):
-            errors.append(f"stid must be int or None, got {type(self.stid).__name__}")
+        if self.plugin_name is not None and not isinstance(self.plugin_name, str):
+            errors.append(
+                f"plugin_name must be str or None, got {type(self.plugin_name).__name__}"
+            )
         if self.fpath is not None and not isinstance(self.fpath, Path):
             errors.append(
                 f"fpath must be Path or None, got {type(self.fpath).__name__}"
@@ -360,13 +362,13 @@ class Statement:
         if errors:
             raise TypeError("\n".join(errors))
 
-    def add_metadata(self, fpath: Path, stid: int):
+    def add_metadata(self, fpath: Path, plugin_name: str):
         if not isinstance(fpath, Path):
             raise ValidationError("fpath must be a Path")
-        if not isinstance(stid, int):
-            raise ValidationError("stid must be int")
+        if not isinstance(plugin_name, str):
+            raise ValidationError("plugin_name must be str")
         self.fpath = fpath
-        self.stid = stid
+        self.plugin_name = plugin_name
 
     def add_md5hash(self, md5hash: str):
         if not isinstance(md5hash, str):
@@ -393,7 +395,6 @@ class Statement:
 
     def to_db_row(self, account: Account):
         metadata = {
-            "StatementTypeID": self.stid,
             "AccountID": account.account_id,
             "ImportDate": datetime.now().strftime(r"%Y-%m-%d"),
             "StartDate": self.start_date.strftime(r"%Y-%m-%d"),
@@ -410,8 +411,8 @@ class Statement:
         errors = []
         if not isinstance(self.fpath, Path):
             errors.append("fpath must be a Path")
-        if not isinstance(self.stid, int):
-            errors.append("stid must be int")
+        if not isinstance(self.plugin_name, str):
+            errors.append("plugin_name must be str")
         return errors
 
     def validate_complete(self) -> list[str]:

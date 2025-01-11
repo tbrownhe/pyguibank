@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from loguru import logger
-from sqlalchemy import select, cast, Float
+from sqlalchemy import Float, cast, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import asc, distinct, func, or_, select, text
@@ -13,9 +13,9 @@ from core.orm import (
     Accounts,
     AccountTypes,
     BaseModel,
+    Plugins,
     Shopping,
     Statements,
-    StatementTypes,
     Transactions,
 )
 
@@ -471,90 +471,6 @@ def statements_with_filename(session: Session, filename: str) -> list[tuple]:
     except SQLAlchemyError as e:
         session.rollback()
         raise RuntimeError(f"Database query failed: {e}")
-
-
-def statement_type_routing(
-    session: Session, extension: str = ""
-) -> list[tuple[int, str, str]]:
-    """
-    Retrieves StatementTypeID, SearchString, and EntryPoint from the StatementTypes table.
-    Optionally filters by extension.
-
-    Args:
-        session (Session): The SQLAlchemy session to use for the query.
-        extension (str, optional): The file extension to filter by. Defaults to "".
-
-    Returns:
-        list[tuple[int, str, str]]: A list of tuples containing StatementTypeID, SearchString, and EntryPoint.
-    """
-    query = select(
-        StatementTypes.StatementTypeID,
-        StatementTypes.SearchString,
-        StatementTypes.EntryPoint,
-    )
-    if extension:
-        query = query.where(StatementTypes.Extension == extension)
-
-    return session.execute(query).fetchall()
-
-
-def statement_types_table(session: Session) -> list[dict]:
-    """
-    Fetches entire StatementTypes table.
-
-    Args:
-        session (Session): SQLAlchemy session object.
-
-    Returns:
-        list[dict]: Table contents
-    """
-    # Perform the query
-    query = session.query(
-        StatementTypes.AccountTypeID,
-        StatementTypes.Company,
-        StatementTypes.Description,
-        StatementTypes.Extension,
-        StatementTypes.SearchString,
-        StatementTypes.Parser,
-        StatementTypes.EntryPoint,
-    )
-
-    # Fetch all data
-    data = [
-        {
-            column.get("name", "Unknown"): value
-            for column, value in zip(query.column_descriptions, row)
-        }
-        for row in query.all()
-    ]
-
-    return data
-
-
-def statement_type_details(session: Session, stid: int) -> tuple[str, str, str]:
-    """
-    Fetches company, description, and account type for a given StatementTypeID.
-
-    Args:
-        session (Session): SQLAlchemy session object.
-        statement_type_id (int): The StatementTypeID to filter on.
-
-    Returns:
-        dict: A dictionary containing Company, Description, and AccountType.
-    """
-    result = (
-        session.query(
-            StatementTypes.Company,
-            StatementTypes.Description,
-            AccountTypes.AccountType,
-        )
-        .join(AccountTypes, StatementTypes.AccountTypeID == AccountTypes.AccountTypeID)
-        .filter(StatementTypes.StatementTypeID == stid)
-        .one_or_none()
-    )
-    if not result:
-        raise ValueError(f"StatementTypeID {stid} not found in StatementTypes.")
-    return result
 
 
 def transactions(session: Session, months: int = None) -> tuple[list[tuple], list[str]]:
