@@ -16,7 +16,17 @@ from core.validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
-    STATEMENT_TYPE = "OCCU Bank"
+    # Plugin metadata required by IParser
+    SUFFIX = ".pdf"
+    VERSION = "0.1.0"
+    COMPANY = "Oregon Community Credit Union"
+    STATEMENT_TYPE = "Checking & Savings Monthly Statement"
+    SEARCH_STRING = "oregon community credit union&&membernumber"
+    INSTRUCTIONS = (
+        "Login to https://myoccu.org/ and download the PDF statement for your account."
+    )
+
+    # Parsing constants
     FROM_DATE = re.compile(r"FROM \d{2}/\d{2}/\d{2}")
     TO_DATE = re.compile(r"TO \d{2}/\d{2}/\d{2}")
     HEADER_DATE = r"%m/%d/%y"

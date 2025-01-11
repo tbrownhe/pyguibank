@@ -13,7 +13,20 @@ from core.validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
-    STATEMENT_TYPE = "Fidelity 401(k)"
+    # Plugin metadata required by IParser
+    SUFFIX = ".pdf"
+    VERSION = "0.1.0"
+    COMPANY = "Fidelity"
+    STATEMENT_TYPE = "Fidelity Retirement Savings Monthly Statement"
+    SEARCH_STRING = "Fidelity Brokerage Services&&Retirement Savings Statement"
+    INSTRUCTIONS = (
+        "Login to https://www.fidelity.com and navigate to your 401(k) account."
+        " Click 'Statements', then select 'Monthly' for 'Time Period'."
+        " Select the month and year you want, then click 'Get Statement'."
+        " Click 'Download or Print This Statement', then save as PDF."
+    )
+
+    # Parsing constants
     HEADER_DATE = r"%m/%d/%Y"
 
     def parse(self, reader: PDFReader) -> Statement:

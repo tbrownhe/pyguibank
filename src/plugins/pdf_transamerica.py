@@ -14,9 +14,22 @@ from core.validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
-    STATEMENT_TYPE = "Vanguard 401(k)"
-    HEADER_DATE = r"%m/%d/%Y"
-    DATE_REGEX = re.compile(r"(\d{2}/\d{2}/\d{4})\s-\s(\d{2}/\d{2}/\d{4})")
+    # Plugin metadata required by IParser
+    SUFFIX = ".pdf"
+    VERSION = "0.1.0"
+    COMPANY = "Transamerica"
+    STATEMENT_TYPE = "Retirement Savings Account Quarterly Statement"
+    SEARCH_STRING = "transamerica&&retirement account statement"
+    INSTRUCTIONS = (
+        "Login to https://www.transamerica.com/ and download"
+        " your quarterly statement as PDF"
+    )
+
+    # Parsing constants
+    HEADER_DATE = r"%B %d, %Y"
+    DATE_REGEX = re.compile(
+        r"([A-Za-z]+\s\d{1,2},\s\d{4})\s-\s([A-Za-z]+\s\d{1,2},\s\d{4})"
+    )
     AMOUNT = re.compile(r"-?\$\d{1,3}(?:,\d{3})*(?:\.\d{2})?")
 
     def parse(self, reader: PDFReader) -> Statement:
@@ -63,7 +76,7 @@ class Parser(IParser):
         Parse the statement date range into datetime.
 
         Example:
-        ACCOUNT SUMMARY: 04/01/2023 - 06/30/2023
+        Your Account Summary Statement Period: 10/01/2018 to 10/31/2018
 
         Raises:
             ValueError: If dates cannot be parsed or are invalid.
@@ -142,12 +155,12 @@ class Parser(IParser):
         Returns:
             str: Account number
         """
-        search_str = r"––"
-        _, line = find_param_in_line(self.lines, search_str)
+        search_str = " 401(k) Plan "
+        _, line = find_param_in_line(self.lines, search_str, case_sensitive=False)
         words = line.split()
-        return words[-1]
+        return words[0]
 
-    def get_statement_balances(self) -> tuple[float, float, int, int]:
+    def get_statement_balances(self) -> tuple[float, float]:
         """
         Extract the starting and ending balance from the statement.
 
@@ -156,14 +169,14 @@ class Parser(IParser):
         """
         try:
             # Get starting balance
-            pattern = "Beginning balance"
+            pattern = "Beginning Balance"
             i_start, balance_line = find_line_startswith(self.lines, pattern)
             balance_str = balance_line.split(pattern)[-1].strip().split()[0]
             start_balance = convert_amount_to_float(balance_str)
             logger.trace(f"Extracted {pattern}: {start_balance}")
 
             # Get ending balance
-            pattern = "Ending balance"
+            pattern = "Ending Balance"
             i_end, balance_line = find_line_startswith(
                 self.lines, pattern, start=i_start + 1
             )
@@ -185,8 +198,7 @@ class Parser(IParser):
         transaction_lines = []
 
         for line in self.lines[i_start + 1 : i_end]:
-            words = line.split()
-            if len(words) > 1 and any("$" in word for word in words[1:]):
+            if any("$" in word for word in line.split()[1:4]):
                 transaction_lines.append(line)
         return transaction_lines
 

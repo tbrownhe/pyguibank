@@ -9,7 +9,20 @@ from core.validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
-    STATEMENT_TYPE = "Capital One Auto Finance"
+    # Plugin metadata required by IParser
+    SUFFIX = ".pdf"
+    VERSION = "0.1.0"
+    COMPANY = "Capital One"
+    STATEMENT_TYPE = "Auto Finance Monthly Statement"
+    SEARCH_STRING = "capital one auto finance"
+    INSTRUCTIONS = (
+        "Login to https://www.capitalone.com/."
+        " Navigate to your auto loan account."
+        " Click View Statements, then in the window that appears,"
+        " select the statement date you want and click Download."
+    )
+
+    # Parsing constants
     HEADER_DATE = r"%m/%d/%Y"
     DATE_REGEX = re.compile(r"\d{2}/\d{2}/\d{4}")
     LEADING_DATE = re.compile(r"^\d{2}/\d{2}/\d{4}")

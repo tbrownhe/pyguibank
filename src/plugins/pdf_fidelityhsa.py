@@ -15,7 +15,20 @@ from core.validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
-    STATEMENT_TYPE = "Fidelity Health Savings Account"
+    # Plugin metadata required by IParser
+    SUFFIX = ".pdf"
+    VERSION = "0.1.0"
+    COMPANY = "Fidelity"
+    STATEMENT_TYPE = "Health Savings Account Monthly Statement"
+    SEARCH_STRING = "FIDELITY HEALTH SAVINGS ACCOUNT"
+    INSTRUCTIONS = (
+        "Login to https://www.fidelity.com and navigate to your HSA account."
+        " Click 'Documents', then select the time range if necessary."
+        " Click the Download icon and click 'Download as PDF'."
+        " Click the Save icon and save the PDF."
+    )
+
+    # Parsing constants
     HEADER_DATE = r"%B %d, %Y"
     DATE_REGEX = re.compile(r"[ADFJMNOS]\w*\s\d{1,2}\,\s\d{4}\s-\s")
 

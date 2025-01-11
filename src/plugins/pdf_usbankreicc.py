@@ -15,7 +15,19 @@ from core.validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
-    STATEMENT_TYPE = "US Bank Credit Card"
+    # Plugin metadata required by IParser
+    SUFFIX = ".pdf"
+    VERSION = "0.1.0"
+    COMPANY = "US Bank"
+    STATEMENT_TYPE = "REI Credit Card Monthly Statement"
+    SEARCH_STRING = "u.s. bank&&(reivisa.com||reimastercard.com)"
+    INSTRUCTIONS = (
+        "For existing PDFs only. REI transitioned their member Credit Card"
+        " to Capital One, so it is not possible to download statements"
+        " for this plugin."
+    )
+
+    # Parsing constants
     HEADER_DATE = r"%m/%d/%Y"
     DATE_REGEX = re.compile(r"\d{2}/\d{2}")
     LEADING_DATE = re.compile(r"^\d{2}/\d{2}\s")

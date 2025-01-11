@@ -16,10 +16,13 @@ class IParser(Protocol):
         Statement: The parsed statement data.
     """
 
-    STATEMENT_TYPE = ""
+    # Plugin metadata
+    SUFFIX = ""
     VERSION = ""
-    DESCRIPTION = ""
+    COMPANY = ""
+    STATEMENT_TYPE = ""
     SEARCH_STRING = ""
+    INSTRUCTIONS = ""
 
     def parse(self, input_data: Any) -> Statement:
         raise ValidationError(

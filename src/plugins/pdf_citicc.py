@@ -15,7 +15,20 @@ from core.validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
-    STATEMENT_TYPE = "CitiBank Credit Card"
+    # Plugin metadata required by IParser
+    SUFFIX = ".pdf"
+    VERSION = "0.1.0"
+    COMPANY = "Citibank"
+    STATEMENT_TYPE = "Credit Account Monthly Statement"
+    SEARCH_STRING = "www.citicards.com"
+    INSTRUCTIONS = (
+        "Login to https://www.citi.com/, then navigate to your account."
+        " Click 'View Statements', then click 'View All Statements'."
+        " Select the year, then click 'Download' to the right of"
+        " the statement date."
+    )
+
+    # Parsing constants
     HEADER_DATE = r"%m/%d/%y"
     LEADING_DATE = re.compile(r"^\d{2}/\d{2}\s")
     TRANSACTION_DATE = re.compile(r"\d{2}/\d{2}")

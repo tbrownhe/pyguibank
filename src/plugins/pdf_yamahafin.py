@@ -7,14 +7,26 @@ from core.interfaces import IParser
 from core.utils import (
     PDFReader,
     convert_amount_to_float,
-    find_line_startswith,
+    find_param_in_line,
     get_absolute_date,
 )
 from core.validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
-    STATEMENT_TYPE = "OCCU NICE Credit Card"
+    # Plugin metadata required by IParser
+    SUFFIX = ".pdf"
+    VERSION = "0.1.0"
+    COMPANY = "Yamaha Motor Finance"
+    STATEMENT_TYPE = "Yamaha Motor Finance"
+    SEARCH_STRING = "yamaha motor finance"
+    INSTRUCTIONS = (
+        "Login to https://www.yamahamotorfinanceusa.com/, then click"
+        " Statement History. Click the statement date of a statement, then"
+        " click the Save icon to download the PDF."
+    )
+
+    # Parsing constants
     HEADER_DATE = r"%m/%d/%y"
     DATE_REGEX = re.compile(r"\d{2}/\d{2}")
     LEADING_DATE = re.compile(r"^\d{2}/\d{2}\s")
@@ -29,14 +41,11 @@ class Parser(IParser):
             Statement: Statement dataclass
         """
         logger.trace(f"Parsing {self.STATEMENT_TYPE} statement")
-
+        self.reader = reader
         try:
-            # OCCU NICE statements require layout text extraction
-            self.lines = reader.extract_lines_clean()
+            self.lines = reader.extract_lines_simple()
             if not self.lines:
                 raise ValueError("No lines extracted from the PDF.")
-
-            self.reader = reader
             return self.extract_statement()
         except Exception as e:
             logger.error(f"Error parsing {self.STATEMENT_TYPE} statement: {e}")
@@ -68,18 +77,14 @@ class Parser(IParser):
         """
         logger.trace("Attempting to parse dates from text.")
         try:
-            close_str = "StatementClosingDate"
-            ndays_str = "DaysinBillingCycle"
-            _, close_line = find_line_startswith(self.lines, close_str)
-            _, ndays_line = find_line_startswith(self.lines, ndays_str)
-
-            close_line_r = close_line.split(close_str)[-1]
-            ndays_line_r = ndays_line.split(ndays_str)[-1]
-            end_date_str = close_line_r.split()[0]
-            ndays_str = ndays_line_r.split()[0]
-            ndays = int(ndays_str)
-
+            pattern = re.compile(r"Closing Date (\d{2}/\d{2}/\d{2})")
+            result = pattern.search(self.reader.text_simple)
+            end_date_str = result.group(1)
             self.end_date = datetime.strptime(end_date_str, self.HEADER_DATE)
+
+            pattern = re.compile(r"Days in Billing Cycle (\d{1,2})")
+            result = pattern.search(self.reader.text_simple)
+            ndays = int(result.group(1))
             self.start_date = self.end_date - timedelta(days=ndays - 1)
         except Exception as e:
             logger.trace(f"Failed to parse dates from text: {e}")
@@ -106,7 +111,7 @@ class Parser(IParser):
         """
         # Extract account number
         try:
-            account_num = self.extract_account_number()
+            account_num = self.get_account_number()
         except Exception as e:
             raise ValueError(f"Failed to extract account number: {e}")
 
@@ -134,15 +139,6 @@ class Parser(IParser):
                 f"Failed to parse transactions for account {account_num}: {e}"
             )
 
-        # Append any interest charges to transactions
-        try:
-            transactions.append(self.interest_transaction())
-        except Exception as e:
-            raise ValueError(
-                f"Failed to parse interest charge for account {account_num}: {e}"
-            )
-
-        # Return the Account dataclass
         return Account(
             account_num=account_num,
             start_balance=start_balance,
@@ -150,141 +146,103 @@ class Parser(IParser):
             transactions=transactions,
         )
 
-    def extract_account_number(self) -> str:
-        """Retrieve the account  number from the statement
+    def get_account_number(self) -> str:
+        """Retrieve the account number from the statement.
 
         Returns:
             str: Account number
         """
-        search_str = "AccountNumber "
-        _, line = find_line_startswith(self.lines, search_str)
-        rline = line.split(search_str)[-1]
-        return rline.split()[0]
+        pattern = "Account Number:"
+        _, line = find_param_in_line(self.lines, pattern)
+        account_num = "".join(line.split(pattern)[-1].split())
+        return account_num
 
     def get_statement_balances(self) -> tuple[float, float]:
-        """
-        Extract the starting balance from the statement.
+        """Extract the starting balance from the statement.
 
         Raises:
-            ValueError: Unable to extract both balances.
+            ValueError: Unable to extract balances
         """
-        patterns = ["PreviousBalance", "NewBalance"]
+        patterns = ["Previous Balance", "New Balance:"]
         balances = {}
 
         for pattern in patterns:
             try:
-                _, balance_line = find_line_startswith(self.lines, pattern)
+                _, balance_line = find_param_in_line(self.lines, pattern)
                 balance_str = balance_line.split(pattern)[-1].strip().split()[0]
-                balances[pattern] = -convert_amount_to_float(balance_str)
-                logger.trace(f"Extracted {pattern}: {balances[pattern]}")
+                balance = -convert_amount_to_float(balance_str)
+                balances[pattern] = balance
             except ValueError as e:
-                logger.warning(
+                raise ValueError(
                     f"Failed to extract balance for pattern '{pattern}': {e}"
                 )
 
-        # Ensure both balances are found
-        if len(balances) != len(patterns):
-            missing = [p for p in patterns if p not in balances]
-            raise ValueError(
-                f"Could not extract balances for patterns: {', '.join(missing)}"
-            )
+        if len(balances) != 2:
+            raise ValueError("Could not extract both starting and ending balances.")
 
         return balances[patterns[0]], balances[patterns[1]]
 
     def get_transaction_lines(self) -> list[str]:
-        """
-        Extract lines containing transaction information.
+        """Extract lines containing transaction information.
 
         Returns:
-            list[str]: Processed lines containing dates and amounts for this statement.
+            list[str]: Processed lines containing dates and amounts for this statement
         """
         transaction_lines = []
         for line in self.lines:
-            # Check if the line starts with a valid date
             if self.LEADING_DATE.search(line):
                 transaction_lines.append(line)
-
         return transaction_lines
 
     def parse_transaction_lines(
         self, transaction_lines: list[str]
     ) -> list[Transaction]:
-        """
-        Converts the raw transaction text into an organized list of Transaction objects.
+        """Convert raw transaction lines into structured data.
 
         Args:
-            transaction_list (list[str]): List of raw transaction strings.
+            transaction_lines (list[str]): Lines containing valid transaction data
 
         Returns:
-            list[Transaction]: Parsed transaction objects.
+            list[tuple]: Unsorted transaction array
         """
         transactions = []
-
         for line in transaction_lines:
-            # Split the line into words
             words = line.split()
 
             if len(words) < 3:
                 raise ValueError(f"Invalid transaction line: {line}")
 
             # Convert leading mm/dd to full datetime
-            posting_date = get_absolute_date(
-                words.pop(0), self.start_date, self.end_date
+            mmdd = words.pop(0)
+            transaction_date = get_absolute_date(
+                words[0], self.start_date, self.end_date
             )
 
-            # If there is a second date, it is the transaction date
+            # If there is a second date, it is the posting date
             if words and self.DATE_REGEX.search(words[0]):
-                transaction_date = get_absolute_date(
-                    words.pop(0), self.start_date, self.end_date
-                )
+                mmdd = words.pop(0)
+                posting_date = get_absolute_date(mmdd, self.start_date, self.end_date)
             else:
                 # The single date is the posting date
-                transaction_date = posting_date
+                posting_date = transaction_date
 
-            # Extract amount
-            try:
-                amount = -convert_amount_to_float(words[-1])
-            except ValueError as e:
-                raise ValueError(f"Error parsing amounts in line '{line}': {e}")
+            # Extract the first amount-like string
+            i_amount, amount_str = [
+                (i, word) for i, word in enumerate(words) if "$" in word
+            ][0]
+            amount = -convert_amount_to_float(amount_str)
 
-            # Get the description
-            desc = " ".join(words[:-1])
-            if not desc:
-                raise ValueError(f"Missing description in transaction line: {line}")
+            # Extract the description
+            desc = " ".join(words[:i_amount])
 
-            # Create the Transaction object
-            transaction = Transaction(
-                transaction_date=transaction_date,
-                posting_date=posting_date,
-                amount=amount,
-                desc=desc,
+            # Append transaction
+            transactions.append(
+                Transaction(
+                    transaction_date=transaction_date,
+                    posting_date=posting_date,
+                    amount=amount,
+                    desc=desc,
+                )
             )
 
-            transactions.append(transaction)
-
         return transactions
-
-    def interest_transaction(self) -> Transaction:
-        """OCCU NICE statements show interest charges in the header
-        instead of their own transaction line.
-
-        Returns:
-            Transaction: Interest charge
-        """
-        pattern = "InterestCharged"
-
-        try:
-            _, amount_line = find_line_startswith(self.lines, pattern)
-            amount_str = amount_line.split()[2]
-            amount = -convert_amount_to_float(amount_str)
-            logger.trace(f"Extracted {pattern}: {amount}")
-        except ValueError as e:
-            logger.warning(f"Failed to extract balance for pattern '{pattern}': {e}")
-            raise ValueError(f"Could not extract balances for pattern: {pattern}")
-
-        return Transaction(
-            transaction_date=self.end_date,
-            posting_date=self.end_date,
-            amount=amount,
-            desc="Interest Charged",
-        )

@@ -8,7 +8,20 @@ from core.validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
-    STATEMENT_TYPE = "MOHELA Loan Servicing"
+    # Plugin metadata required by IParser
+    SUFFIX = ".csv"
+    VERSION = "0.1.0"
+    COMPANY = "MOHELA Student Loan Servicing"
+    STATEMENT_TYPE = "Life of Loan Statement"
+    SEARCH_STRING = '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">'
+    INSTRUCTIONS = (
+        "Login to https://mohela.studentaid.gov/."
+        " Navigate to Payments & Billing > Account History."
+        " Filter Display 'By Transaction' and Date Range by 'Life of Loan'."
+        " Then click the CSV Download icon."
+    )
+
+    # Parsing constants
     HEADER_DATE = r"%m/%d/%Y"
 
     def parse(self, array: list[list[str]]) -> Statement:

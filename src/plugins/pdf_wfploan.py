@@ -9,7 +9,20 @@ from core.validation import Account, Statement, Transaction
 
 
 class Parser(IParser):
-    STATEMENT_TYPE = "Wells Fargo Personal Loan"
+    # Plugin metadata required by IParser
+    SUFFIX = ".pdf"
+    VERSION = "0.1.0"
+    COMPANY = "Wells Fargo"
+    STATEMENT_TYPE = "Personal Loan Monthly Statement"
+    SEARCH_STRING = "wells fargo&&personal loan statement"
+    INSTRUCTIONS = (
+        "Login to https://www.wellsfargo.com/, then navigate to"
+        " Accounts > 'View Statements and Documents' > 'Statements and Disclosures'."
+        " Select your personal loan account, then click the link for"
+        " a statement. Click the Save icon to save the PDF."
+    )
+
+    # Parsing constants
     HEADER_DATE = r"%m/%d/%y"
     LEADING_DATE = re.compile(r"^\d{2}/\d{2}/\d{2}\s")
 
