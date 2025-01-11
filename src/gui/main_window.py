@@ -602,10 +602,11 @@ class PyGuiBank(QMainWindow):
 
     def edit_accounts(self):
         dialog = EditAccountsDialog(self.Session)
-        if dialog.exec_() == QDialog.Accepted:
-            # Update all GUI elements
-            with self.Session() as session:
-                self.update_main_gui(session)
+        dialog.exec_()
+
+        # Update all GUI elements
+        with self.Session() as session:
+            self.update_main_gui(session)
 
     def appreciation_calc(self):
         dialog = AppreciationDialog()

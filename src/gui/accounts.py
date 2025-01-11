@@ -195,9 +195,7 @@ def update_accounts_table(
 
 
 class EditAccountsDialog(QDialog):
-    def __init__(
-        self, Session: sessionmaker, company="", description="", account_type=""
-    ):
+    def __init__(self, Session: sessionmaker, company="", description=""):
         super().__init__()
         self.setWindowTitle("Edit Accounts")
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
@@ -236,13 +234,22 @@ class EditAccountsDialog(QDialog):
         form_layout = QFormLayout()
 
         self.account_name_edit = QLineEdit(self)
+        self.account_name_edit.setPlaceholderText(
+            "Enter a UNIQUE name for this account"
+        )
         self.company_edit = QLineEdit(self)
+        self.company_edit.setPlaceholderText("Enter the company name for this account")
+        if company:
+            self.company_edit.setText(company)
         self.description_edit = QLineEdit(self)
+        self.description_edit.setPlaceholderText("Enter a description for this account")
+        if description:
+            self.description_edit.setText(description)
         self.account_type_combo = QComboBox(self)
 
         with self.Session() as session:
             account_types = query.account_types(session)
-        self.account_type_combo.addItems(account_types)
+        self.account_type_combo.addItems([""] + account_types)
 
         self.appreciation_edit = QLineEdit(self)
         self.appreciation_edit.setPlaceholderText(
@@ -264,12 +271,12 @@ class EditAccountsDialog(QDialog):
 
         # Action buttons
         button_layout = QHBoxLayout()
-        self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.clicked.connect(self.reject)
+        self.cancel_button = QPushButton("OK")
+        self.cancel_button.clicked.connect(self.accept)
         button_layout.addWidget(self.cancel_button)
 
         self.add_button = QPushButton("Add Account")
-        # self.add_button.setStyleSheet("background-color: lightgreen; color: black;")
+        self.add_button.setStyleSheet("background-color: lightgreen; color: black;")
         self.add_button.clicked.connect(self.add_account)
         button_layout.addWidget(self.add_button)
 
@@ -410,6 +417,7 @@ class EditAccountsDialog(QDialog):
                 self.account_name_edit.text(),
                 self.company_edit.text(),
                 self.description_edit.text(),
+                self.account_type_combo.currentText(),
             ]
         ):
             QMessageBox.warning(
@@ -460,7 +468,7 @@ class AssignAccountNumber(QDialog):
         self,
         Session: sessionmaker,
         fpath: Path,
-        stid: int,
+        metadata: dict[str, str],
         account_num: str,
         parent=None,
     ):
@@ -476,42 +484,42 @@ class AssignAccountNumber(QDialog):
         self.Session = Session
         self.fpath = fpath
         self.account_num = account_num
-        self.account_id = None
+        self.account_name = None
 
         # Set up layout
         layout = QVBoxLayout()
 
-        # Grab StatementType info for the new account number
+        # Display plugin metadata for the new account number
+        self.company = metadata.get("COMPANY", "Unknown Company")
+        self.statement_type = metadata.get("STATEMENT_TYPE", "statement type")
+
+        # Display info to user
+        desc1 = (
+            f"A {self.company} {self.statement_type} was found with\n"
+            f"new Account Number: {account_num}"
+        )
+        desc1_label = QLabel(desc1)
+        layout.addWidget(desc1_label)
+
+        # View statement button
+        view_statement_button = QPushButton("View Statement")
+        view_statement_button.clicked.connect(self.open_statement)
+        layout.addWidget(view_statement_button)
+
+        # Display info to user
+        desc2 = (
+            f"Select an Account to associate with '{account_num}' from the list.\n"
+            "If the account has not been created yet, click 'Create New Account'."
+        )
+        desc2_label = QLabel(desc2)
+        layout.addWidget(desc2_label)
+
+        # Display Accounts table
+        self.accounts_table = QTableWidget(self)
+        self.accounts_table.cellClicked.connect(self.handle_cell_click)
+        layout.addWidget(self.accounts_table)
+
         with self.Session() as session:
-            result = query.statement_type_details(session, stid)
-            self.company, self.description, self.account_type = result
-            account_description = " ".join(
-                [self.description, self.account_type]
-            ).strip()
-
-            # Display info to user
-            desc1 = (
-                f"A {self.company} {account_description} statement with an unknown "
-                "account number was found.\n"
-                f"New Account Number: {account_num}"
-            )
-            desc1_label = QLabel(desc1)
-            layout.addWidget(desc1_label)
-
-            # View statement button
-            view_statement_button = QPushButton("View Statement")
-            view_statement_button.clicked.connect(self.open_statement)
-            layout.addWidget(view_statement_button)
-
-            # Display info to user
-            desc2 = "Which of the Accounts below does this account number belong to?"
-            desc2_label = QLabel(desc2)
-            layout.addWidget(desc2_label)
-
-            # Display Accounts table
-            self.accounts_table = QTableWidget(self)
-            self.accounts_table.cellClicked.connect(self.handle_cell_click)
-            layout.addWidget(self.accounts_table)
             update_accounts_table(self, session, self.accounts_table)
 
         # Add New Account button
@@ -539,28 +547,27 @@ class AssignAccountNumber(QDialog):
             row, 0
         )  # Assuming AccountID is in the first column
         if account_id_item:
-            self.account_id = int(account_id_item.text())
+            self.account_name = account_id_item.text()
 
     def new_account(self):
-        dialog = EditAccountsDialog(
-            self.Session, self.company, self.description, self.account_type
-        )
-        if dialog.exec_() == QDialog.Accepted:
-            with self.Session() as session:
-                update_accounts_table(self, session, self.accounts_table)
+        dialog = EditAccountsDialog(self.Session, self.company, self.statement_type)
+        dialog.exec_()
 
-            # Auto-select the newly created account (assuming it's added to the last row)
-            self.accounts_table.selectRow(self.accounts_table.rowCount() - 1)
-            self.account_id = int(
-                self.accounts_table.item(self.accounts_table.rowCount() - 1, 0).text()
-            )
+        with self.Session() as session:
+            update_accounts_table(self, session, self.accounts_table)
+
+        # Auto-select the newly created account (assuming it's added to the last row)
+        self.accounts_table.selectRow(self.accounts_table.rowCount() - 1)
+        self.account_name = self.accounts_table.item(
+            self.accounts_table.rowCount() - 1, 0
+        ).text()
 
     def submit(self):
         """
         Gather all input values into the results dictionary and close the dialog.
         """
         # Close dialog and accept the current account ID selection
-        if self.account_id is None:
+        if self.account_name is None:
             QMessageBox.warning(
                 self,
                 "No Account Selected",
@@ -568,11 +575,14 @@ class AssignAccountNumber(QDialog):
             )
         else:
             # Create the AccountNumber -> AccountID association in the db
-            row = {
-                "AccountID": self.account_id,
-                "AccountNumber": self.account_num,
-            }
             with self.Session() as session:
+                self.account_id = query.account_id_of_account_name(
+                    session, self.account_name
+                )
+                row = {
+                    "AccountID": self.account_id,
+                    "AccountNumber": self.account_num,
+                }
                 query.insert_rows_batched(session, AccountNumbers, [row])
 
             self.accept()
