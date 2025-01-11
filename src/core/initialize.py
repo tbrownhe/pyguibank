@@ -15,7 +15,6 @@ def initialize_plugins():
 
     try:
         if not settings.plugin_dir.exists():
-            logger.debug(f"Plugins directory does not exist yet.")
             if not plugin_bundled_dir.exists():
                 settings.plugin_dir.mkdir(parents=True, exist_ok=True)
                 logger.debug(

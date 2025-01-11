@@ -1,4 +1,5 @@
 import py_compile
+import shutil
 from pathlib import Path
 
 from loguru import logger
@@ -8,6 +9,7 @@ from core.plugins import load_plugin
 # Define source and destination directories
 SOURCE_DIR = Path("src/plugins")
 DEST_DIR = Path("dist/plugins")
+SERVER_DATA_DIR = Path("../pyguibank-server/data/plugins")
 
 
 def compile_plugins():
@@ -24,6 +26,9 @@ def compile_plugins():
 
             # Compile the plugin to a .pyc file
             py_compile.compile(plugin_file, cfile=compiled_path)
+
+            # Copy to the server data/plugins directory for deployment
+            shutil.copy2(compiled_path, SERVER_DATA_DIR)
             logger.success(f"Compiled: {plugin_file} -> {compiled_path}")
         except Exception as e:
             logger.error(f"Failed to compile {plugin_file}: {e}")
