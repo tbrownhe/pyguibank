@@ -1,3 +1,4 @@
+import json
 import py_compile
 import shutil
 from pathlib import Path
@@ -34,5 +35,32 @@ def compile_plugins():
             logger.error(f"Failed to compile {plugin_file}: {e}")
 
 
+def generate_metadata():
+    """
+    Generate metadata for all .pyc files in server data dir
+    Must be done here since .pyc files must be read by the same version of
+    Python they were compiled with.
+    """
+    metadata_file = SERVER_DATA_DIR / "plugins_metadata.json"
+    metadata_list = []
+    for plugin_file in SERVER_DATA_DIR.glob("*.pyc"):
+        try:
+            # Get the metadata
+            _, _, metadata = load_plugin(plugin_file)
+
+            # Remove any secret sauce
+            if "SEARCH_STRING" in metadata:
+                del metadata["SEARCH_STRING"]
+
+            # Add to the list
+            metadata_list.append(metadata)
+        except Exception as e:
+            print(f"Failed to extract metadata for {plugin_file}: {e}")
+
+    with metadata_file.open("w") as f:
+        json.dump(metadata_list, f, indent=2)
+
+
 if __name__ == "__main__":
     compile_plugins()
+    generate_metadata()
