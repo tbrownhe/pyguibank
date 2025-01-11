@@ -29,3 +29,34 @@ class IParser(Protocol):
             "All children of IParser must override the parse() method"
             " and return type validation.Statement"
         )
+
+
+def class_variables(cls):
+    """
+    Retrieve all required class variable names from the interface.
+    """
+    return [
+        name
+        for name in dir(cls)
+        if not callable(getattr(cls, name))
+        and not name.startswith("_")
+        and isinstance(name, str)
+    ]
+
+
+def validate_parser(ParserClass, required_variables):
+    """
+    Validate that all required class variables in the parser are non-empty strings.
+    """
+    errors = []
+    for var_name in required_variables:
+        value = getattr(ParserClass, var_name, None)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(
+                f"Variable '{var_name}' is missing or invalid (value: {value!r})"
+            )
+    if errors:
+        raise ValueError(
+            f"Validation errors in parser '{ParserClass.__name__}':\n"
+            + "\n".join(errors)
+        )
