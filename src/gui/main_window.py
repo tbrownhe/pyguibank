@@ -520,14 +520,12 @@ class PyGuiBank(QMainWindow):
                 query.optimize_db(session)
         else:
             self.Session = orm.create_database(self.db_path)
+            QMessageBox.information(
+                self,
+                "New Database Created",
+                f"Initialized new database at <pre>{self.db_path}</pre>",
+            )
             self.init_db_tables()
-            msg_box = QMessageBox()
-            msg_box.setIcon(QMessageBox.Information)
-            msg_box.setWindowTitle("New Database Created")
-            msg_box.setText(f"Initialized new database at <pre>{self.db_path}</pre>")
-            msg_box.setStandardButtons(QMessageBox.Ok)
-            msg_box.setWindowFlags(msg_box.windowFlags() | Qt.WindowStaysOnTopHint)
-            msg_box.exec_()
 
     def init_db_tables(self):
         with self.Session() as session:
