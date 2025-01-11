@@ -32,9 +32,16 @@ class PluginManagerDialog(QDialog):
 
         # Plugins Table
         self.table = QTableWidget()
-        self.table.setColumnCount(3)
+        self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels(
-            ["Plugin Name", "Statement Type", "Location"]
+            [
+                "Filename",
+                "Plugin Name",
+                "Version",
+                "Company",
+                "Suffix",
+                "Statement Type",
+            ]
         )
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -46,7 +53,7 @@ class PluginManagerDialog(QDialog):
         self.table.setFont(font)
 
         # Populate the table with plugin data
-        self.load_plugins()
+        self.update_table()
         main_layout.addWidget(self.table)
 
         # Buttons layout
@@ -65,12 +72,12 @@ class PluginManagerDialog(QDialog):
         # Resize the window to fit the table
         self.resize_to_table()
 
-    def load_plugins(self):
+    def update_table(self):
         """
-        Populate the table with available plugin data.
+        Populate the table with available plugin data from metadata.
         """
         self.table.setRowCount(0)
-        for plugin_name, module in self.plugin_manager.plugins.items():
+        for plugin_name, metadata in self.plugin_manager.metadata.items():
             row_position = self.table.rowCount()
             self.table.insertRow(row_position)
 
@@ -78,32 +85,20 @@ class PluginManagerDialog(QDialog):
             plugin_item = QTableWidgetItem(plugin_name)
             self.table.setItem(row_position, 0, plugin_item)
 
-            # Extract STATEMENT_TYPE from the Parser class
-            try:
-                parser_class = getattr(module, "Parser", None)
-                if parser_class:
-                    statement_type = getattr(
-                        parser_class, "STATEMENT_TYPE", "ERROR: IParser not used"
-                    )
-                else:
-                    statement_type = "ERROR: 'Parser(IParser)' class not found"
-            except Exception as e:
-                logger.error(
-                    f"Failed to retrieve STATEMENT_TYPE for {plugin_name}: {e}"
-                )
-                statement_type = f"ERROR: {e}"
+            # Metadata fields
+            metadata_fields = [
+                metadata.get("PLUGIN_NAME", "ERROR"),
+                metadata.get("VERSION", "ERROR"),
+                metadata.get("COMPANY", "ERROR"),
+                metadata.get("SUFFIX", "ERROR"),
+                metadata.get("STATEMENT_TYPE", "ERROR"),
+            ]
+            for col, field in enumerate(metadata_fields, start=1):
+                item = QTableWidgetItem(field)
+                self.table.setItem(row_position, col, item)
 
-            statement_item = QTableWidgetItem(statement_type)
-            self.table.setItem(row_position, 1, statement_item)
-
-            # File Location
-            location = getattr(module, "__file__", "N/A")
-            location_item = QTableWidgetItem(location)
-            self.table.setItem(row_position, 2, location_item)
-
-            # Apply background color for cells that start with "ERROR"
-            for item in [plugin_item, statement_item, location_item]:
-                if item.text().startswith("ERROR"):
+                # Highlight errors in red
+                if field.startswith("ERROR"):
                     item.setBackground(QBrush(QColor(255, 182, 193)))  # Light red
 
         # Resize table columns to fit content
