@@ -63,6 +63,32 @@ def accounts_table(session: Session) -> list[dict]:
     return data
 
 
+def account_id_of_account_name(session: Session, account_name: str) -> int:
+    """
+    Retrieves an AccountID based on an account_name string found in a statement.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+        account_name (str): Account name to look up.
+
+    Returns:
+        int: AccountID corresponding to the provided account number.
+
+    Raises:
+        KeyError: If the account number is not found.
+    """
+    account_id = (
+        session.query(Accounts.AccountID)
+        .filter(Accounts.AccountName == account_name)
+        .one_or_none()
+    )
+
+    if account_id is None:
+        raise KeyError(f"{account_name} not found in AccountNumbers.AccountNumber")
+
+    return account_id[0]
+
+
 def account_numbers_table(session: Session) -> list[dict]:
     """
     Fetches entire Accounts table.
