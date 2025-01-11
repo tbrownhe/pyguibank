@@ -105,34 +105,6 @@ class Transactions(Base):
     accounts = relationship("Accounts", back_populates="transactions")
 
 
-class CardNumbers(Base):
-    __tablename__ = "CardNumbers"
-    CardID = Column(Integer, primary_key=True, autoincrement=True)
-    AccountID = Column(Integer, ForeignKey("Accounts.AccountID"))
-    CardNumber = Column(String)
-    LastFour = Column(String, unique=True)
-
-    accounts = relationship("Accounts", back_populates="card_numbers")
-    shopping = relationship("Shopping", back_populates="card_numbers")
-
-
-class Shopping(Base):
-    __tablename__ = "Shopping"
-    ItemID = Column(Integer, primary_key=True, autoincrement=True)
-    AccountID = Column(Integer, ForeignKey("Accounts.AccountID"))
-    StatementID = Column(Integer, ForeignKey("Statements.StatementID"))
-    CardID = Column(Integer, ForeignKey("CardNumbers.CardID"))
-    OrderID = Column(String)
-    Date = Column(String)
-    Amount = Column(Float)
-    Description = Column(String)
-    MD5 = Column(String, unique=True)
-
-    accounts = relationship("Accounts", back_populates="shopping")
-    statements = relationship("Statements", back_populates="shopping")
-    card_numbers = relationship("CardNumbers", back_populates="shopping")
-
-
 # Create Engine and Session
 def create_database(db_path: Path, echo: bool = False) -> sessionmaker:
     """Creates a sessionmaker object to use with context manager.
