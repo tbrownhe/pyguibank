@@ -47,7 +47,7 @@ def generate_metadata():
     Must be done here since .pyc files must be read by the same version of
     Python they were compiled with.
     """
-    metadata_file = SERVER_DATA_DIR / "plugins_metadata.json"
+    metadata_file = SERVER_DATA_DIR / "plugin_metadata.json"
     metadata_list = []
     for plugin_file in SERVER_DATA_DIR.glob("*.pyc"):
         try:
