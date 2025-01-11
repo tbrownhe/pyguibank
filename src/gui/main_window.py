@@ -38,7 +38,7 @@ from core.plugins import PluginManager
 from core.statements import StatementProcessor
 from core.utils import open_file_in_os
 from gui.accounts import AppreciationDialog, BalanceCheckDialog, EditAccountsDialog
-from gui.plugins import ParseTestDialog, PluginManagerDialog
+from gui.plugins import ParseTestDialog, PluginManagerDialog, check_for_plugin_updates
 from gui.preferences import PreferencesDialog
 from gui.statements import CompletenessDialog
 from gui.transactions import InsertTransactionDialog, RecurringTransactionsDialog
@@ -506,6 +506,9 @@ class PyGuiBank(QMainWindow):
         # Initialize the plugin manager
         self.plugin_manager = PluginManager()
         self.plugin_manager.load_plugins()
+
+        # Check for new versions of plugins and clients
+        check_for_plugin_updates(self.plugin_manager, parent=self, manual=False)
 
     def update_from_config(self):
         self.config = config.read_config()

@@ -1,14 +1,16 @@
 import importlib.util
+import os
 from pathlib import Path
 
 import requests
 from loguru import logger
+from PyQt5.QtWidgets import QMessageBox
 
-from core.interfaces import IParser, validate_parser, class_variables
+from core.interfaces import IParser, class_variables, validate_parser
 from core.settings import settings
 
 
-def get_plugins():
+def server_plugin_metadata():
     """
     Fetches the list of available plugins from the server.
     """
@@ -18,28 +20,86 @@ def get_plugins():
         plugins = response.json()  # Parse JSON response
         return plugins
     except requests.RequestException as e:
-        print(f"Error fetching plugins: {e}")
+        logger.error(f"Error fetching plugins: {e}")
         return []
 
 
-def download_plugin(file_type: str, plugin_name: str, save_path: Path):
+def compare_plugins(local_plugins: list[dict], server_plugins: list[dict]):
+    """
+    Compare server plugins with local plugins to determine updates and new plugins.
+
+    Args:
+        server_plugins (list[dict]): Metadata of plugins available on the server.
+        local_plugins (list[dict]): Metadata of plugins available locally.
+
+    Returns:
+        tuple[list[dict], list[dict]]: (new_plugins, updated_plugins)
+    """
+    local_dict = {plugin["PLUGIN_NAME"]: plugin["VERSION"] for plugin in local_plugins}
+
+    new_plugins = []
+    updated_plugins = []
+
+    for plugin in server_plugins:
+        key = plugin["PLUGIN_NAME"]
+        if key not in local_dict:
+            new_plugins.append(plugin)
+        elif plugin["VERSION"] > local_dict[key]:
+            updated_plugins.append(plugin)
+
+    return new_plugins, updated_plugins
+
+
+def download_plugin(plugin_filename: str):
     """
     Downloads a specific plugin from the server.
 
     :param file_type: Type of the plugin (e.g., 'type1')
     :param plugin_name: Name of the plugin (e.g., 'plugin1')
-    :param save_path: Local path to save the downloaded file
     """
+    settings.plugin_dir.mkdir(parents=True, exist_ok=True)
+    save_path = settings.plugin_dir / plugin_filename
     try:
-        url = f"{settings.server_url}/plugins/{file_type}/{plugin_name}"
+        url = f"{settings.server_url}/plugins/{plugin_filename}"
         with requests.get(url, stream=True) as response:
             response.raise_for_status()
             with save_path.open("wb") as file:
                 for chunk in response.iter_content(chunk_size=8192):
                     file.write(chunk)
-        print(f"Plugin {plugin_name} downloaded successfully to {save_path}")
+        logger.success(f"Downloaded new plugin {plugin_filename}")
     except requests.RequestException as e:
-        print(f"Error downloading plugin {plugin_name}: {e}")
+        logger.error(f"Error downloading plugin {plugin_filename}: {e}")
+        raise
+
+
+def delete_local_plugin(plugin_filename: str):
+    delete_path = settings.plugin_dir / plugin_filename
+    try:
+        os.remove(delete_path)
+        logger.success(f"Removed old plugin {plugin_filename}")
+    except Exception as e:
+        logger.error(f"Error removing plugin {plugin_filename}: {e}")
+        raise
+
+
+def sync_plugins(local_plugins: dict, server_plugins: dict, parent=None):
+    for server_plugin in server_plugins:
+        try:
+            plugin_name = server_plugin["PLUGIN_NAME"]
+            local_plugin = next(
+                (p for p in local_plugins if p["PLUGIN_NAME"] == plugin_name),
+                None,
+            )
+            if (
+                local_plugin is None
+                or local_plugin["VERSION"] < server_plugin["VERSION"]
+            ):
+                download_plugin(server_plugin["FILENAME"])
+                if local_plugin:
+                    delete_local_plugin(local_plugin["FILENAME"])
+        except Exception as e:
+            logger.error(f"Failed to sync plugin {plugin_name}")
+            raise
 
 
 def load_plugin(plugin_file: Path) -> tuple[str, IParser, dict[str, str]]:

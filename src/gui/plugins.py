@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pandas as pd
 from loguru import logger
 from PyQt5.QtGui import QBrush, QColor, QFont
 from PyQt5.QtWidgets import (
@@ -7,6 +8,8 @@ from PyQt5.QtWidgets import (
     QDialog,
     QFileDialog,
     QHBoxLayout,
+    QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -17,8 +20,100 @@ from sqlalchemy.orm import sessionmaker
 
 from core.config import read_config
 from core.parse import parse_any
-from core.plugins import PluginManager
+from core.plugins import (
+    PluginManager,
+    compare_plugins,
+    server_plugin_metadata,
+    sync_plugins,
+)
 from core.utils import PDFReader
+
+
+def check_for_plugin_updates(plugin_manager: PluginManager, parent=None, manual=False):
+    """
+    Check for plugin updates and synchronize as needed.
+    Args:
+        plugin_manager (PluginManager): The plugin manager instance.
+        parent: The parent dialog or window for showing messages and dialogs.
+        manual (bool): Whether this check was triggered manually.
+    """
+    try:
+        local_plugins = [plugin for plugin in plugin_manager.metadata.values()]
+        server_plugins = server_plugin_metadata()
+    except Exception as e:
+        QMessageBox.critical(
+            parent,
+            "Error Fetching Plugins",
+            f"Could not fetch plugin metadata from the server:\n{e}",
+        )
+        return
+
+    new_plugins, updated_plugins = compare_plugins(local_plugins, server_plugins)
+
+    if new_plugins or updated_plugins:
+        dialog = PluginSyncDialog(local_plugins, server_plugins)
+        if dialog.exec_() == QDialog.Accepted:
+            try:
+                sync_plugins(local_plugins, server_plugins)
+                QMessageBox.information(
+                    parent, "Plugins Synchronized", "Local plugins have been updated."
+                )
+            except Exception as e:
+                QMessageBox.critical(
+                    parent,
+                    "Plugin Synchronization Failed",
+                    f"Local plugins could not be synchronized:\n{e}",
+                )
+                return
+            plugin_manager.load_plugins()
+            if hasattr(parent, "update_table"):
+                parent.update_table()
+            logger.info("Plugins synchronized with server")
+    elif manual:
+        QMessageBox.information(
+            parent, "Plugins Up To Date", "Local plugins are the latest versions."
+        )
+
+
+def display_nested_dict(output_display: QTextEdit, nested_dict: dict, level=0):
+    """
+    Recursively displays a nested dictionary in an indented format.
+
+    Args:
+        output_display: A callable (e.g., self.output_display.append) for displaying output.
+        nested_dict (dict): The dictionary to display.
+        level (int): Current level of indentation.
+    """
+    for key, value in nested_dict.items():
+        if isinstance(value, dict):
+            # If the value is a dictionary, recurse
+            output_display.append("  " * (level + 1) + f"{key}:")
+            display_nested_dict(output_display, value, level + 1)
+        else:
+            # Otherwise, display the key-value pair
+            output_display.append("  " * (level + 1) + f"{key}: {value}")
+
+
+def resize_to_table(parent, table):
+    """
+    Resize the dialog to fit the table, up to 90% of the screen width and height.
+    """
+    table_width = sum(table.columnWidth(col) for col in range(table.columnCount())) + 50
+    table_height = (
+        table.verticalHeader().length() + table.horizontalHeader().height() + 75
+    )
+
+    # Get screen dimensions
+    screen_rect = QDesktopWidget().screenGeometry()
+    screen_width = screen_rect.width()
+    screen_height = screen_rect.height()
+
+    # Limit dimensions to 90% of the screen size
+    max_width = int(screen_width * 0.9)
+    max_height = int(screen_height * 0.9)
+
+    # Set dialog size
+    parent.resize(min(table_width, max_width), min(table_height, max_height))
 
 
 class PluginManagerDialog(QDialog):
@@ -59,8 +154,8 @@ class PluginManagerDialog(QDialog):
         # Buttons layout
         buttons_layout = QHBoxLayout()
 
-        self.find_plugins_button = QPushButton("Find More Plugins")
-        self.find_plugins_button.clicked.connect(self.find_more_plugins)
+        self.find_plugins_button = QPushButton("Check For Updates")
+        self.find_plugins_button.clicked.connect(self.check_for_updates)
         buttons_layout.addWidget(self.find_plugins_button)
 
         self.close_button = QPushButton("Close")
@@ -70,7 +165,7 @@ class PluginManagerDialog(QDialog):
         main_layout.addLayout(buttons_layout)
 
         # Resize the window to fit the table
-        self.resize_to_table()
+        resize_to_table(self, self.table)
 
     def update_table(self):
         """
@@ -104,57 +199,119 @@ class PluginManagerDialog(QDialog):
         # Resize table columns to fit content
         self.table.resizeColumnsToContents()
 
-    def resize_to_table(self):
+    def check_for_updates(self):
         """
-        Resize the dialog to fit the table, up to 90% of the screen width and height.
+        Check for updates to plugins and update the table if plugins are synchronized.
         """
-        table_width = (
-            sum(self.table.columnWidth(col) for col in range(self.table.columnCount()))
-            + 50
+        self.plugin_manager.load_plugins()
+        check_for_plugin_updates(self.plugin_manager, parent=self, manual=True)
+        self.plugin_manager.load_plugins()
+        self.update_table()
+
+
+class PluginSyncDialog(QDialog):
+    def __init__(self, local_plugins, server_plugins, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Plugin Sync")
+        self.local_plugins = local_plugins
+        self.server_plugins = server_plugins
+
+        # Main layout
+        layout = QVBoxLayout(self)
+
+        # Table for plugin status
+        layout.addWidget(
+            QLabel("Some plugins are out of date or missing.\n\nPlugin Status:")
         )
-        table_height = (
-            self.table.verticalHeader().length()
-            + self.table.horizontalHeader().height()
-            + 75
+        self.table = self.create_table()
+        layout.addWidget(self.table)
+
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        self.sync_button = QPushButton("Sync Plugins")
+        self.sync_button.clicked.connect(self.accept)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.reject)
+        buttons_layout.addWidget(self.sync_button)
+        buttons_layout.addWidget(self.cancel_button)
+
+        layout.addLayout(buttons_layout)
+
+        # Resize the window to fit the table
+        resize_to_table(self, self.table)
+
+    def create_table(self):
+        """
+        Create a table displaying all plugins with local and remote versions.
+        """
+
+        def rename_keys(data):
+            """Renames dictionary keys to Titlecase."""
+            return [
+                {k.title().replace("_", " "): v for k, v in item.items()}
+                for item in data
+            ]
+
+        # Merge local and server plugin data
+        local_df = pd.DataFrame(rename_keys(self.local_plugins)).rename(
+            columns={"Version": "Local Version"}
+        )
+        server_df = pd.DataFrame(rename_keys(self.server_plugins)).rename(
+            columns={"Version": "Remote Version"}
         )
 
-        # Get screen dimensions
-        screen_rect = QDesktopWidget().screenGeometry()
-        screen_width = screen_rect.width()
-        screen_height = screen_rect.height()
+        # Handle empty DataFrame cases
+        if local_df.empty:
+            local_df = pd.DataFrame(columns=["Plugin Name", "Local Version"])
+        if server_df.empty:
+            server_df = pd.DataFrame(columns=["Plugin Name", "Remote Version"])
 
-        # Limit dimensions to 90% of the screen size
-        max_width = int(screen_width * 0.9)
-        max_height = int(screen_height * 0.9)
+        # Join local and remote data
+        merged_df = pd.merge(
+            server_df,
+            local_df,
+            on=["Plugin Name"],
+            how="outer",
+            suffixes=("_server", "_local"),
+        )
 
-        # Set dialog size
-        self.resize(min(table_width, max_width), min(table_height, max_height))
+        # Fill missing values for clarity
+        merged_df["Local Version"].fillna("Not Installed", inplace=True)
+        merged_df["Remote Version"].fillna("Unknown", inplace=True)
 
-    def find_more_plugins(self):
-        """
-        Placeholder for the 'Find More Plugins' functionality.
-        """
-        # This can be expanded in the future to show a plugin search dialog
-        print("Find More Plugins button clicked.")
+        # Create a QTableWidget to display the data
+        table = QTableWidget()
+        table.setColumnCount(3)
+        table.setHorizontalHeaderLabels(
+            ["Plugin Name", "Local Version", "Remote Version"]
+        )
+        table.setRowCount(len(merged_df))
 
+        # Populate the table
+        for row, data in merged_df.iterrows():
+            plugin_name = data["Plugin Name"]
+            local_version = data["Local Version"]
+            remote_version = data["Remote Version"]
 
-def display_nested_dict(output_display: QTextEdit, nested_dict: dict, level=0):
-    """
-    Recursively displays a nested dictionary in an indented format.
+            # Add items to the table
+            table.setItem(row, 0, QTableWidgetItem(plugin_name))
+            table.setItem(row, 1, QTableWidgetItem(local_version))
+            table.setItem(row, 2, QTableWidgetItem(remote_version))
 
-    Args:
-        output_display: A callable (e.g., self.output_display.append) for displaying output.
-        nested_dict (dict): The dictionary to display.
-        level (int): Current level of indentation.
-    """
-    for key, value in nested_dict.items():
-        if isinstance(value, dict):
-            # If the value is a dictionary, recurse
-            output_display.append("  " * (level + 1) + f"{key}:")
-            display_nested_dict(output_display, value, level + 1)
-        else:
-            # Otherwise, display the key-value pair
-            output_display.append("  " * (level + 1) + f"{key}: {value}")
+            # Apply background color based on version comparison
+            if local_version == "Not Installed" or local_version < remote_version:
+                # Outdated or missing: light red
+                color = QBrush(QColor(255, 182, 193))
+            else:
+                # Up-to-date: light green
+                color = QBrush(QColor(144, 238, 144))
+
+            for col in range(3):
+                table.item(row, col).setBackground(color)
+
+        # Resize columns to fit content
+        table.resizeColumnsToContents()
+        return table
 
 
 class ParseTestDialog(QDialog):

@@ -29,12 +29,12 @@ elif system == "Darwin":
     os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
 
 # Then load modules that may depend on env vars
-from core.initialize import initialize_plugins
+# from core.initialize import initialize_plugins
 from core.utils import resource_path
 from gui.main_window import PyGuiBank
 
 # Copy any bundled plugins to the user's plugin folder if it doesn't exist yet
-initialize_plugins()
+# initialize_plugins
 
 
 def handle_signal(signal, frame):
