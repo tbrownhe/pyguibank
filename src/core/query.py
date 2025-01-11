@@ -14,7 +14,6 @@ from core.orm import (
     AccountTypes,
     BaseModel,
     Plugins,
-    Shopping,
     Statements,
     Transactions,
 )
@@ -724,39 +723,6 @@ def distinct_categories(session: Session) -> list[str]:
     )
     data = query.all()
     return [category[0] for category in data]
-
-
-def shopping(session: Session, months: int = 12) -> tuple[list[tuple], list[str]]:
-    """
-    Retrieves a list of Shopping data for the last number of months.
-
-    Args:
-        session (Session): SQLAlchemy session object.
-        months (int, optional): Number of months to include in the report. Defaults to 12.
-
-    Returns:
-        tuple[list[tuple], list[str]]: A list of training data and column names.
-    """
-    # Query shopping transactions
-    query = (
-        session.query(
-            Shopping.ItemID,
-            Accounts.AccountName,
-            Shopping.Date,
-            Shopping.Amount,
-            Shopping.Description,
-            Shopping.Category,
-        )
-        .join(Accounts, Shopping.AccountID == Accounts.AccountID)
-        .filter(Shopping.Date >= func.date("now", f"-{months} months"))
-        .order_by(asc(Shopping.Date), asc(Shopping.ItemID))
-    )
-
-    # Fetch results
-    data = query.all()
-    columns = [column.get("name", "Unknown") for column in query.column_descriptions]
-
-    return data, columns
 
 
 def insert_rows_batched(session: Session, model: BaseModel, rows: list[dict]) -> None:

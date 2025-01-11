@@ -40,10 +40,8 @@ class Accounts(Base):
 
     account_types = relationship("AccountTypes", back_populates="accounts")
     account_numbers = relationship("AccountNumbers", back_populates="accounts")
-    shopping = relationship("Shopping", back_populates="accounts")
     statements = relationship("Statements", back_populates="accounts")
     transactions = relationship("Transactions", back_populates="accounts")
-    card_numbers = relationship("CardNumbers", back_populates="accounts")
 
 
 class AccountNumbers(Base):
@@ -82,7 +80,6 @@ class Statements(Base):
     MD5 = Column(String)
 
     accounts = relationship("Accounts", back_populates="statements")
-    shopping = relationship("Shopping", back_populates="statements")
     plugins = relationship("Plugins", back_populates="statements")
     transactions = relationship("Transactions", back_populates="statements")
 

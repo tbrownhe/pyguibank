@@ -3,30 +3,8 @@ from pathlib import Path
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from core.query import shopping, transactions
+from core.query import transactions
 from core.utils import open_file_in_os
-
-
-def shopping_report(session: Session, months: int = 12) -> None:
-    """
-    Saves shopping list as an Excel report for expense tracking.
-
-    Args:
-        session (Session): SQLAlchemy session object.
-        months (int, optional): Number of months to include in the report. Defaults to 12.
-    """
-    # Get the shopping data
-    data, columns = shopping(session, months=months)
-    df = pd.DataFrame(data, columns=columns)
-
-    # Add month column for grouping
-    df["Date"] = pd.to_datetime(df["Date"])
-    df["Month"] = df["Date"].dt.strftime("%Y-%m")
-
-    # Save as Excel
-    output_path = "shopping.xlsx"
-    df.to_excel(output_path, index=False)
-    print(f"Shopping report saved to {output_path}")
 
 
 def report(session: Session, dpath: Path, months: int = None):
