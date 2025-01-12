@@ -174,17 +174,18 @@ def resource_path(relative_path: Path):
 
 def open_file_in_os(fpath: Path):
     try:
+        if not fpath.exists():
+            raise FileNotFoundError(f"File not found: {fpath}")
+
         name = os.name
         if name == "nt":
-            args = ["start", "", str(fpath)]
-            subprocess.run(args, shell=True, check=True)
+            subprocess.run(["start", "", str(fpath)], shell=True, check=True)
         elif name == "posix":
-            args = ["open", str(fpath)]
-            subprocess.run(args, shell=False, check=True)
+            subprocess.run(["open", str(fpath)], check=True)
         else:
-            raise ValueError("Unsupported OS type %s" % name)
-    except Exception:
-        print(f"{fpath} could not be opened. It may be open already.")
+            raise ValueError(f"Unsupported OS type: {name}")
+    except Exception as e:
+        print(f"Error opening {fpath}: {e}")
 
 
 def create_directory(folder: Path):

@@ -33,6 +33,7 @@ from PyQt5.QtWidgets import (
 from sqlalchemy.orm import Session
 
 from core import categorize, config, learn, orm, plot, query, reports
+from core.client import check_for_client_updates
 from core.initialize import seed_account_types
 from core.plugins import PluginManager
 from core.statements import StatementProcessor
@@ -268,6 +269,10 @@ class PyGuiBank(QMainWindow):
         # Help Menu
         help_menu = menubar.addMenu("Help")
         help_menu.addAction("About", self.about)
+        help_menu.addAction(
+            "Check for Updates",
+            lambda: check_for_client_updates(manual=True, parent=self),
+        )
 
         ##################
         # CENTRAL WIDGET #
@@ -509,6 +514,7 @@ class PyGuiBank(QMainWindow):
 
         # Check for new versions of plugins and clients
         check_for_plugin_updates(self.plugin_manager, parent=self, manual=False)
+        check_for_client_updates(manual=False, parent=self)
 
     def update_from_config(self):
         self.config = config.read_config()

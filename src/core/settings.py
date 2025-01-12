@@ -1,3 +1,4 @@
+import platform
 from pathlib import Path
 from platform import system
 
@@ -5,6 +6,7 @@ from loguru import logger
 from pydantic import AnyHttpUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from version import __version__
 
 # Platform dependence
 APPDATA_DIR = (
@@ -18,6 +20,26 @@ APPDATA_DIR = (
 )
 
 
+def get_platform():
+    """
+    Detect the current platform for the client.
+
+    Returns:
+        str: Platform identifier (e.g., 'win64', 'macos', 'linux').
+    """
+    system = platform.system().lower()
+    arch = platform.architecture()[0]
+
+    if system == "windows":
+        return "win64" if "64" in arch else "win32"
+    elif system == "darwin":
+        return "macos"
+    elif system == "linux":
+        return "linux"
+    else:
+        return "unknown"
+
+
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
         # Use top level .env file (one level above ./backend/)
@@ -25,6 +47,10 @@ class AppSettings(BaseSettings):
         env_ignore_empty=True,
         extra="ignore",
     )
+
+    # Current platform and client version
+    platform: str = get_platform()
+    version: str = __version__
 
     # Load from .env or fallback to defaults
     server_url: AnyHttpUrl = Field(
