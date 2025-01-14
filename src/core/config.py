@@ -31,6 +31,7 @@ def read_config() -> ConfigParser:
         # If config doesn't exist, create a default configuration
         config = default_config()
         try:
+            settings.config_path.parent.mkdir(parents=True, exist_ok=True)
             with settings.config_path.open("w") as f:
                 config.write(f)
             logger.info(f"Default configuration created at {settings.config_path}")

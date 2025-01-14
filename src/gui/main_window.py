@@ -528,6 +528,7 @@ class PyGuiBank(QMainWindow):
             with self.Session() as session:
                 query.optimize_db(session)
         else:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
             self.Session = orm.create_database(self.db_path)
             QMessageBox.information(
                 self,
