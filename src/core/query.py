@@ -3,19 +3,18 @@ from datetime import datetime
 from typing import Any, Optional
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import Float, cast, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import asc, distinct, func, or_, select, text
 
-from .orm import (
+from core.orm import (
     AccountNumbers,
     Accounts,
     AccountTypes,
     BaseModel,
-    Shopping,
+    Plugins,
     Statements,
-    StatementTypes,
     Transactions,
 )
 
@@ -49,6 +48,7 @@ def accounts_table(session: Session) -> list[dict]:
         Accounts.AccountTypeID,
         Accounts.Company,
         Accounts.Description,
+        cast(Accounts.AppreciationRate, Float).label("AppreciationRate"),
     )
 
     # Fetch all data
@@ -61,6 +61,32 @@ def accounts_table(session: Session) -> list[dict]:
     ]
 
     return data
+
+
+def account_id_of_account_name(session: Session, account_name: str) -> int:
+    """
+    Retrieves an AccountID based on an account_name string found in a statement.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+        account_name (str): Account name to look up.
+
+    Returns:
+        int: AccountID corresponding to the provided account number.
+
+    Raises:
+        KeyError: If the account number is not found.
+    """
+    account_id = (
+        session.query(Accounts.AccountID)
+        .filter(Accounts.AccountName == account_name)
+        .one_or_none()
+    )
+
+    if account_id is None:
+        raise KeyError(f"{account_name} not found in AccountNumbers.AccountNumber")
+
+    return account_id[0]
 
 
 def account_numbers_table(session: Session) -> list[dict]:
@@ -144,9 +170,30 @@ def account_type_id(session: Session, account_type: str) -> int:
     return account_type_entry[0]
 
 
+def accounts_with_ids(
+    session: Session,
+) -> tuple[list[tuple[int, str]], list[str]]:
+    """
+    Retrieves AccountID and AccountNames.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        tuple[list[tuple[int, str]], list[str]]:
+            Data and column names.
+    """
+    query = session.query(
+        Accounts.AccountID,
+        Accounts.AccountName,
+    )
+
+    return query.all()
+
+
 def accounts_details(
     session: Session,
-) -> tuple[list[tuple[int, str, str, str, str]], list[str]]:
+) -> tuple[list[tuple[str, str, str, str, float]], list[str]]:
     """
     Retrieves all account details, including the account type name.
 
@@ -154,21 +201,64 @@ def accounts_details(
         session (Session): SQLAlchemy session object.
 
     Returns:
-        tuple[list[tuple[int, str, str, str, str]], list[str]]:
+        tuple[list[tuple[str, str, str, str, float]], list[str]]:
             Data and column names.
     """
     query = session.query(
-        Accounts.AccountID,
         Accounts.AccountName,
         Accounts.Company,
         Accounts.Description,
         AccountTypes.AccountType,
+        Accounts.AppreciationRate,
     ).join(AccountTypes, Accounts.AccountTypeID == AccountTypes.AccountTypeID)
 
     data = query.all()
     columns = [column.get("name", "Unknown") for column in query.column_descriptions]
 
     return data, columns
+
+
+def update_account_details(
+    session: Session,
+    account_name: str,
+    account_type_id: int,
+    company: str,
+    desc: str,
+    appreciation: float,
+):
+    session.query(Accounts).filter_by(AccountName=account_name).update(
+        {
+            "AccountTypeID": account_type_id,
+            "Company": company,
+            "Description": desc,
+            "AppreciationRate": appreciation,
+        }
+    )
+    session.commit()
+
+
+def appreciation_rate(session: Session, account_name: str):
+    """
+    Retrieves the appreciation rate for a given account name.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+
+    Returns:
+        float: Appreciation rate
+    """
+    result = (
+        session.query(
+            Accounts.AppreciationRate,
+        )
+        .filter(Accounts.AccountName == account_name)
+        .one_or_none()
+    )
+
+    if result is None:
+        raise KeyError(f"{account_name} not found in AccountTypes.AccountType")
+
+    return float(result[0])
 
 
 def account_name_of_account_id(session: Session, account_id: int) -> str:
@@ -408,90 +498,6 @@ def statements_with_filename(session: Session, filename: str) -> list[tuple]:
         raise RuntimeError(f"Database query failed: {e}")
 
 
-def statement_type_routing(
-    session: Session, extension: str = ""
-) -> list[tuple[int, str, str]]:
-    """
-    Retrieves StatementTypeID, SearchString, and EntryPoint from the StatementTypes table.
-    Optionally filters by extension.
-
-    Args:
-        session (Session): The SQLAlchemy session to use for the query.
-        extension (str, optional): The file extension to filter by. Defaults to "".
-
-    Returns:
-        list[tuple[int, str, str]]: A list of tuples containing StatementTypeID, SearchString, and EntryPoint.
-    """
-    query = select(
-        StatementTypes.StatementTypeID,
-        StatementTypes.SearchString,
-        StatementTypes.EntryPoint,
-    )
-    if extension:
-        query = query.where(StatementTypes.Extension == extension)
-
-    return session.execute(query).fetchall()
-
-
-def statement_types_table(session: Session) -> list[dict]:
-    """
-    Fetches entire StatementTypes table.
-
-    Args:
-        session (Session): SQLAlchemy session object.
-
-    Returns:
-        list[dict]: Table contents
-    """
-    # Perform the query
-    query = session.query(
-        StatementTypes.AccountTypeID,
-        StatementTypes.Company,
-        StatementTypes.Description,
-        StatementTypes.Extension,
-        StatementTypes.SearchString,
-        StatementTypes.Parser,
-        StatementTypes.EntryPoint,
-    )
-
-    # Fetch all data
-    data = [
-        {
-            column.get("name", "Unknown"): value
-            for column, value in zip(query.column_descriptions, row)
-        }
-        for row in query.all()
-    ]
-
-    return data
-
-
-def statement_type_details(session: Session, stid: int) -> tuple[str, str, str]:
-    """
-    Fetches company, description, and account type for a given StatementTypeID.
-
-    Args:
-        session (Session): SQLAlchemy session object.
-        statement_type_id (int): The StatementTypeID to filter on.
-
-    Returns:
-        dict: A dictionary containing Company, Description, and AccountType.
-    """
-    result = (
-        session.query(
-            StatementTypes.Company,
-            StatementTypes.Description,
-            AccountTypes.AccountType,
-        )
-        .join(AccountTypes, StatementTypes.AccountTypeID == AccountTypes.AccountTypeID)
-        .filter(StatementTypes.StatementTypeID == stid)
-        .one_or_none()
-    )
-    if not result:
-        raise ValueError(f"StatementTypeID {stid} not found in StatementTypes.")
-    return result
-
-
 def transactions(session: Session, months: int = None) -> tuple[list[tuple], list[str]]:
     """
     Retrieves all transactions with associated account and account type details.
@@ -606,6 +612,50 @@ def latest_balances(session: Session) -> list[tuple[str, str, float]]:
     return query.all()
 
 
+def transactions_in_range(
+    session: Session,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+) -> tuple[list[tuple], list[str]]:
+    """
+    Retrieves transaction data within a date range.
+    Returns all transactions if no flags are set.
+
+    Args:
+        session (Session): SQLAlchemy session object.
+        start_date (datetime, optional): Minimum date to include
+        end_date (datetime, optional): Maximum date to include
+
+    Returns:
+        tuple[list[tuple], list[str]]: A list of training data and column names.
+    """
+    # Base query
+    query = (
+        session.query(
+            Accounts.AccountName,
+            Transactions.Date,
+            Transactions.Amount,
+            Transactions.Category,
+            Transactions.Description,
+        )
+        .join(Accounts, Transactions.AccountID == Accounts.AccountID)
+        .join(AccountTypes, Accounts.AccountTypeID == AccountTypes.AccountTypeID)
+        .order_by(asc(Transactions.Date), asc(Transactions.TransactionID))
+    )
+
+    # Apply filters
+    if start_date:
+        query = query.filter(Transactions.Date >= start_date.strftime(r"%Y-%m-%d"))
+    elif end_date:
+        query = query.filter(Transactions.Date <= end_date.strftime(r"%Y-%m-%d"))
+
+    # Execute query and fetch results
+    data = query.all()
+    columns = [column.get("name", "Unknown") for column in query.column_descriptions]
+
+    return data, columns
+
+
 def training_set(
     session: Session,
     verified: bool = False,
@@ -699,39 +749,6 @@ def distinct_categories(session: Session) -> list[str]:
     )
     data = query.all()
     return [category[0] for category in data]
-
-
-def shopping(session: Session, months: int = 12) -> tuple[list[tuple], list[str]]:
-    """
-    Retrieves a list of Shopping data for the last number of months.
-
-    Args:
-        session (Session): SQLAlchemy session object.
-        months (int, optional): Number of months to include in the report. Defaults to 12.
-
-    Returns:
-        tuple[list[tuple], list[str]]: A list of training data and column names.
-    """
-    # Query shopping transactions
-    query = (
-        session.query(
-            Shopping.ItemID,
-            Accounts.AccountName,
-            Shopping.Date,
-            Shopping.Amount,
-            Shopping.Description,
-            Shopping.Category,
-        )
-        .join(Accounts, Shopping.AccountID == Accounts.AccountID)
-        .filter(Shopping.Date >= func.date("now", f"-{months} months"))
-        .order_by(asc(Shopping.Date), asc(Shopping.ItemID))
-    )
-
-    # Fetch results
-    data = query.all()
-    columns = [column.get("name", "Unknown") for column in query.column_descriptions]
-
-    return data, columns
 
 
 def insert_rows_batched(session: Session, model: BaseModel, rows: list[dict]) -> None:

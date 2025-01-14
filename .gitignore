@@ -139,8 +139,9 @@ dmypy.json
 *.xlsx
 *.mdl
 init_accounts.json
+*test.py
+*.ini
 
 # DB Browser for SQLite3
 *.db
 *.sqbpro
-*test.py

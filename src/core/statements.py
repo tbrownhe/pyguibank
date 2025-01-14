@@ -1,3 +1,4 @@
+import os
 import shutil
 from configparser import ConfigParser
 from pathlib import Path
@@ -7,17 +8,20 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QDialog, QMessageBox, QProgressDialog
 from sqlalchemy.orm import Session, sessionmaker
 
-from . import query
-from .dialog import AssignAccountNumber
-from .orm import Statements, Transactions
-from .parse import parse_any
-from .utils import hash_file
-from .validation import Statement, Transaction
+from core import query
+from core.orm import Plugins, Statements, Transactions
+from core.parse import parse_any
+from core.plugins import PluginManager
+from core.utils import hash_file
+from core.validation import Statement, Transaction
+from gui.accounts import AssignAccountNumber
 
 
 class StatementProcessor:
 
-    def __init__(self, Session: sessionmaker, config: ConfigParser) -> None:
+    def __init__(
+        self, Session: sessionmaker, config: ConfigParser, plugin_manager: PluginManager
+    ) -> None:
         """Initialize the processor and make sure config is valid
 
         Args:
@@ -25,13 +29,14 @@ class StatementProcessor:
         """
         self.Session = Session
         self.config = config
+        self.plugin_manager = plugin_manager
         try:
             self.import_dir = Path(self.config.get("IMPORT", "import_dir")).resolve()
             self.success_dir = Path(self.config.get("IMPORT", "success_dir")).resolve()
             self.duplicate_dir = Path(
                 self.config.get("IMPORT", "duplicate_dir")
             ).resolve()
-            self.hard_fail = config.getboolean("IMPORT", "hard_fail")
+            # self.hard_fail = config.getboolean("IMPORT", "hard_fail")
             self.fail_dir = Path(config.get("IMPORT", "fail_dir")).resolve()
             self.extensions = [
                 ext.strip()
@@ -41,17 +46,28 @@ class StatementProcessor:
             logger.exception("Failed to load configuration: ")
 
     def import_all(self, parent=None) -> None:
-        """Finds all statements in import_dir and imports all of them.
+        """
+        Find all statements in the import directory and process them.
 
         Args:
-            parent (_type_, optional): Parent class. Defaults to None.
+            parent: Parent class for UI dialogs.
         """
-        # Get the list of files in the input_dir
-        fpaths = []
-        for ext in self.extensions:
-            fpaths.extend(self.import_dir.glob("*." + ext))
+        # Gather files to process
+        fpaths = [
+            fpath
+            for ext in self.extensions
+            for fpath in self.import_dir.glob(f"*.{ext}")
+        ]
+        if not fpaths:
+            QMessageBox.information(
+                parent, "No Files", "No files found in the import directory."
+            )
+            return
 
-        # Create progress dialog
+        # Initialize counters
+        success, duplicate, fail = 0, 0, 0
+
+        # Progress dialog
         progress = QProgressDialog(
             "Processing statements...", "Cancel", 0, len(fpaths), parent
         )
@@ -59,10 +75,6 @@ class StatementProcessor:
         progress.setWindowModality(Qt.WindowModal)
         progress.setValue(0)
 
-        # Import all files
-        success = 0
-        duplicate = 0
-        fail = 0
         for idx, fpath in enumerate(sorted(fpaths)):
             progress.setLabelText(f"Processing {fpath.name}...")
             if progress.wasCanceled():
@@ -70,89 +82,91 @@ class StatementProcessor:
                     parent, "Import Canceled", "The import was canceled."
                 )
                 break
+
             try:
-                suc, dup = self.import_one(fpath)
-                success += suc
-                duplicate += dup
+                result = self.import_one(fpath)
+                if result == "success":
+                    success += 1
+                elif result == "duplicate":
+                    duplicate += 1
+            except RuntimeError as e:
+                # Stop the import loop immediately if a critical failure occurs
+                progress.close()
+                dialog = QMessageBox(parent)
+                dialog.setIcon(QMessageBox.Critical)
+                dialog.setWindowTitle("Import Canceled")
+                dialog.setText(str(e))
+                dialog.setStandardButtons(QMessageBox.Ok)
+                dialog.setWindowModality(Qt.ApplicationModal)  # Ensure it's on top
+                dialog.setWindowFlags(dialog.windowFlags() | Qt.WindowStaysOnTopHint)
+                dialog.exec_()
+                break
             except Exception as e:
                 fail += 1
-                logger.exception("Import failed: ")
-                if self.hard_fail:
-                    progress.close()
-                    msg_box = QMessageBox()
-                    msg_box.setIcon(QMessageBox.Critical)
-                    msg_box.setText(f"The statement could not be parsed:\n{e}")
-                    msg_box.setWindowTitle("Parsing Failed")
-                    msg_box.setStandardButtons(QMessageBox.Ok)
-                    msg_box.exec_()
-                    raise
-                else:
-                    dpath = self.fail_dir / fpath.name
-                    self.move_file_safely(fpath, dpath)
+                self.handle_failure(fpath, e)
 
-            # Update progress dialog
             progress.setValue(idx + 1)
 
         progress.close()
 
-        # Show summary
+        # Summary dialog
         total = len(fpaths)
         remain = total - success - duplicate - fail
-        msg_box = QMessageBox(parent)
-        msg_box.setIcon(QMessageBox.Information)
-        msg_box.setText(
-            f"Successfully imported {success} of {total} files in {self.import_dir}."
-            f"\n{duplicate} duplicate files were found,"
-            f"\n{fail} files failed to import, and"
-            f"\n{remain} files remain to be imported."
+        QMessageBox.information(
+            parent,
+            "Import Summary",
+            (
+                f"Successfully imported: {success} of {total} files\n"
+                f"Duplicates: {duplicate}\n"
+                f"Failures: {fail}\n"
+                f"Remaining: {remain}"
+            ),
         )
-        msg_box.setWindowTitle("Import Summary")
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.exec_()
 
-    def import_one(self, fpath: Path) -> tuple[int, int]:
-        """Parses the statement and saves the transaction data to the database.
+    def import_one(self, fpath: Path) -> str:
+        """
+        Process a single statement file and import its data.
 
         Args:
-            fpath (Path): Statement file to import
+            fpath (Path): Path to the statement file.
 
         Returns:
-            tuple[int, int]: success, duplicate, fail count
+            str: "success" if successfully imported, "duplicate" if already imported.
         """
-        logger.info("Importing {f}", f=fpath.name)
+        try:
+            md5hash = hash_file(fpath)
 
-        # Abort if this exact statement file has already been imported to db
-        md5hash = hash_file(fpath)
-        if self.file_already_imported(md5hash):
-            self.handle_duplicate(fpath)
-            return 0, 1
+            # Check for duplicates by MD5 hash
+            if self.file_already_imported(md5hash):
+                self.handle_duplicate(fpath)
+                return "duplicate"
 
-        # Extract the statement data into a Statement dataclass
-        self.statement = parse_any(self.Session, fpath)
+            # Parse the statement and validate its structure
+            statement = parse_any(self.Session, self.plugin_manager, fpath)
+            if not isinstance(statement, Statement):
+                raise TypeError("Parsing module must return a Statement dataclass.")
 
-        if not isinstance(self.statement, Statement):
-            raise TypeError("Parsing module must return a Statement dataclass")
+            # Attach metadata
+            statement.add_md5hash(md5hash)
+            self.attach_account_info(statement)  # Modifies in place
+            for account in statement.accounts:
+                account.hash_transactions()
+            statement.set_standard_dpath(self.success_dir)
 
-        # Attach metadata
-        self.statement.add_md5hash(md5hash)
-        self.attach_account_info()
-        for account in self.statement.accounts:
-            account.hash_transactions()
-        self.statement.set_standard_dpath(self.success_dir)
+            # Check for duplicates by filename
+            if self.statement_already_imported(statement.dpath.name):
+                self.handle_duplicate(fpath)
+                return "duplicate"
 
-        # Abort if a statement with similar metadata has been imported
-        if self.statement_already_imported(self.statement.dpath.name):
-            self.handle_duplicate(fpath)
-            return 0, 1
+            # Insert data into the database and move the file to the success directory
+            with self.Session() as session:
+                self.complete_data_transaction(session, statement)
 
-        # Insert transactions into db
-        with self.Session() as session:
-            self.insert_statement_data(session)
-
-        # Rename and move the statement file to the success directory
-        self.move_file_safely(self.statement.fpath, self.statement.dpath)
-
-        return 1, 0
+            logger.success(f"Imported {fpath}")
+            return "success"
+        except Exception as e:
+            logger.error(f"Failed to import {fpath.name}: {e}")
+            raise
 
     def file_already_imported(self, md5hash: str) -> bool:
         """Check if the file has already been saved to the db
@@ -195,54 +209,76 @@ class StatementProcessor:
             )
         return True
 
+    def handle_failure(self, fpath: Path, error: Exception):
+        """
+        Handle failed statement imports by moving the file to the fail directory.
+
+        Args:
+            fpath (Path): Path to the failed statement file.
+            error (Exception): The exception that occurred.
+        """
+        dpath = self.fail_dir / fpath.name
+        self.move_file_safely(fpath, dpath)
+        logger.error(f"Failed to process {fpath.name}: {error}")
+
     def handle_duplicate(self, fpath):
+        """
+        Handle duplicate statement imports by moving the file to the duplicate directory.
+
+        Args:
+            fpath (Path): Path to the failed statement file.
+        """
         dpath = self.duplicate_dir / fpath.name
         self.move_file_safely(fpath, dpath)
         logger.debug("Duplicate statement moved to {d}", d=dpath)
 
     def move_file_safely(self, fpath: Path, dpath: Path):
-        """Make sure destination parent dir exists
+        """
+        Move a file to the destination path safely. Ensure the destination directory exists.
 
         Args:
-            fpath (Path): Source Path
-            dpath (Path): Desintation Path
+            fpath (Path): Source file path.
+            dpath (Path): Destination file path.
+
+        Raises:
+            RuntimeError: If the move operation is cancelled or fails.
         """
-        dpath.parents[0].mkdir(parents=True, exist_ok=True)
+        dpath.parent.mkdir(parents=True, exist_ok=True)
 
         while True:
             try:
+                # Check for write lock, then move
+                os.rename(fpath, fpath)
                 shutil.move(fpath, dpath)
                 return
             except PermissionError as e:
                 # File is likely open in another program
-                msg_box = QMessageBox()
-                msg_box.setIcon(QMessageBox.Warning)
-                msg_box.setText(
+                dialog = QMessageBox(None)
+                dialog.setIcon(QMessageBox.Warning)
+                dialog.setWindowTitle("Unable to Move File")
+                dialog.setText(
                     f"The file {fpath.name} could not be moved. "
-                    "It might be open in another program. Please close it and try again."
+                    "It might be open in another program. Please close it and try again.",
                 )
-                msg_box.setWindowTitle("Unable to Move File")
-                msg_box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
-
-                response = msg_box.exec_()
-
-                if response == QMessageBox.Cancel:
+                dialog.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+                dialog.setWindowModality(Qt.ApplicationModal)  # Ensure it's on top
+                dialog.setWindowFlags(dialog.windowFlags() | Qt.WindowStaysOnTopHint)
+                if dialog.exec_() == QMessageBox.Cancel:
                     raise RuntimeError(
-                        f"File move operation for {fpath} was cancelled by the user."
+                        f"File move operation for <pre>{fpath}</pre> was cancelled by the user."
                     ) from e
             except Exception as e:
-                # Handle other exceptions gracefully
                 raise RuntimeError(
-                    f"An unexpected error occurred while moving {fpath}: {e}"
+                    f"An unexpected error occurred while moving <pre>{fpath}</pre>: {e}"
                 ) from e
 
-    def attach_account_info(self) -> None:
+    def attach_account_info(self, statement: Statement) -> Statement:
         """
         Makes sure all accounts in the statement have an entry in the lookup table.
         Return the nicknames of all accounts
         """
         # Ensure an account-to-account_num association is set up for each account_num
-        for account in self.statement.accounts:
+        for account in statement.accounts:
             try:
                 # Lookup existing account
                 with self.Session() as session:
@@ -251,7 +287,16 @@ class StatementProcessor:
                     )
             except KeyError:
                 # Prompt user to select account to associate with this account_num
-                account_id = self.prompt_account_num(account.account_num)
+                plugin_metadata = self.plugin_manager.metadata.get(
+                    statement.plugin_name
+                )
+                try:
+                    account_id = self.prompt_account_num(
+                        statement.fpath, account.account_num, plugin_metadata
+                    )
+                except RuntimeError as e:
+                    logger.error(f"Account assignment canceled: {e}")
+                    raise
 
             # Get the account_name for this account_id
             with self.Session() as session:
@@ -260,18 +305,18 @@ class StatementProcessor:
             # Add the new data to the account
             account.add_account_info(account_id, account_name)
 
-    def prompt_account_num(self, account_num: str) -> int:
+    def prompt_account_num(
+        self, fpath: Path, account_num: str, plugin_metadata: dict, parent=None
+    ) -> int:
         """
         Ask user to associate this unknown account_num with an Accounts.AccountID
         """
-        dialog = AssignAccountNumber(
-            self.Session, self.statement.fpath, self.statement.stid, account_num
-        )
+        dialog = AssignAccountNumber(self.Session, fpath, plugin_metadata, account_num)
         if dialog.exec_() == QDialog.Accepted:
             return dialog.get_account_id()
-        raise ValueError("No AccountID selected.")
+        raise RuntimeError("Account assignment dialog was closed without selection.")
 
-    def insert_statement_data(self, session: Session) -> None:
+    def complete_data_transaction(self, session: Session, statement: Statement) -> None:
         """
         Inserts statement metadata and associated transactions into the database.
         Rolls back the entire operation if any error occurs.
@@ -280,7 +325,42 @@ class StatementProcessor:
             session (Session): session instance
         """
         with session.begin():
-            for account in self.statement.accounts:
+            # Validate the plugin_name exists in the statement metadata
+            if not statement.plugin_name:
+                raise ValueError("Statement must include a valid plugin_name.")
+
+            plugin_name = statement.plugin_name
+
+            # Retrieve plugin metadata from PluginManager
+            plugin_metadata = self.plugin_manager.metadata.get(plugin_name)
+            if not plugin_metadata:
+                raise ValueError(f"No metadata found for plugin: {plugin_name}")
+
+            # Check if the plugin is already in the Plugins table
+            plugin_entry = (
+                session.query(Plugins)
+                .filter_by(
+                    PluginName=plugin_metadata["PLUGIN_NAME"],
+                    Version=plugin_metadata["VERSION"],
+                )
+                .first()
+            )
+
+            if not plugin_entry:
+                # Plugin does not exist in the table; insert it
+                plugin_entry = Plugins(
+                    PluginName=plugin_metadata["PLUGIN_NAME"],
+                    Version=plugin_metadata["VERSION"],
+                    Suffix=plugin_metadata["SUFFIX"],
+                    Company=plugin_metadata["COMPANY"],
+                    StatementType=plugin_metadata["STATEMENT_TYPE"],
+                )
+                session.add(plugin_entry)
+                session.flush()  # Ensure PluginID is generated
+
+            plugin_id = plugin_entry.PluginID
+
+            for account in statement.accounts:
                 # Validate account information
                 if not account.account_id or not account.account_name:
                     raise ValueError(
@@ -289,20 +369,26 @@ class StatementProcessor:
                     )
 
                 # Prepare and insert statement metadata
-                metadata = self.statement.to_db_row(account)
-                statement = Statements(**metadata)
-                session.add(statement)
+                metadata = statement.to_db_row(account)
+                statements_table = Statements(
+                    **metadata, PluginID=plugin_id  # Associate with the plugin
+                )
+                session.add(statements_table)
 
                 # Flush to get autogenerated StatementID
                 session.flush()
-                statement_id = statement.StatementID
+                statement_id = statements_table.StatementID
 
                 # Prepare transactions for insertion
-                transactions = Transaction.to_db_rows(
+                transactions_table = Transaction.to_db_rows(
                     statement_id, account.account_id, account.transactions
                 )
 
                 # Insert transactions using insert_rows_carefully
                 query.insert_rows_carefully(
-                    session, Transactions, transactions, skip_duplicates=True
+                    session, Transactions, transactions_table, skip_duplicates=True
                 )
+
+            # Attempt to move file to destination.
+            # If it fails in this context, the whole transaction is rolled back.
+            self.move_file_safely(statement.fpath, statement.dpath)

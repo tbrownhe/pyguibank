@@ -1,45 +1,204 @@
-import configparser
 import hashlib
 import os
 import re
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Union
 
 import pdfplumber
+from loguru import logger
 
 
-def read_config(config_path: Path):
-    """
-    Uses ConfigParser to get the contents of the config.ini file.
-    """
-    # Check to see if the config file exists
-    if not config_path.exists:
-        raise ValueError(
-            "Please create and populate a config.txt file in the root directory."
-        )
+class PDFReader:
+    def __init__(self, fpath: Path):
+        self.fpath = fpath
+        self.PDF = None
+        self.pages_simple = None
+        self.lines_simple = None
+        self.text_simple = None
+        self.pages_layout = None
+        self.text_layout = None
+        self.lines_layout = None
+        self.lines_clean = None
 
-    # Open the config file
-    config = configparser.ConfigParser()
-    config.read(config_path)
+    def __enter__(self):
+        """
+        Open the PDF document using context manager.
+        """
+        self.PDF = pdfplumber.open(self.fpath)
+        return self
 
-    return config
+    def __exit__(self, exc_type, exc_value, traceback):
+        """
+        Close the PDF document upon exiting the context.
+        """
+        if self.PDF:
+            self.PDF.close()
+            self.PDF = None
+
+    def __del__(self):
+        """
+        Ensure the PDF document is closed when the object is deleted.
+        """
+        if self.PDF:
+            self.PDF.close()
+
+    def extract_text_simple(self) -> str:
+        """Extracts text using a fast algoritm for all pages of the pdf.
+
+        Raises:
+            ValueError: Error while reading PDF
+
+        Returns:
+            str: Entire pdf extracted with simple algorithm, whitespace normalized
+
+        Notes:
+            Text is stored as self.text_simple
+        """
+        if self.text_simple:
+            return self.text_simple
+        if self.PDF is None:
+            raise ValueError("PDF not opened properly")
+        self.pages_simple = [
+            page.extract_text_simple() or "" for page in self.PDF.pages
+        ]
+        text_simple_raw = "\n".join(self.pages_simple)
+        self.lines_simple = [
+            " ".join(word for word in line.split())
+            for line in text_simple_raw.splitlines()
+        ]
+        self.text_simple = "\n".join(self.lines_simple)
+        return self.text_simple
+
+    def extract_lines_simple(self) -> list[str]:
+        """Extracts lines of whitespace-normalized text extracted via simple algoritm.
+
+        Returns:
+            list[str]: Lines of text with normalized whitespace
+
+        Notes:
+            Text is stored as self.text_simple
+            Lines are stored as self.lines_simple
+        """
+        if self.lines_simple:
+            return self.lines_simple
+        if self.pages_simple is None:
+            self.extract_text_simple()
+        return self.lines_simple
+
+    def extract_pages_layout(self, **kwargs) -> list[str]:
+        """Extracts all pages of text of the PDF using a slower layout-based algorithm.
+
+        Raises:
+            ValueError: Error while reading PDF
+
+        Returns:
+            list[str]: Pages of layout formatted text
+
+        Notes:
+            Pages of layout format text are stored as self.pages_layout
+        """
+        if self.pages_layout:
+            return self.pages_layout
+        if self.PDF is None:
+            raise ValueError("PDF not opened properly")
+        self.pages_layout = [
+            page.extract_text(layout=True, **kwargs) or "" for page in self.PDF.pages
+        ]
+        return self.pages_layout
+
+    def extract_text_layout(self, **kwargs) -> str:
+        """Extracts pages carefully then joins them into a single string.
+
+        Returns:
+            str: Joined text in layout format
+
+        Notes:
+            Pages of layout format text are stored as self.pages_layout
+            Joined text is stored as self.text_layout
+        """
+        if self.text_layout:
+            return self.text_layout
+        if self.pages_layout is None:
+            self.extract_pages_layout(**kwargs)
+        self.text_layout = "\n".join(self.pages_layout)
+        return self.text_layout
+
+    def extract_lines_layout(self, **kwargs) -> list[str]:
+        """Extracts non-empty lines of text while maintaining layout format.
+
+        Returns:
+            list[str]: Non-empty lines of text in layout format
+
+        Notes:
+            Pages of layout format text are stored as self.pages_layout
+            Joined text is stored as self.text_layout
+            Raw lines are stored as self.lines_layout
+        """
+        if self.lines_layout:
+            return self.lines_layout
+        if self.text_layout is None:
+            self.extract_text_layout(**kwargs)
+        self.lines_layout = [
+            line for line in self.text_layout.splitlines() if line.strip()
+        ]
+        return self.lines_layout
+
+    def extract_lines_clean(self, **kwargs) -> list[str]:
+        """Extracts lines of text with normalized whitespace.
+
+        Returns:
+            list[str]: Lines of text with normalized whitespace
+
+        Notes:
+            Pages of layout format text are stored as self.pages
+            Joined text is stored as self.text_layout
+            Raw lines are stored as self.lines_layout
+            Whitespace normalized lines are stored as self.lines_clean
+        """
+        if self.lines_clean:
+            return self.lines_clean
+        if self.lines_layout is None:
+            self.extract_lines_layout(**kwargs)
+        self.lines_clean = [" ".join(line.split()) for line in self.lines_layout]
+        return self.lines_clean
+
+
+def resource_path(relative_path: Path):
+    """Get absolute path to resource, works for PyInstaller bundles."""
+    base_path = getattr(sys, "_MEIPASS", os.path.abspath("."))
+    return Path(base_path) / relative_path
 
 
 def open_file_in_os(fpath: Path):
     try:
+        if not fpath.exists():
+            raise FileNotFoundError(f"File not found: {fpath}")
+
         name = os.name
         if name == "nt":
-            args = ["start", "", str(fpath)]
-            subprocess.run(args, shell=True, check=True)
+            subprocess.run(["start", "", str(fpath)], shell=True, check=True)
         elif name == "posix":
-            args = ["open", str(fpath)]
-            subprocess.run(args, shell=False, check=True)
+            subprocess.run(["open", str(fpath)], check=True)
         else:
-            raise ValueError("Unsupported OS type %s" % name)
-    except Exception:
-        print(f"{fpath} could not be opened. It may be open already.")
+            raise ValueError(f"Unsupported OS type: {name}")
+    except Exception as e:
+        print(f"Error opening {fpath}: {e}")
+
+
+def create_directory(folder: Path):
+    folder = folder.resolve()
+    if folder.exists():
+        logger.info(f"Directory exists: {folder}")
+        return
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Directory created: {folder}")
+    except OSError as e:
+        logger.error(f"Error creating directory {folder}: {e}")
+        raise
 
 
 def find_line_startswith(
@@ -302,158 +461,3 @@ def hash_file(fpath: Path) -> str:
     """
     with fpath.open("rb") as f:
         return hashlib.md5(f.read()).hexdigest()
-
-
-class PDFReader:
-    def __init__(self, fpath: Path):
-        self.fpath = fpath
-        self.PDF = None
-        self.pages_simple = None
-        self.lines_simple = None
-        self.text_simple = None
-        self.pages_layout = None
-        self.text_layout = None
-        self.lines_layout = None
-        self.lines_clean = None
-
-    def __enter__(self):
-        """
-        Open the PDF document using context manager.
-        """
-        self.PDF = pdfplumber.open(self.fpath)
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        """
-        Close the PDF document upon exiting the context.
-        """
-        if self.PDF:
-            self.PDF.close()
-            self.PDF = None
-
-    def __del__(self):
-        """
-        Ensure the PDF document is closed when the object is deleted.
-        """
-        if self.PDF:
-            self.PDF.close()
-
-    def extract_text_simple(self) -> str:
-        """Extracts text using a fast algoritm for all pages of the pdf.
-
-        Raises:
-            ValueError: Error while reading PDF
-
-        Returns:
-            str: Entire pdf extracted with simple algorithm, whitespace normalized
-
-        Notes:
-            Text is stored as self.text_simple
-        """
-        if self.text_simple:
-            return self.text_simple
-        if self.PDF is None:
-            raise ValueError("PDF not opened properly")
-        self.pages_simple = [
-            page.extract_text_simple() or "" for page in self.PDF.pages
-        ]
-        text_simple_raw = "\n".join(self.pages_simple)
-        self.lines_simple = [
-            " ".join(word for word in line.split())
-            for line in text_simple_raw.splitlines()
-        ]
-        self.text_simple = "\n".join(self.lines_simple)
-        return self.text_simple
-
-    def extract_lines_simple(self) -> list[str]:
-        """Extracts lines of whitespace-normalized text extracted via simple algoritm.
-
-        Returns:
-            list[str]: Lines of text with normalized whitespace
-
-        Notes:
-            Text is stored as self.text_simple
-            Lines are stored as self.lines_simple
-        """
-        if self.lines_simple:
-            return self.lines_simple
-        if self.pages_simple is None:
-            self.extract_text_simple()
-        return self.lines_simple
-
-    def extract_pages_layout(self, **kwargs) -> list[str]:
-        """Extracts all pages of text of the PDF using a slower layout-based algorithm.
-
-        Raises:
-            ValueError: Error while reading PDF
-
-        Returns:
-            list[str]: Pages of layout formatted text
-
-        Notes:
-            Pages of layout format text are stored as self.pages_layout
-        """
-        if self.pages_layout:
-            return self.pages_layout
-        if self.PDF is None:
-            raise ValueError("PDF not opened properly")
-        self.pages_layout = [
-            page.extract_text(layout=True, **kwargs) or "" for page in self.PDF.pages
-        ]
-        return self.pages_layout
-
-    def extract_text_layout(self, **kwargs) -> str:
-        """Extracts pages carefully then joins them into a single string.
-
-        Returns:
-            str: Joined text in layout format
-
-        Notes:
-            Pages of layout format text are stored as self.pages_layout
-            Joined text is stored as self.text_layout
-        """
-        if self.text_layout:
-            return self.text_layout
-        if self.pages_layout is None:
-            self.extract_pages_layout(**kwargs)
-        self.text_layout = "\n".join(self.pages_layout)
-        return self.text_layout
-
-    def extract_lines_layout(self, **kwargs) -> list[str]:
-        """Extracts non-empty lines of text while maintaining layout format.
-
-        Returns:
-            list[str]: Non-empty lines of text in layout format
-
-        Notes:
-            Pages of layout format text are stored as self.pages_layout
-            Joined text is stored as self.text_layout
-            Raw lines are stored as self.lines_layout
-        """
-        if self.lines_layout:
-            return self.lines_layout
-        if self.text_layout is None:
-            self.extract_text_layout(**kwargs)
-        self.lines_layout = [
-            line for line in self.text_layout.splitlines() if line.strip()
-        ]
-        return self.lines_layout
-
-    def extract_lines_clean(self, **kwargs) -> list[str]:
-        """Extracts lines of text with normalized whitespace.
-
-        Returns:
-            list[str]: Lines of text with normalized whitespace
-
-        Notes:
-            Pages of layout format text are stored as self.pages
-            Joined text is stored as self.text_layout
-            Raw lines are stored as self.lines_layout
-            Whitespace normalized lines are stored as self.lines_clean
-        """
-        if self.lines_clean:
-            return self.lines_clean
-        if self.lines_layout is None:
-            self.extract_lines_layout(**kwargs)
-        self.lines_clean = [" ".join(line.split()) for line in self.lines_layout]
-        return self.lines_clean

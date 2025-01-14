@@ -1,18 +1,122 @@
 import csv
-import importlib
 import re
 from pathlib import Path
-from typing import Any, Callable, Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 import openpyxl
 from loguru import logger
 from sqlalchemy.orm import sessionmaker
 
-from .dialog import ValidationErrorDialog
-from .interfaces import IParser
-from .query import statement_type_routing
-from .utils import PDFReader
-from .validation import Statement, ValidationError, validate_statement
+from core.interfaces import IParser
+from core.plugins import PluginManager
+from core.utils import PDFReader
+from core.validation import Statement, ValidationError, validate_statement
+from gui.statements import ValidationErrorDialog
+
+
+def parse_search_string(search_string: str):
+    """
+    Parses the SEARCH_STRING into a logical tree structure.
+
+    Args:
+        search_string (str): The SEARCH_STRING from the plugin metadata.
+
+    Returns:
+        tuple: A tree-like structure representing the parsed logical expression.
+    """
+
+    def tokenize(expr) -> list[Any]:
+        return re.findall(r'&&|\|\||\(|\)|"[^"]*"|[^()&&||]+', expr)
+
+    def build_tree(tokens):
+        stack = []
+        current = []
+
+        for token in tokens:
+            if token == "(":
+                stack.append(current)
+                current = []
+            elif token == ")":
+                if not stack:
+                    raise ValueError("Unmatched closing parenthesis")
+                last = current
+                current = stack.pop()
+                current.append(last)
+            elif token in ("&&", "||"):
+                current.append(token)
+            else:
+                current.append(token)
+
+        if stack:
+            raise ValueError("Unmatched opening parenthesis")
+        return current
+
+    tokens = tokenize(search_string)
+    return build_tree(tokens)
+
+
+def evaluate_tree(tokens, text):
+    """
+    Evaluate a tokenized search string against the input text.
+
+    Args:
+        tokens (list): Tokenized search string.
+        text (str): Text to evaluate against.
+
+    Returns:
+        bool: True if the search string matches the text, False otherwise.
+
+    Raises:
+        ValueError: If the expression is malformed or an unknown token is encountered.
+    """
+    stack = []
+    while tokens:
+        token = tokens.pop(0)
+
+        if token == "&&":
+            # Evaluate both sides of the AND operation
+            if len(stack) < 1:
+                raise ValueError("Malformed expression: missing left operand for '&&'")
+            left = stack.pop()
+            right = evaluate_tree(tokens, text)  # Process the right side
+            stack.append(left and right)
+        elif token == "||":
+            # Evaluate both sides of the OR operation
+            if len(stack) < 1:
+                raise ValueError("Malformed expression: missing left operand for '||'")
+            left = stack.pop()
+            right = evaluate_tree(tokens, text)  # Process the right side
+            stack.append(left or right)
+        elif isinstance(token, list):
+            # Handle nested expressions
+            stack.append(evaluate_tree(token, text))
+        else:
+            # Treat the token as a literal string
+            result = token in text
+            stack.append(result)
+
+    if len(stack) != 1:
+        raise ValueError(f"Malformed expression. Final Stack: {stack}")
+    return stack[0]
+
+
+def match_search_string(search_string: str, text: str) -> bool:
+    """
+    Matches the search string logic against the text.
+
+    Args:
+        search_string (str): The SEARCH_STRING from the plugin metadata.
+        text (str): The plain text of the statement.
+
+    Returns:
+        bool: True if the text matches the search string, False otherwise.
+    """
+    try:
+        tree = parse_search_string(search_string)
+        return evaluate_tree(tree, text)
+    except ValueError as e:
+        raise ValueError(f"Error in SEARCH_STRING '{search_string}': {e}")
+
 
 T = TypeVar("T")
 
@@ -24,56 +128,55 @@ class BaseRouter(Generic[T]):
         Generic (T): T adopts the type passed to it when a child class inherits this class
     """
 
-    def __init__(self, Session: sessionmaker, fpath: Path, hard_fail=True):
+    def __init__(
+        self,
+        Session: sessionmaker,
+        plugin_manager: PluginManager,
+        fpath: Path,
+        hard_fail=True,
+    ):
         self.Session = Session
+        self.plugin_manager = plugin_manager
         self.fpath = fpath
         self.hard_fail = hard_fail
 
-    def select_parser(self, text: str, extension="") -> tuple[int, str]:
-        """Pulls parser search strings from database, then does pattern matching to
-        find the StatementTypeID and parser name for this statement.
+    def select_parser(self, text: str, suffix="") -> str:
+        """Uses plugin metadata to find the parser name for this statement.
 
         Args:
-            db_path (Path): Path to database
             text (str): Plaintext contents of statement
-            extension (str, optional): Extension of statement file. Defaults to "".
+            suffix (str, optional): suffix of statement file. Defaults to "".
 
         Raises:
             ValueError: Statement is not recognized. A parser likely needs to be built.
 
         Returns:
-            tuple[int, str]: StatementTypeID and EntryPoint from StatementTypes
+            str: Plugin name (e.g., 'pdf_citibank')
         """
-        with self.Session() as session:
-            routing_info = statement_type_routing(session, extension=extension)
-        text_lower = text.lower()
-        for stid, pattern, entry_point in routing_info:
-            assert isinstance(pattern, str)
-            if all(
-                re.search(re.escape(search_str), text_lower)
-                for search_str in pattern.lower().split("&&")
-            ):
-                assert isinstance(stid, int)
-                assert isinstance(entry_point, str)
-                return stid, entry_point
+        for plugin_name, metadata in self.plugin_manager.metadata.items():
+            if suffix and metadata["SUFFIX"] != suffix:
+                continue
+
+            search_string = metadata["SEARCH_STRING"]
+            if match_search_string(search_string.lower(), text.lower()):
+                return plugin_name
+
         logger.error(
-            "Statement type not recognized. Update StatementTypes and parsing scripts."
+            "Statement type not recognized. Update plugins and ensure metadata is correct."
         )
         raise ValueError("Statement type not recognized.")
 
-    def extract_statement(
-        self, stid: int, entry_point: str, input_data: T
-    ) -> Statement:
-        # Dynamically load the parser and use it to extract the statement data
-        parser = self.load_parser(entry_point)
-        statement = self.run_parser(parser, input_data)
+    def extract_statement(self, plugin_name: str, input_data: T) -> Statement:
+        """Dynamically loads and runs the parser to extract the statement data."""
+        ParserClass = self.plugin_manager.get_parser(plugin_name)
+        statement = self.run_parser(ParserClass, input_data)
 
         # Make sure all balances are populated
         for account in statement.accounts:
             account.sort_and_compute_balances()
 
         # Attach parser metadata
-        statement.add_metadata(self.fpath, stid)
+        statement.add_metadata(self.fpath, plugin_name)
 
         # Validate and return statement data
         errors = validate_statement(statement)
@@ -81,7 +184,7 @@ class BaseRouter(Generic[T]):
             err = "\n".join(errors)
             logger.error(
                 f"Validation failed for statement imported using"
-                f" parser '{parser}':\n{err}"
+                f" parser '{plugin_name}':\n{err}"
             )
 
             # Show validation error dialog
@@ -90,39 +193,6 @@ class BaseRouter(Generic[T]):
 
             raise ValidationError(err)
         return statement
-
-    def load_parser(self, entry_point: str) -> Callable[[T], Statement]:
-        """
-        Load a parser dynamically and validate its signature.
-
-        Args:
-            entry_point (str): Entry point for the parser.
-
-        Returns:
-            Callable[[T], Statement]: A validated parser function.
-        """
-        if ":" not in entry_point:
-            raise ValueError(f"Invalid entry point format: {entry_point}")
-
-        module_name, func_name = entry_point.split(":")
-        if module_name.startswith("."):
-            # Treat as relative import
-            package = __name__.rsplit(".", 1)[0]
-            module_name = package + module_name
-
-        try:
-            module = importlib.import_module(module_name)
-            parser = getattr(module, func_name)
-        except (ImportError, AttributeError) as e:
-            raise ImportError(f"Could not load parser {entry_point}: {e}") from e
-
-        if not callable(parser):
-            raise ValueError(f"Parser at {entry_point} is not callable.")
-
-        if not isinstance(parser, IParser):
-            raise TypeError(f"{parser} must implement IParser")
-
-        return parser
 
     def run_parser(self, parser: IParser, input_data: T) -> Statement:
         """
@@ -150,8 +220,14 @@ class PDFRouter(BaseRouter[PDFReader]):
         BaseRouter (PDFReader): _description_
     """
 
-    def __init__(self, Session: sessionmaker, fpath: Path, **kwargs):
-        super().__init__(Session, fpath, **kwargs)
+    def __init__(
+        self,
+        Session: sessionmaker,
+        plugin_manager: PluginManager,
+        fpath: Path,
+        **kwargs,
+    ):
+        super().__init__(Session, plugin_manager, fpath, **kwargs)
 
     def parse(self) -> Statement:
         """Opens the PDF file, determines its type, and routes its reader
@@ -162,16 +238,22 @@ class PDFRouter(BaseRouter[PDFReader]):
         """
         with PDFReader(self.fpath) as reader:
             text = reader.extract_text_simple()
-            stid, entry_point = self.select_parser(text, extension=".pdf")
-            statement = self.extract_statement(stid, entry_point, reader)
+            plugin_name = self.select_parser(text, suffix=".pdf")
+            statement = self.extract_statement(plugin_name, reader)
         return statement
 
 
 class CSVRouter(BaseRouter[list[list[str]]]):
     ENCODING = "utf-8-sig"
 
-    def __init__(self, Session: sessionmaker, fpath: Path, **kwargs):
-        super().__init__(Session, fpath, **kwargs)
+    def __init__(
+        self,
+        Session: sessionmaker,
+        plugin_manager: PluginManager,
+        fpath: Path,
+        **kwargs,
+    ):
+        super().__init__(Session, plugin_manager, fpath, **kwargs)
 
     def parse(self) -> Statement:
         """Opens the CSV file, determines its type, and routes its contents
@@ -185,8 +267,8 @@ class CSVRouter(BaseRouter[list[list[str]]]):
         array = self.read_csv_as_array()
 
         # Extract the statement data
-        stid, entry_point = self.select_parser(text, extension=".csv")
-        statement = self.extract_statement(stid, entry_point, array)
+        plugin_name = self.select_parser(text, suffix=".csv")
+        statement = self.extract_statement(plugin_name, array)
         return statement
 
     def read_csv_as_text(self) -> str:
@@ -206,8 +288,14 @@ class CSVRouter(BaseRouter[list[list[str]]]):
 
 
 class XLSXRouter(BaseRouter):
-    def __init__(self, Session: sessionmaker, fpath: Path, **kwargs):
-        super().__init__(Session, fpath, **kwargs)
+    def __init__(
+        self,
+        Session: sessionmaker,
+        plugin_manager: PluginManager,
+        fpath: Path,
+        **kwargs,
+    ):
+        super().__init__(Session, plugin_manager, fpath, **kwargs)
 
     def parse(self) -> Statement:
         """Opens the XLSX file, determines its type, and routes its contents
@@ -218,8 +306,8 @@ class XLSXRouter(BaseRouter):
         """
         sheets = self.read_xlsx()
         text = self.plain_text(sheets)
-        stid, entry_point = self.select_parser(text, extension=".xlsx")
-        statement = self.extract_statement(stid, entry_point, sheets)
+        plugin_name = self.select_parser(text, suffix=".xlsx")
+        statement = self.extract_statement(plugin_name, sheets)
         return statement
 
     def plain_text(self, sheets) -> str:
@@ -244,8 +332,8 @@ class XLSXRouter(BaseRouter):
 ROUTERS: dict[str, type[BaseRouter]] = {}
 
 
-def register_router(extension: str, router_class: type[BaseRouter]):
-    ROUTERS[extension] = router_class
+def register_router(suffix: str, router_class: type[BaseRouter]):
+    ROUTERS[suffix] = router_class
 
 
 # Add more routers here as they are developed
@@ -254,21 +342,23 @@ register_router(".csv", CSVRouter)
 register_router(".xlsx", XLSXRouter)
 
 
-def parse_any(Session: sessionmaker, fpath: Path, **kwargs) -> Statement:
-    """Routes the file to the appropriate parser based on its extension.
+def parse_any(
+    Session: sessionmaker, plugin_manager: PluginManager, fpath: Path, **kwargs
+) -> Statement:
+    """Routes the file to the appropriate parser based on its suffix.
 
     Args:
         db_path (Path): Path to database file
         fpath (Path): Statement file to be parsed
 
     Raises:
-        ValueError: Unsupported file extension
+        ValueError: Unsupported file suffix
 
     Returns:
         tuple[dict[str, Any], dict[str, list[tuple]]]: metadata and data dicts
     """
     suffix = fpath.suffix.lower()
     if suffix in ROUTERS:
-        router = ROUTERS[suffix](Session, fpath, **kwargs)
+        router = ROUTERS[suffix](Session, plugin_manager, fpath, **kwargs)
         return router.parse()
-    raise ValueError(f"Unsupported file extension: {suffix}")
+    raise ValueError(f"Unsupported file suffix: {suffix}")

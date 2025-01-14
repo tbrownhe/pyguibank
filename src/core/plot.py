@@ -1,12 +1,73 @@
+import datetime
 from pathlib import Path
 
 import matplotlib.dates as mdates
 import pandas as pd
 from matplotlib import pyplot as plt
 from matplotlib.ticker import MultipleLocator
-
-from . import query
 from sqlalchemy.orm import Session
+
+from core import query
+
+
+def forward_fill_exponential(
+    start_value: float,
+    start_date: datetime,
+    end_date: datetime,
+    appreciation_rate: float,
+) -> list[float]:
+    """Creates an exponential growth/decay curve over the specified date range
+
+    Args:
+        start_value (float): Value at start_date
+        start_date (datetime): Date to start the curve
+        end_date (datetime): Date to end the curve
+        appreciation_rate (float): Annual percentage growth/decay of value
+
+    Returns:
+        list[float]: Exponential curve
+    """
+    filled_values = []
+    daily_rate = (1 + appreciation_rate / 100) ** (1 / 365) - 1
+    days_elapsed = (end_date - start_date).days + 1
+    for d in range(days_elapsed):
+        value = start_value * (1 + daily_rate) ** d
+        filled_values.append(value)
+    return filled_values
+
+
+def interpolate_and_fill(
+    df_pivot: pd.DataFrame,
+    tangible_assets: list[str],
+    appreciation_rates: dict[str, float],
+) -> pd.DataFrame:
+    """Interpolates and fills the pivot table for Tangible Assets using specified methods.
+
+    Args:
+        df_pivot (pd.DataFrame): Pivot table of balances by account evenly spaced by day
+        tangible_assets (list[str]): Account names of TangibleAssets
+        appreciation_rates (dict[str, float]): Appreciation rates of TangibleAssets
+
+    Returns:
+        pd.DataFrame: Pivot table with forward fill on TangibleAssets
+    """
+    for asset in tangible_assets:
+        # Extract existing series for the tangible asset
+        series = df_pivot[asset].dropna()
+        dates = series.index
+        values = series.values
+
+        # Linear interpolation for missing values within the existing range
+        df_pivot[asset] = df_pivot[asset].interpolate(method="linear")
+
+        # Exponential forward fill for values beyond the last known date
+        if len(values) > 0:
+            extrap_values = forward_fill_exponential(
+                values[-1], dates[-1], df_pivot.index[-1], appreciation_rates[asset]
+            )
+            df_pivot.loc[dates[-1] :, asset] = extrap_values
+
+    return df_pivot
 
 
 def get_balance_data(session: Session) -> None:
@@ -16,33 +77,53 @@ def get_balance_data(session: Session) -> None:
     """
     # Get all the transactions
     data, columns = query.transactions(session)
+    if len(data) == 0:
+        return pd.DataFrame(), []
+
     df = pd.DataFrame(data, columns=columns)
     df["Date"] = pd.to_datetime(df["Date"])
 
-    # Make a pivot table containing the EOD (last) balance for each day
+    # Make a pivot table containing the EOD balance for each day
     df_pivot = df.pivot_table(
         index="Date", columns="AccountName", values="Balance", aggfunc="last"
     )
 
-    # Forward fill NaNs, this preserves previously found balances
+    # Reindex so days are evenly spaced
+    full_index = pd.date_range(start=df_pivot.index.min(), end=df_pivot.index.max())
+    df_pivot = df_pivot.reindex(full_index)
+
+    # Determine which columns in the pivot table are assets and debts
+    asset_cols = []
+    debt_cols = []
+    tangible_assets = []
+    appreciation_rates = {}
+    asset_dict = query.asset_types(session)
+    for account_name in df_pivot.columns.values:
+        match asset_dict[account_name]:
+            case "Asset":
+                asset_cols.append(account_name)
+            case "Debt":
+                debt_cols.append(account_name)
+            case "TangibleAsset":
+                tangible_assets.append(account_name)
+                asset_cols.append(account_name)
+                appreciation_rates[account_name] = query.appreciation_rate(
+                    session, account_name
+                )
+            case _:
+                raise ValueError(
+                    f"Account {account_name} has unexpected asset type {asset_dict[account_name]}."
+                )
+
+    # Treat TangibleAssets
+    df_pivot = interpolate_and_fill(df_pivot, tangible_assets, appreciation_rates)
+
+    # Forward fill any remaining NaNs, this preserves previously found balances
     df_pivot = df_pivot.ffill(axis=0)
 
     # Fill any remaining NaNs with zero
     # These are locations where an account doesn't exist yet.
     df_pivot = df_pivot.fillna(0)
-
-    # Determine which columns in the pivot table are assets and debts
-    asset_cols = []
-    debt_cols = []
-    asset_dict = query.asset_types(session)
-    for nick_name in df_pivot.columns.values:
-        match asset_dict[nick_name]:
-            case "Asset":
-                asset_cols.append(nick_name)
-            case "Debt":
-                debt_cols.append(nick_name)
-            case _:
-                raise ValueError(f"Account {nick_name} is neither an asset nor debt.")
 
     # Compute total assets and debts
     df_pivot["Net Worth"] = df_pivot.sum(axis=1)

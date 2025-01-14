@@ -27,7 +27,6 @@ class AccountTypes(Base):
     AssetType = Column(String, nullable=True)
 
     accounts = relationship("Accounts", back_populates="account_types")
-    statement_types = relationship("StatementTypes", back_populates="account_types")
 
 
 class Accounts(Base):
@@ -37,13 +36,12 @@ class Accounts(Base):
     AccountTypeID = Column(Integer, ForeignKey("AccountTypes.AccountTypeID"))
     Company = Column(String)
     Description = Column(Text)
+    AppreciationRate = Column(Numeric, default=0)
 
     account_types = relationship("AccountTypes", back_populates="accounts")
     account_numbers = relationship("AccountNumbers", back_populates="accounts")
-    shopping = relationship("Shopping", back_populates="accounts")
     statements = relationship("Statements", back_populates="accounts")
     transactions = relationship("Transactions", back_populates="accounts")
-    card_numbers = relationship("CardNumbers", back_populates="accounts")
 
 
 class AccountNumbers(Base):
@@ -55,25 +53,22 @@ class AccountNumbers(Base):
     accounts = relationship("Accounts", back_populates="account_numbers")
 
 
-class StatementTypes(Base):
-    __tablename__ = "StatementTypes"
-    StatementTypeID = Column(Integer, primary_key=True, autoincrement=True)
-    AccountTypeID = Column(Integer, ForeignKey("AccountTypes.AccountTypeID"))
+class Plugins(Base):
+    __tablename__ = "Plugins"
+    PluginID = Column(Integer, primary_key=True, autoincrement=True)
+    PluginName = Column(String)
+    Version = Column(String)
+    Suffix = Column(String)
     Company = Column(String)
-    Description = Column(Text)
-    Extension = Column(String)
-    SearchString = Column(String, nullable=False)
-    Parser = Column(String, nullable=False)
-    EntryPoint = Column(String, nullable=False)
+    StatementType = Column(String)
 
-    account_types = relationship("AccountTypes", back_populates="statement_types")
-    statements = relationship("Statements", back_populates="statement_types")
+    statements = relationship("Statements", back_populates="plugins")
 
 
 class Statements(Base):
     __tablename__ = "Statements"
     StatementID = Column(Integer, primary_key=True, autoincrement=True)
-    StatementTypeID = Column(Integer, ForeignKey("StatementTypes.StatementTypeID"))
+    PluginID = Column(Integer, ForeignKey("Plugins.PluginID"))
     AccountID = Column(Integer, ForeignKey("Accounts.AccountID"))
     ImportDate = Column(String)
     StartDate = Column(String)
@@ -85,8 +80,7 @@ class Statements(Base):
     MD5 = Column(String)
 
     accounts = relationship("Accounts", back_populates="statements")
-    shopping = relationship("Shopping", back_populates="statements")
-    statement_types = relationship("StatementTypes", back_populates="statements")
+    plugins = relationship("Plugins", back_populates="statements")
     transactions = relationship("Transactions", back_populates="statements")
 
 
@@ -106,34 +100,6 @@ class Transactions(Base):
 
     statements = relationship("Statements", back_populates="transactions")
     accounts = relationship("Accounts", back_populates="transactions")
-
-
-class CardNumbers(Base):
-    __tablename__ = "CardNumbers"
-    CardID = Column(Integer, primary_key=True, autoincrement=True)
-    AccountID = Column(Integer, ForeignKey("Accounts.AccountID"))
-    CardNumber = Column(String)
-    LastFour = Column(String, unique=True)
-
-    accounts = relationship("Accounts", back_populates="card_numbers")
-    shopping = relationship("Shopping", back_populates="card_numbers")
-
-
-class Shopping(Base):
-    __tablename__ = "Shopping"
-    ItemID = Column(Integer, primary_key=True, autoincrement=True)
-    AccountID = Column(Integer, ForeignKey("Accounts.AccountID"))
-    StatementID = Column(Integer, ForeignKey("Statements.StatementID"))
-    CardID = Column(Integer, ForeignKey("CardNumbers.CardID"))
-    OrderID = Column(String)
-    Date = Column(String)
-    Amount = Column(Float)
-    Description = Column(String)
-    MD5 = Column(String, unique=True)
-
-    accounts = relationship("Accounts", back_populates="shopping")
-    statements = relationship("Statements", back_populates="shopping")
-    card_numbers = relationship("CardNumbers", back_populates="shopping")
 
 
 # Create Engine and Session

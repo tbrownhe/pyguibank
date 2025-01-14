@@ -4,9 +4,9 @@ import pandas as pd
 from loguru import logger
 from sqlalchemy.orm import Session
 
-from .learn import predict
-from .orm import Transactions
-from .query import training_set, update_db_where
+from core.learn import predict
+from core.orm import Transactions
+from core.query import training_set, update_db_where
 
 
 def update_db_categories(session: Session, df: pd.DataFrame) -> None:
