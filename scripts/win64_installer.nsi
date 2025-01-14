@@ -4,7 +4,7 @@
 Name "PyGuiBank"
 
 ; Output file directory relative to this .nsi file. Dir must already exist.
-Outfile "..\dist\pyguibank_version_setup.exe"
+Outfile "..\dist\pyguibank_version_win64_setup.exe"
 
 ; RequestExecutionLevel admin
 Unicode True
