@@ -276,8 +276,8 @@ class PluginSyncDialog(QDialog):
         )
 
         # Fill missing values for clarity
-        merged_df["Local Version"].fillna("Not Installed", inplace=True)
-        merged_df["Remote Version"].fillna("Unknown", inplace=True)
+        merged_df["Local Version"] = merged_df["Local Version"].fillna("Not Installed")
+        merged_df["Remote Version"] = merged_df["Remote Version"].fillna("Unknown")
 
         # Create a QTableWidget to display the data
         table = QTableWidget()
