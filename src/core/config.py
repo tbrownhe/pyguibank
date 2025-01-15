@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from core import orm, query
 from core.settings import settings
+from core.utils import create_directory
 
 
 def read_config() -> ConfigParser:
@@ -30,16 +31,33 @@ def read_config() -> ConfigParser:
     else:
         # If config doesn't exist, create a default configuration
         config = default_config()
-        try:
-            settings.config_path.parent.mkdir(parents=True, exist_ok=True)
-            with settings.config_path.open("w") as f:
-                config.write(f)
-            logger.info(f"Default configuration created at {settings.config_path}")
-        except Exception as e:
-            logger.error(f"Failed to create config file at {settings.config_path}: {e}")
-            raise
+        write_config(config)
 
     return config
+
+
+def write_config(config: ConfigParser):
+    try:
+        # Create config file
+        create_directory(settings.config_path.parent)
+        with settings.config_path.open("w") as f:
+            config.write(f)
+
+        # Make sure all the specified dirs in the config exist
+        create_config_dirs(config)
+        logger.info(f"Default configuration created at {settings.config_path}")
+    except Exception as e:
+        logger.error(f"Failed to create config file at {settings.config_path}: {e}")
+        raise
+
+
+def create_config_dirs(config: ConfigParser) -> None:
+    create_directory(Path(config.get("DATABASE", "db_path")).parent)
+    create_directory(Path(config.get("IMPORT", "import_dir")))
+    create_directory(Path(config.get("IMPORT", "success_dir")))
+    create_directory(Path(config.get("IMPORT", "fail_dir")))
+    create_directory(Path(config.get("IMPORT", "duplicate_dir")))
+    create_directory(Path(config.get("REPORTS", "report_dir")))
 
 
 def default_config() -> ConfigParser:

@@ -37,7 +37,7 @@ from core.client import check_for_client_updates
 from core.initialize import seed_account_types
 from core.plugins import PluginManager
 from core.statements import StatementProcessor
-from core.utils import open_file_in_os
+from core.utils import create_directory, open_file_in_os
 from gui.accounts import AppreciationDialog, BalanceCheckDialog, EditAccountsDialog
 from gui.plugins import ParseTestDialog, PluginManagerDialog, check_for_plugin_updates
 from gui.preferences import PreferencesDialog
@@ -528,7 +528,7 @@ class PyGuiBank(QMainWindow):
             with self.Session() as session:
                 query.optimize_db(session)
         else:
-            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            create_directory(self.db_path.parent)
             self.Session = orm.create_database(self.db_path)
             QMessageBox.information(
                 self,

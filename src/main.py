@@ -33,9 +33,6 @@ elif system == "Darwin":
 from core.utils import resource_path
 from gui.main_window import PyGuiBank
 
-# Copy any bundled plugins to the user's plugin folder if it doesn't exist yet
-# initialize_plugins
-
 
 def handle_signal(signal, frame):
     logger.info("Application interrupted. Exiting...")

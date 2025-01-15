@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 from loguru import logger
 from core.settings import settings
+from core.utils import create_directory
 
 
 def initialize_plugins():
@@ -16,7 +17,7 @@ def initialize_plugins():
     try:
         if not settings.plugin_dir.exists():
             if not plugin_bundled_dir.exists():
-                settings.plugin_dir.mkdir(parents=True, exist_ok=True)
+                create_directory(settings.plugin_dir)
                 logger.debug(
                     f"Bundled plugins not found in {plugin_bundled_dir}, skipping"
                 )

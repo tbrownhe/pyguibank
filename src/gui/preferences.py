@@ -15,9 +15,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
 )
 
-from core.config import default_config, read_config
-from core.settings import settings
-from core.utils import create_directory
+from core.config import default_config, read_config, write_config
 
 
 class PreferencesDialog(QDialog):
@@ -215,29 +213,15 @@ class PreferencesDialog(QDialog):
         self.config.set("IMPORT", "hard_fail", str(self.hard_fail_checkbox.isChecked()))
         self.config.set("REPORTS", "report_dir", self.report_dir_edit.text())
 
-        # Create directories
-        create_directory(Path(self.config.get("DATABASE", "db_path")).parent)
-        create_directory(Path(self.config.get("IMPORT", "import_dir")))
-        create_directory(Path(self.config.get("IMPORT", "success_dir")))
-        create_directory(Path(self.config.get("IMPORT", "fail_dir")))
-        create_directory(Path(self.config.get("IMPORT", "duplicate_dir")))
-        create_directory(Path(self.config.get("REPORTS", "report_dir")))
-
         # Write config to file
-        create_directory(settings.config_path.parent)
-        try:
-            with settings.config_path.open("w") as config_file:
-                self.config.write(config_file)
-            logger.info(f"Configuration file created at {settings.config_path}")
-        except OSError as e:
-            logger.error(f"Error creating configuration file: {e}")
-            raise
-
+        write_config(self.config)
+        
         # Confirm to user and close dialog
         QMessageBox.information(
             self, "Preferences Saved", "Preferences have been saved successfully."
         )
         self.accept()
+
 
     def reject(self):
         reply = QMessageBox.question(
