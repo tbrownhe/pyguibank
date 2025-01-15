@@ -54,7 +54,7 @@ class AppSettings(BaseSettings):
 
     # Load from .env or fallback to defaults
     server_url: AnyHttpUrl = Field(
-        "http://pyguibank.com:8000/api/v1", validation_alias="PYGUIBANK_SERVER_URL"
+        "https://api.pyguibank.duckdns.org/api/v1", validation_alias="PYGUIBANK_SERVER_URL"
     )
     config_path: Path = Field(
         APPDATA_DIR / "config.ini",
