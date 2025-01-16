@@ -39,8 +39,8 @@ pyinstaller ^
     --hidden-import=openpyxl.cell._writer ^
     --hidden-import=scipy._lib.array_api_compat.numpy.fft ^
     --hidden-import=scipy.special._special_ufuncs ^
-    --splash "assets\pyguibank.png" ^
-    --icon "assets\pyguibank.png" ^
+    --splash "assets\pyguibank_base.png" ^
+    --icon "assets\pyguibank_128px.ico" ^
     "%SRCDIR%main.py"
 
 if ERRORLEVEL 1 (

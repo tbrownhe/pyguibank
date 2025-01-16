@@ -52,7 +52,7 @@ if __name__ == "__main__":
     # Kick off the GUI
     try:
         app = QApplication(sys.argv)
-        app.setWindowIcon(QIcon(str(resource_path("assets/pyguibank.png"))))
+        app.setWindowIcon(QIcon(str(resource_path("assets/pyguibank_128px.ico"))))
         window = PyGuiBank()
         window.show()
         sys.exit(app.exec_())
