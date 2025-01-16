@@ -78,7 +78,7 @@ def default_config() -> ConfigParser:
         "duplicate_dir": str(
             Path.home() / "Documents" / "PyGuiBank" / "Imports" / "DUPLICATE"
         ),
-        "hard_fail": "True",
+        "hard_fail": "False",
     }
     config["REPORTS"] = {
         "report_dir": str(Path.home() / "Documents" / "PyGuiBank" / "Reports")
