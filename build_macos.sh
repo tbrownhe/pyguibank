@@ -22,30 +22,24 @@ cd "$(dirname "$0")" || error_exit "Failed to navigate to script directory."
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "$CONDA_ENV" || error_exit "Failed to activate conda environment."
 
-# Compile plugins and copy into dist/plugins
-#echo "Compiling plugins..."
-#python "$SRCDIR/build_plugins.py" || error_exit "Failed to compile plugins."
-
 # Build the executable
 echo "Building the executable with PyInstaller..."
 pyinstaller \
+    -n "PyGuiBank" \
     --clean \
     --noconfirm \
     --noconsole \
-    -n "PyGuiBank" \
     --workpath "build" \
     --distpath "dist" \
     --paths "$SRCDIR" \
-    --add-data "assets:assets" \
     --hidden-import=openpyxl.cell._writer \
-    --hidden-import=scipy._lib.array_api_compat.numpy.fft \
-    --hidden-import=scipy.special._special_ufuncs \
+    --add-data "assets:assets" \
     --icon "assets/pyguibank.png" \
     "$SRCDIR/main.py" || error_exit "Failed to build the executable."
-
+    
 # Splash screen not supported on macos
 #--splash "assets/pyguibank.png" \
-    
+
 
 # Copy the installer to the server directory
 #if [ ! -d "$SERVER_DIR" ]; then
@@ -53,6 +47,7 @@ pyinstaller \
 #fi
 #cp "dist/$INSTALLER_NAME" "$SERVER_DIR/" || error_exit "Failed to copy the installer to the server directory."
 #echo "Installer successfully copied to $SERVER_DIR."
+
 
 # Deactivate the conda environment
 echo "Deactivating conda environment..."

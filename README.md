@@ -8,11 +8,11 @@ This installs the most recent versions of all packages in conda-forge and PyPI.
 
 ### Creating a replica of the dev environment of the last working release
 This installs the exact versions of all dependencies in the last stable build of PyGuiBank.
-- `conda env create -f release_requirements.yml`
+- `conda env create -f build_env_{platform}.yml`
 
 ### Saving a release requirements snapshot
 This stores the exact versions of all dependencies for a stable build of PyGuiBank.
-- `conda env export > release_requirements.yml`
+- `conda env export > build_env_{platform}.yml`
 
 ### Updating installed packages while maintaining dev_environment constraints
 1. `conda update --all`
