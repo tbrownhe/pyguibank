@@ -39,3 +39,77 @@ The modules located in src\plugins can be located anywhere. This is designed to 
 2. All `.pyc` files are now plugin files.
 3. Run PyInstaller with a `--add-data "dist\plugins;plugins"` flag to include all current plugins.
 4. Any new plugins can be distributed to users without needing another version of the app, as long as imports from core.utils, core.validation, and core.interface stay the same. They just need to add the corresponding `.pyc` file to the plugin manager system and add a line in the database StatementTypes table to map to the plugin.
+
+
+## MacOS
+
+### Bypassing Gatekeeper
+Applications `.app` and `.dmg` will be blocked by Apple Gatekeeper unless signed and notarized. This can be bypassed by end users by following these steps:
+1. Open the App.
+2. Got to System Preferences > Security & Privacy.
+3. In the General tab, under the message about the blocked app, click the button that says "Open Anyway".
+4. Click Open to confirm.
+
+
+### 1. Register as an Apple Developer
+To access the tools for code signing and notarization, you need an Apple Developer account:
+
+a. Create an Apple ID
+If you don’t already have an Apple ID, create one. Visit Apple ID website and follow the steps to create an account.
+
+b. Enroll in the Apple Developer Program
+Go to the Apple Developer Program enrollment page.
+Click Enroll and sign in with your Apple ID.
+Follow the steps to provide your details (name, address, etc.).
+Pay the annual fee of $99 (USD).
+
+### 2. Set Up Code Signing Certificates
+After enrolling, you need to create and install code signing certificates:
+
+a. Open Keychain Access
+Open Keychain Access on your Mac (search for it in Spotlight).
+From the Keychain Access menu, select Certificate Assistant > Request a Certificate from a Certificate Authority.
+
+b. Request a Signing Certificate
+Enter your Apple Developer account email in the Certificate Assistant.
+Choose Saved to disk as the request method and save the .certSigningRequest file.
+Go to the Apple Developer Certificates page.
+Click the + icon and choose Developer ID Application.
+Upload the .certSigningRequest file you saved earlier.
+Download and install the certificate into your Keychain.
+
+### 3. Configure Your macOS Environment
+Once the certificate is installed, you can sign your app and .dmg file.
+
+a. Verify the Certificate
+Ensure your certificate is available by running:
+`security find-identity -v -p codesigning`
+You should see your Developer ID Application certificate in the output.
+
+b. Sign Your Application
+Use the codesign tool to sign your .app file:
+`codesign --deep --force --verify --verbose --sign "Developer ID Application: Your Name (Team ID)" dist/PyGuiBank.app`
+
+c. Verify the Signing
+To verify that your app is correctly signed:
+`codesign --verify --verbose dist/PyGuiBank.app`
+`spctl --assess --verbose dist/PyGuiBank.app`
+
+### 4. Notarize Your Application
+Notarization ensures your app passes macOS Gatekeeper checks.
+
+a. Submit Your App
+Use the altool command to submit your app for notarization:
+`xcrun altool --notarize-app --primary-bundle-id "com.yourcompany.PyGuiBank" --username "your-apple-id" --password "app-specific-password" --file dist/PyGuiBank.dmg`
+- Replace "your-apple-id" with your Apple ID email.
+- Replace "app-specific-password" with an App-Specific Password.
+- Replace "com.yourcompany.PyGuiBank" with your app's bundle identifier.
+
+b. Check Notarization Status
+After submitting, check the notarization status:
+`xcrun altool --notarization-info <RequestUUID> --username "your-apple-id" --password "app-specific-password"`
+
+c. Staple the Notarization
+Once notarization is successful, staple the notarization ticket to your .dmg:
+`xcrun stapler staple dist/PyGuiBank.dmg`
+
