@@ -35,7 +35,7 @@ Section "PyGuiBank" SEC02
     SetOutPath $INSTDIR
 
     ; Output of PyInstaller relative to this .nsi file
-    File /r "..\dist\PyGuiBank\*.*"
+    File /r "..\build\PyGuiBank\*.*"
 
     ; Write registry data so windows can track the installation and uninstaller
     WriteRegStr HKLM "SOFTWARE\PyGuiBank" "Install_Dir" "$INSTDIR"

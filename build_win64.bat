@@ -32,8 +32,8 @@ pyinstaller ^
     --noconfirm ^
     --noconsole ^
     -n "PyGuiBank" ^
-    --workpath "build" ^
-    --distpath "dist" ^
+    --workpath "prebuild" ^
+    --distpath "build" ^
     --paths %SRCDIR% ^
     --add-data "assets;assets" ^
     --hidden-import=openpyxl.cell._writer ^
