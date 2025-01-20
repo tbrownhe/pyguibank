@@ -6,9 +6,11 @@ from pathlib import Path
 import matplotlib.dates as mdates
 import pandas as pd
 from loguru import logger
+from matplotlib import rcParams
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 from PyQt5.QtCore import QAbstractTableModel, Qt
 from PyQt5.QtGui import QColor, QFontMetrics
 from PyQt5.QtWidgets import (
@@ -47,14 +49,51 @@ from version import __version__
 
 
 class MatplotlibCanvas(FigureCanvas):
-    def __init__(self, parent=None, width=5, height=4, dpi=100):
+    def __init__(self, parent=None, width=3, height=4, dpi=100):
         self.fig = Figure(figsize=(width, height), dpi=dpi, constrained_layout=True)
         self.axes = self.fig.add_subplot(111)
         super().__init__(self.fig)
         self.setParent(parent)
 
-        # Connect the pick event
+        # Set higher resolution for toolbar exports
+        rcParams["savefig.dpi"] = 300
+
+        # Connect the resize event
+        self.resize_event_id = self.fig.canvas.mpl_connect(
+            "resize_event", self.on_resize
+        )
+
+        # Connect the legend pick event
         self.fig.canvas.mpl_connect("pick_event", self.on_legend_click)
+
+        # Connect mouse events for moving the legend
+        self.fig.canvas.mpl_connect("button_press_event", self.on_mouse_press)
+        self.fig.canvas.mpl_connect("button_release_event", self.on_mouse_release)
+        self.fig.canvas.mpl_connect("motion_notify_event", self.on_mouse_move)
+        self.legend_dragging = False
+
+    def on_resize(self, event):
+        # Get the canvas size in pixels
+        width, height = self.get_width_height()
+
+        # Calculate maximum ticks based on canvas size and ticks per pixel
+        max_x_ticks = int(width / 80)
+        max_y_ticks = int(height / 50)
+
+        # Update tick locators dynamically
+        locator = mdates.AutoDateLocator(maxticks=max_x_ticks)
+        formatter = mdates.ConciseDateFormatter(locator)
+        self.axes.xaxis.set_major_locator(locator)
+        self.axes.xaxis.set_major_formatter(formatter)
+        self.axes.yaxis.set_major_locator(MaxNLocator(nbins=max_y_ticks))
+
+        # Apply custom Y-axis formatting for accounting format
+        self.axes.yaxis.set_major_formatter(
+            FuncFormatter(lambda x, _: f"-${abs(x):,.0f}" if x < 0 else f"${x:,.0f}")
+        )
+
+        # Redraw the canvas to apply changes
+        self.draw()
 
     def plot(
         self,
@@ -114,7 +153,8 @@ class MatplotlibCanvas(FigureCanvas):
         for legend_entry in legend.get_lines():
             legend_entry.set_picker(hitbox)
 
-        self.draw()
+        # Set consistent tick format. Includes self.draw().
+        self.on_resize(None)
 
     def on_legend_click(self, event):
         # Get the corresponding label
@@ -994,7 +1034,7 @@ class PyGuiBank(QMainWindow):
             right=now,
             title="Balance History",
             xlabel="Date",
-            ylabel="Balance ($)",
+            ylabel="Balance",
             dashed=debt_cols,
         )
 
@@ -1010,7 +1050,7 @@ class PyGuiBank(QMainWindow):
 
         # Limit the data to the specified year range
         now = datetime.now()
-        cutoff_date = now - timedelta(days=limit_years * 365)
+        cutoff_date = now - timedelta(days=(1.2 * limit_years * 365))
         df = df[df.index >= cutoff_date]
 
         # Apply smoothing (rolling average)
@@ -1026,5 +1066,5 @@ class PyGuiBank(QMainWindow):
             right=now,
             title="Monthly Spending by Category",
             xlabel="Date",
-            ylabel="Amount ($)",
+            ylabel="Amount",
         )
