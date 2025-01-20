@@ -1,3 +1,4 @@
+import os
 import platform
 from pathlib import Path
 from platform import system
@@ -10,13 +11,19 @@ from version import __version__
 
 # Platform dependence
 APPDATA_DIR = (
-    Path.home() / "AppData/Roaming/PyGuiBank"
+    Path.home() / "AppData/Roaming/PyGuiBank"  # Windows
     if system() == "Windows"
     else (
-        Path.home() / "Library/Application Support/PyGuiBank"
+        Path.home() / "Library/Application Support/PyGuiBank"  # MasOS
         if system() == "Darwin"
-        else Path.home() / ".config/PyGuiBank"
+        else Path.home() / ".config/PyGuiBank"  # Linux
     )
+)
+
+DOWNLOAD_DIR = (
+    Path(os.getenv("XDG_DOWNLOAD_DIR"))
+    if system() == "Linux" and "XDG_DOWNLOAD_DIR" in os.environ
+    else Path.home() / "Downloads"
 )
 
 
@@ -27,14 +34,14 @@ def get_platform():
     Returns:
         str: Platform identifier (e.g., 'win64', 'macos', 'linux').
     """
-    system = platform.system().lower()
+    platform
     arch = platform.architecture()[0]
 
-    if system == "windows":
+    if system() == "Windows":
         return "win64" if "64" in arch else "win32"
-    elif system == "darwin":
+    elif system() == "Darwin":
         return "macos"
-    elif system == "linux":
+    elif system() == "Linux":
         return "linux"
     else:
         return "unknown"
@@ -54,7 +61,8 @@ class AppSettings(BaseSettings):
 
     # Load from .env or fallback to defaults
     server_url: AnyHttpUrl = Field(
-        "https://api.pyguibank.duckdns.org/api/v1", validation_alias="PYGUIBANK_SERVER_URL"
+        "https://api.pyguibank.duckdns.org/api/v1",
+        validation_alias="PYGUIBANK_SERVER_URL",
     )
     config_path: Path = Field(
         APPDATA_DIR / "config.ini",
@@ -70,6 +78,7 @@ class AppSettings(BaseSettings):
     )
     statement_types_json: Path = Field(APPDATA_DIR / "init_statement_types.json")
     accounts_json: Path = Field(APPDATA_DIR / "init_accounts.json")
+    download_dir: Path = DOWNLOAD_DIR
 
 
 settings = AppSettings()

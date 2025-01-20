@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import requests
@@ -9,25 +8,6 @@ from PyQt5.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
 from core.settings import settings
 from core.utils import open_file_in_os
-
-
-def get_download_dir() -> Path:
-    """
-    Get the platform-specific downloads directory.
-
-    Returns:
-        Path: The downloads directory for the current platform.
-    """
-    name = os.name
-    if name == "nt":  # Windows
-        return Path(os.getenv("USERPROFILE")) / "Downloads"
-    elif name == "posix":
-        home_dir = Path.home()
-        if "XDG_DOWNLOAD_DIR" in os.environ:  # Linux with XDG spec
-            return Path(os.getenv("XDG_DOWNLOAD_DIR"))
-        return home_dir / "Downloads"  # Default for Linux/macOS
-    else:
-        raise ValueError("Unsupported operating system")
 
 
 def get_client_installers():
@@ -71,7 +51,7 @@ def download_client_installer(installer_metadata, progress_dialog=None):
     platform = installer_metadata["platform"]
     version = installer_metadata["version"]
     url = f"{settings.server_url}/clients/{platform}/{version}"
-    save_path = get_download_dir() / filename
+    save_path = settings.download_dir / filename
     save_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
