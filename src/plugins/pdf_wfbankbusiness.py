@@ -21,7 +21,7 @@ class Parser(IParser):
     VERSION = "0.1.0"
     SUFFIX = ".pdf"
     COMPANY = "Wells Fargo"
-    STATEMENT_TYPE = "Personal Banking Monthly Statement"
+    STATEMENT_TYPE = "Business Banking Monthly Statement"
     SEARCH_STRING = (
         "wells fargo&&(initiate business checking||business market rate savings)"
     )

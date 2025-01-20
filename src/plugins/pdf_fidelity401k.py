@@ -18,7 +18,7 @@ class Parser(IParser):
     VERSION = "0.1.0"
     SUFFIX = ".pdf"
     COMPANY = "Fidelity"
-    STATEMENT_TYPE = "Fidelity Retirement Savings Monthly Statement"
+    STATEMENT_TYPE = "Retirement Savings Monthly Statement"
     SEARCH_STRING = "Fidelity Brokerage Services&&Retirement Savings Statement"
     INSTRUCTIONS = (
         "Login to https://www.fidelity.com and navigate to your 401(k) account."
