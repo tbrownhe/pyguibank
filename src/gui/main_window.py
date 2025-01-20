@@ -145,12 +145,13 @@ class MatplotlibCanvas(FigureCanvas):
         self.axes.set_xlabel(xlabel)
         self.axes.set_ylabel(ylabel)
         self.axes.grid(True)
+
         self.axes.fmt_xdata = lambda x: mdates.num2date(x).strftime(r"%Y-%m-%d")
 
         # Add legend with picking enabled
-        legend = self.axes.legend(loc="upper left", fontsize="xx-small")
+        self.legend = self.axes.legend(loc="upper left", fontsize="x-small")
         hitbox = 5.0
-        for legend_entry in legend.get_lines():
+        for legend_entry in self.legend.get_lines():
             legend_entry.set_picker(hitbox)
 
         # Set consistent tick format. Includes self.draw().
@@ -177,6 +178,21 @@ class MatplotlibCanvas(FigureCanvas):
             legend_entry.set_alpha(1.0 if visible else 0.2)
 
             # Redraw the canvas
+            self.draw()
+
+    def on_mouse_press(self, event):
+        if self.legend and self.legend.contains(event)[0]:
+            self.legend_dragging = True
+
+    def on_mouse_release(self, event):
+        if self.legend_dragging:
+            self.legend_dragging = False
+
+    def on_mouse_move(self, event):
+        if self.legend_dragging and event.inaxes:
+            self.legend.set_bbox_to_anchor(
+                (event.xdata, event.ydata), transform=self.axes.transData
+            )
             self.draw()
 
 
