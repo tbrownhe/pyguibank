@@ -359,7 +359,7 @@ class PyGuiBank(QMainWindow):
 
         # Add "Select All" checkbox
         select_all_accounts_checkbox = QCheckBox("Select All")
-        select_all_accounts_checkbox.setCheckState(Qt.Checked)
+        select_all_accounts_checkbox.setCheckState(Qt.Unchecked)
         balance_controls_layout.addWidget(select_all_accounts_checkbox, row, 0, 1, 2)
         row += 1
 
@@ -424,7 +424,7 @@ class PyGuiBank(QMainWindow):
 
         # Add "Select All" checkbox
         select_all_category_checkbox = QCheckBox("Select All")
-        select_all_category_checkbox.setCheckState(Qt.Checked)
+        select_all_category_checkbox.setCheckState(Qt.Unchecked)
         category_controls_layout.addWidget(select_all_category_checkbox, row, 0, 1, 2)
         row += 1
 
@@ -964,30 +964,60 @@ class PyGuiBank(QMainWindow):
         self.table_view.setFixedWidth(table_width)
 
     def update_accounts_checklist(self, session: Session):
-        account_names = [
-            "Net Worth",
-            "Total Assets",
-            "Total Debts",
-        ]
-        account_names.extend(query.account_names(session))
-        self.update_checklist(self.account_select_list, account_names)
+        self.update_generic_checklist(
+            session=session,
+            list_widget=self.account_select_list,
+            initial_checked=["Net Worth", "Total Assets", "Total Debts"],
+            query_func=query.account_names,
+        )
 
     def update_category_checklist(self, session: Session):
-        category_names = query.distinct_categories(session)
-        self.update_checklist(self.category_select_list, category_names)
+        self.update_generic_checklist(
+            session=session,
+            list_widget=self.category_select_list,
+            initial_checked=[],
+            query_func=query.distinct_categories,
+        )
 
-    def update_checklist(self, list_widget, names):
+    def update_generic_checklist(
+        self,
+        session: Session,
+        list_widget: QListWidget,
+        initial_checked: list[str],
+        query_func,
+    ):
+        items = query_func(session)
+
+        if list_widget.count() == 0:
+            # App just started, initialize checklist
+            self.initialize_checklist(list_widget, initial_checked, items)
+        else:
+            # Update based on previous checked/unchecked state
+            self.update_checklist(list_widget, initial_checked + items)
+
+    def initialize_checklist(
+        self, list_widget: QListWidget, checked: list[str], unchecked: list[str]
+    ):
+        list_widget.clear()
+        for name, state in [(name, Qt.Checked) for name in checked] + [
+            (name, Qt.Unchecked) for name in unchecked
+        ]:
+            item = QListWidgetItem(name)
+            item.setCheckState(state)
+            list_widget.addItem(item)
+
+    def update_checklist(self, list_widget: QListWidget, names: list[str]):
         checked, unchecked = self.get_checked_items(list_widget)
+
         list_widget.clear()
         for name in names:
             item = QListWidgetItem(name)
-            if name in checked:
-                item.setCheckState(Qt.Checked)
-            elif name in unchecked:
-                item.setCheckState(Qt.Unchecked)
-            else:
-                # New items should be checked
-                item.setCheckState(Qt.Checked)
+            # Preserve checked/unchecked state; default new items to checked
+            item.setCheckState(
+                Qt.Checked
+                if name in checked
+                else Qt.Unchecked if name in unchecked else Qt.Checked
+            )
             list_widget.addItem(item)
 
     def get_checked_items(
@@ -996,10 +1026,9 @@ class PyGuiBank(QMainWindow):
         checked, unchecked = [], []
         for index in range(list_widget.count()):
             item = list_widget.item(index)
-            if item.checkState() == Qt.Checked:
-                checked.append(item.text())
-            else:
-                unchecked.append(item.text())
+            (checked if item.checkState() == Qt.Checked else unchecked).append(
+                item.text()
+            )
         return checked, unchecked
 
     def validate_float(self, line_edit: QLineEdit, fallback: float) -> float:
