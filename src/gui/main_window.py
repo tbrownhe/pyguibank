@@ -208,7 +208,12 @@ class PyGuiBank(QMainWindow):
         # Maximize to primary screen
         screen = QApplication.primaryScreen()
         geometry = screen.availableGeometry()
-        self.setGeometry(geometry)
+        self.setGeometry(
+            int(0.2 * geometry.width()),
+            int(0.1 * geometry.height()),
+            int(0.6 * geometry.width()),
+            int(0.8 * geometry.height()),
+        )
         self.showMaximized()
 
         # MENU BAR #######################
