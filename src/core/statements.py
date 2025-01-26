@@ -1,6 +1,5 @@
 import os
 import shutil
-from configparser import ConfigParser
 from pathlib import Path
 
 from loguru import logger
@@ -12,6 +11,7 @@ from core import query
 from core.orm import Plugins, Statements, Transactions
 from core.parse import parse_any
 from core.plugins import PluginManager
+from core.settings import settings
 from core.utils import hash_file
 from core.validation import Statement, Transaction
 from gui.accounts import AssignAccountNumber
@@ -19,31 +19,14 @@ from gui.accounts import AssignAccountNumber
 
 class StatementProcessor:
 
-    def __init__(
-        self, Session: sessionmaker, config: ConfigParser, plugin_manager: PluginManager
-    ) -> None:
-        """Initialize the processor and make sure config is valid
+    def __init__(self, Session: sessionmaker, plugin_manager: PluginManager) -> None:
+        """Initialize the statement processor
 
         Args:
-            config (ConfigParser): Configuration read from config.ini
+            plugin_manager: (PluginManager)
         """
         self.Session = Session
-        self.config = config
         self.plugin_manager = plugin_manager
-        try:
-            self.import_dir = Path(self.config.get("IMPORT", "import_dir")).resolve()
-            self.success_dir = Path(self.config.get("IMPORT", "success_dir")).resolve()
-            self.duplicate_dir = Path(
-                self.config.get("IMPORT", "duplicate_dir")
-            ).resolve()
-            # self.hard_fail = config.getboolean("IMPORT", "hard_fail")
-            self.fail_dir = Path(config.get("IMPORT", "fail_dir")).resolve()
-            self.extensions = [
-                ext.strip()
-                for ext in self.config.get("IMPORT", "extensions").split(",")
-            ]
-        except Exception:
-            logger.exception("Failed to load configuration: ")
 
     def import_all(self, parent=None) -> None:
         """
@@ -53,10 +36,11 @@ class StatementProcessor:
             parent: Parent class for UI dialogs.
         """
         # Gather files to process
+        suffixes = set([plugin["SUFFIX"] for plugin in self.plugin_manager.metadata])
         fpaths = [
             fpath
-            for ext in self.extensions
-            for fpath in self.import_dir.glob(f"*.{ext}")
+            for suffix in suffixes
+            for fpath in settings.import_dir.glob(f"*{suffix}")
         ]
         if not fpaths:
             QMessageBox.information(
@@ -151,7 +135,7 @@ class StatementProcessor:
             self.attach_account_info(statement)  # Modifies in place
             for account in statement.accounts:
                 account.hash_transactions()
-            statement.set_standard_dpath(self.success_dir)
+            statement.set_standard_dpath(settings.success_dir)
 
             # Check for duplicates by filename
             if self.statement_already_imported(statement.dpath.name):
@@ -217,18 +201,18 @@ class StatementProcessor:
             fpath (Path): Path to the failed statement file.
             error (Exception): The exception that occurred.
         """
-        dpath = self.fail_dir / fpath.name
+        dpath = settings.fail_dir / fpath.name
         self.move_file_safely(fpath, dpath)
         logger.error(f"Failed to process {fpath.name}: {error}")
 
-    def handle_duplicate(self, fpath):
+    def handle_duplicate(self, fpath: Path):
         """
         Handle duplicate statement imports by moving the file to the duplicate directory.
 
         Args:
             fpath (Path): Path to the failed statement file.
         """
-        dpath = self.duplicate_dir / fpath.name
+        dpath = settings.duplicate_dir / fpath.name
         self.move_file_safely(fpath, dpath)
         logger.debug("Duplicate statement moved to {d}", d=dpath)
 

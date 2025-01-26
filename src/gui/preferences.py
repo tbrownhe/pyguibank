@@ -14,109 +14,38 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QVBoxLayout,
 )
-
-from core.config import default_config, read_config, write_config
+from pydantic import ValidationError
+from core.settings import AppSettings, restore_defaults, save_settings, settings
 
 
 class PreferencesDialog(QDialog):
-    def __init__(self, defaults=False, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Preferences")
         self.setWindowModality(Qt.ApplicationModal)
 
         # Main layout
         main_layout = QVBoxLayout(self)
+        self.setLayout(main_layout)
 
         # Create grid layout for form fields
-        grid_layout = QGridLayout()
-        main_layout.addLayout(grid_layout)
+        self.grid_layout = QGridLayout()
+        main_layout.addLayout(self.grid_layout)
 
-        row = 0
-        # DATABASE section
-        grid_layout.addWidget(QLabel("Database Path:"), row, 0)
-        self.db_path_edit = QLineEdit()
-        grid_layout.addWidget(self.db_path_edit, row, 1)
-        db_path_button = QPushButton("Select...")
-        db_path_button.clicked.connect(self.select_db_path)
-        grid_layout.addWidget(db_path_button, row, 2)
-        row += 1
+        # Initialize row counter
+        self.row = 0
 
-        # CLASSIFIER section
-        grid_layout.addWidget(QLabel("Classifier Path:"), row, 0)
-        self.model_path_edit = QLineEdit()
-        grid_layout.addWidget(self.model_path_edit, row, 1)
-        model_path_button = QPushButton("Select...")
-        model_path_button.clicked.connect(self.select_mdl_path)
-        grid_layout.addWidget(model_path_button, row, 2)
-        row += 1
-
-        # IMPORT section
-        grid_layout.addWidget(QLabel("Import Extensions:"), row, 0)
-        self.extensions_edit = QLineEdit()
-        grid_layout.addWidget(self.extensions_edit, row, 1)
-        row += 1
-
-        grid_layout.addWidget(QLabel("Import Directory:"), row, 0)
-        self.import_dir_edit = QLineEdit()
-        grid_layout.addWidget(self.import_dir_edit, row, 1)
-        import_dir_button = QPushButton("Select...")
-        import_dir_button.clicked.connect(
-            lambda: self.select_folder(self.import_dir_edit)
-        )
-        grid_layout.addWidget(import_dir_button, row, 2)
-        row += 1
-
-        grid_layout.addWidget(QLabel("Success Directory:"), row, 0)
-        self.success_dir_edit = QLineEdit()
-        grid_layout.addWidget(self.success_dir_edit, row, 1)
-        success_dir_button = QPushButton("Select...")
-        success_dir_button.clicked.connect(
-            lambda: self.select_folder(self.success_dir_edit)
-        )
-        grid_layout.addWidget(success_dir_button, row, 2)
-        row += 1
-
-        grid_layout.addWidget(QLabel("Fail Directory:"), row, 0)
-        self.fail_dir_edit = QLineEdit()
-        grid_layout.addWidget(self.fail_dir_edit, row, 1)
-        fail_dir_button = QPushButton("Select...")
-        fail_dir_button.clicked.connect(lambda: self.select_folder(self.fail_dir_edit))
-        grid_layout.addWidget(fail_dir_button, row, 2)
-        row += 1
-
-        grid_layout.addWidget(QLabel("Duplicate Directory:"), row, 0)
-        self.duplicate_dir_edit = QLineEdit()
-        grid_layout.addWidget(self.duplicate_dir_edit, row, 1)
-        duplicate_dir_button = QPushButton("Select...")
-        duplicate_dir_button.clicked.connect(
-            lambda: self.select_folder(self.duplicate_dir_edit)
-        )
-        grid_layout.addWidget(duplicate_dir_button, row, 2)
-        row += 1
-
-        grid_layout.addWidget(QLabel("Hard Fail:"), row, 0)
-        self.hard_fail_checkbox = QCheckBox()
-        grid_layout.addWidget(self.hard_fail_checkbox, row, 1)
-        row += 1
-
-        # REPORTS section
-        grid_layout.addWidget(QLabel("Report Directory:"), row, 0)
-        self.report_dir_edit = QLineEdit()
-        grid_layout.addWidget(self.report_dir_edit, row, 1)
-        report_dir_button = QPushButton("Select...")
-        report_dir_button.clicked.connect(
-            lambda: self.select_folder(self.report_dir_edit)
-        )
-        grid_layout.addWidget(report_dir_button, row, 2)
-        row += 1
+        # Add pydantic settings fields objects dynamically
+        self.fields = {}
+        self.add_fields()
 
         # Buttons
         button_layout = QHBoxLayout()
         main_layout.addLayout(button_layout)
 
-        load_defaults_button = QPushButton("Restore Defaults")
-        load_defaults_button.clicked.connect(self.load_defaults)
-        button_layout.addWidget(load_defaults_button)
+        reset_button = QPushButton("Restore Defaults")
+        reset_button.clicked.connect(self.reset_preferences)
+        button_layout.addWidget(reset_button)
 
         save_button = QPushButton("Save")
         save_button.clicked.connect(self.save_preferences)
@@ -126,71 +55,87 @@ class PreferencesDialog(QDialog):
         cancel_button.clicked.connect(self.reject)
         button_layout.addWidget(cancel_button)
 
-        # Set the window size
+        # Set fixed window size
         hint = main_layout.sizeHint()
-        self.setFixedSize(2 * hint.width(), hint.height())
+        self.setFixedSize(int(1.6 * hint.width()), int(hint.height() + 100))
 
-        # Populate the fields with the config
-        self.config = default_config() if defaults else read_config()
-        self.populate_fields()
+    def add_fields(self):
+        """Dynamically generate input fields for AppSettings attributes."""
+        for field_name, field_info in settings.model_fields.items():
+            field_type = field_info.annotation
+            description = field_info.description or field_name
+            current_value = getattr(settings, field_name)
 
-    def populate_fields(self):
-        self.db_path_edit.setText(self.config.get("DATABASE", "db_path"))
-        self.model_path_edit.setText(self.config.get("CLASSIFIER", "model_path"))
-        self.extensions_edit.setText(self.config.get("IMPORT", "extensions"))
-        self.import_dir_edit.setText(self.config.get("IMPORT", "import_dir"))
-        self.success_dir_edit.setText(self.config.get("IMPORT", "success_dir"))
-        self.fail_dir_edit.setText(self.config.get("IMPORT", "fail_dir"))
-        self.duplicate_dir_edit.setText(self.config.get("IMPORT", "duplicate_dir"))
-        self.hard_fail_checkbox.setChecked(
-            self.config.getboolean("IMPORT", "hard_fail")
-        )
-        self.report_dir_edit.setText(self.config.get("REPORTS", "report_dir"))
+            if description == "NO EDIT":
+                continue
 
-    def load_defaults(self):
-        """
-        Load the default configuration values into the fields.
-        """
-        self.config = default_config()
-        self.populate_fields()
+            # Add Label
+            label = QLabel(description + ":")
+            label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.grid_layout.addWidget(label, self.row, 0)
+            if isinstance(current_value, bool):
+                # Add a checkbox for boolean fields
+                checkbox = QCheckBox()
+                checkbox.setChecked(current_value)
+                self.grid_layout.addWidget(checkbox, self.row, 1)
+                self.fields[field_name] = checkbox
+            elif isinstance(current_value, Path):
+                # Add a path selector for Path fields
+                line_edit = QLineEdit(str(current_value))
+                self.grid_layout.addWidget(line_edit, self.row, 1)
+                select_button = QPushButton("Select...")
+                field_metadata = (
+                    AppSettings.model_fields[field_name].json_schema_extra or {}
+                )
+                file_type = field_metadata.get("file_type", None)
+                if file_type:
+                    select_button.clicked.connect(
+                        lambda _, le=line_edit, ft=file_type: self.select_file(le, ft)
+                    )
+                else:
+                    select_button.clicked.connect(
+                        lambda _, le=line_edit: self.select_directory(le)
+                    )
+                self.grid_layout.addWidget(select_button, self.row, 2)
+                self.fields[field_name] = line_edit
+            else:
+                # Add a line edit for other types
+                line_edit = QLineEdit(str(current_value))
+                self.grid_layout.addWidget(line_edit, self.row, 1)
+                self.fields[field_name] = line_edit
 
-    def select_db_path(self):
-        self.select_path(self.db_path_edit, "Database Files (*.db)")
+            self.row += 1
 
-    def select_mdl_path(self):
-        self.select_path(self.model_path_edit, "Model Files (*.mdl)")
-
-    def select_path(self, line_edit, ftype: str):
-        """Select a path"""
+    def select_file(self, line_edit, file_type: str):
+        """Open a file dialog to select a file path."""
         try:
             default_path = str(Path(line_edit.text()).resolve())
         except:
             default_path = ""
-        fpath, _ = QFileDialog.getOpenFileName(
+        fpath, _ = QFileDialog.getSaveFileName(
             self,
             "Select File",
             default_path,
-            f"{ftype};;All Files (*)",
+            f"{file_type};;All Files (*)",
         )
         if fpath:
             fpath = Path(fpath).resolve()
             line_edit.setText(str(fpath))
 
-    def select_folder(self, line_edit):
-        """Select a folder and set its path in the specified QLineEdit."""
+    def select_directory(self, line_edit):
+        """Open a file dialog to select a path."""
         try:
             default_path = str(Path(line_edit.text()).resolve())
         except:
             default_path = ""
-        folder_path = QFileDialog.getExistingDirectory(
-            self, "Select Folder", default_path
+        selected_path = QFileDialog.getExistingDirectory(
+            self, "Select Directory", default_path
         )
-        if folder_path:
-            folder_path = Path(folder_path).resolve()
-            line_edit.setText(str(folder_path))
+        if selected_path:
+            line_edit.setText(selected_path)
 
     def save_preferences(self):
-        """Save the preferences to the configuration file."""
+        """Validate and save preferences to the settings object."""
         # Confirmation dialog
         reply = QMessageBox.question(
             self,
@@ -202,26 +147,77 @@ class PreferencesDialog(QDialog):
         if reply == QMessageBox.No:
             return
 
-        # Store settings in config object
-        self.config.set("DATABASE", "db_path", self.db_path_edit.text())
-        self.config.set("CLASSIFIER", "model_path", self.model_path_edit.text())
-        self.config.set("IMPORT", "extensions", self.extensions_edit.text())
-        self.config.set("IMPORT", "import_dir", self.import_dir_edit.text())
-        self.config.set("IMPORT", "success_dir", self.success_dir_edit.text())
-        self.config.set("IMPORT", "fail_dir", self.fail_dir_edit.text())
-        self.config.set("IMPORT", "duplicate_dir", self.duplicate_dir_edit.text())
-        self.config.set("IMPORT", "hard_fail", str(self.hard_fail_checkbox.isChecked()))
-        self.config.set("REPORTS", "report_dir", self.report_dir_edit.text())
+        # Get the values from the dialog
+        updated_settings = {}
+        for field_name, widget in self.fields.items():
+            try:
+                if isinstance(widget, QCheckBox):
+                    updated_settings[field_name] = widget.isChecked()
+                elif isinstance(widget, QLineEdit):
+                    updated_settings[field_name] = widget.text()
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "Invalid Input",
+                    f"Error processing field '{field_name}': {e}",
+                )
+                return
 
-        # Write config to file
-        write_config(self.config)
-        
-        # Confirm to user and close dialog
-        QMessageBox.information(
-            self, "Preferences Saved", "Preferences have been saved successfully."
+        try:
+            # Validate new settings against type model
+            validated_settings = AppSettings(**updated_settings)
+
+            # Update the global settings object in place using validated and typed data
+            # Note this leaves _hidden_fields completely untouched
+            for field in validated_settings.model_fields.keys():
+                setattr(settings, field, getattr(validated_settings, field))
+
+            # Save the config.json
+            save_settings(settings)
+
+            QMessageBox.information(
+                self, "Preferences Saved", "Preferences saved successfully."
+            )
+            self.accept()
+        except ValidationError as e:
+            # Display validation errors to the user
+            error_message = "\n".join(
+                f"{err['loc'][0]}: {err['msg']}" for err in e.errors()
+            )
+            QMessageBox.critical(
+                self,
+                "Validation Error",
+                f"The following errors occurred while saving preferences:\n{error_message}",
+            )
+        except Exception as e:
+            logger.error(f"Failed to save preferences: {e}")
+            QMessageBox.critical(
+                self,
+                "Save Failed",
+                f"Failed to save preferences: {e}",
+            )
+
+    def reset_preferences(self):
+        """Reset preferences to default values."""
+        reply = QMessageBox.question(
+            self,
+            "Reset Preferences",
+            "Are you sure you want to restore default preferences?",
+            QMessageBox.Yes | QMessageBox.No,
         )
-        self.accept()
-
+        if reply == QMessageBox.Yes:
+            defaults = restore_defaults(save=False)
+            for field_name, widget in self.fields.items():
+                value = getattr(defaults, field_name)
+                if isinstance(widget, QCheckBox):
+                    widget.setChecked(value)
+                elif isinstance(widget, QLineEdit):
+                    widget.setText(str(value))
+            QMessageBox.information(
+                self,
+                "Preferences Reset",
+                "Preferences have been restored to defaults.",
+            )
 
     def reject(self):
         reply = QMessageBox.question(

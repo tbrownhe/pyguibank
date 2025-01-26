@@ -1,6 +1,4 @@
-import configparser
 import json
-from configparser import ConfigParser
 from pathlib import Path
 
 from loguru import logger
@@ -10,96 +8,6 @@ from sqlalchemy.orm import Session
 
 from core import orm, query
 from core.settings import settings
-from core.utils import create_directory
-
-
-def read_config() -> ConfigParser:
-    """
-    Reads the user-configurable configuration file. If it does not exist,
-    a default configuration is initialized and saved.
-
-    Returns:
-        ConfigParser: The parsed configuration object.
-    """
-    config = configparser.ConfigParser()
-    if settings.config_path.exists():
-        try:
-            config.read(settings.config_path)
-        except Exception as e:
-            logger.error(f"Failed to read config file at {settings.config_path}: {e}")
-            raise
-    else:
-        # If config doesn't exist, create a default configuration
-        config = default_config()
-        write_config(config)
-
-    return config
-
-
-def write_config(config: ConfigParser):
-    try:
-        # Create config file
-        create_directory(settings.config_path.parent)
-        with settings.config_path.open("w") as f:
-            config.write(f)
-
-        # Make sure all the specified dirs in the config exist
-        create_config_dirs(config)
-        logger.info(f"Default configuration created at {settings.config_path}")
-    except Exception as e:
-        logger.error(f"Failed to create config file at {settings.config_path}: {e}")
-        raise
-
-
-def create_config_dirs(config: ConfigParser) -> None:
-    create_directory(Path(config.get("DATABASE", "db_path")).parent)
-    create_directory(Path(config.get("IMPORT", "import_dir")))
-    create_directory(Path(config.get("IMPORT", "success_dir")))
-    create_directory(Path(config.get("IMPORT", "fail_dir")))
-    create_directory(Path(config.get("IMPORT", "duplicate_dir")))
-    create_directory(Path(config.get("REPORTS", "report_dir")))
-
-
-def default_config() -> ConfigParser:
-    config = ConfigParser()
-    config["DATABASE"] = {
-        "db_path": str(Path.home() / "Documents/PyGuiBank/pyguibank.db")
-    }
-    config["CLASSIFIER"] = {
-        "model_path": str(Path("assets/default_pipeline.mdl").resolve())
-    }
-    config["IMPORT"] = {
-        "extensions": "pdf, csv, xlsx",
-        "import_dir": str(Path.home() / "Documents" / "PyGuiBank" / "Imports"),
-        "success_dir": str(
-            Path.home() / "Documents" / "PyGuiBank" / "Imports" / "SUCCESS"
-        ),
-        "fail_dir": str(Path.home() / "Documents" / "PyGuiBank" / "Imports" / "FAIL"),
-        "duplicate_dir": str(
-            Path.home() / "Documents" / "PyGuiBank" / "Imports" / "DUPLICATE"
-        ),
-        "hard_fail": "False",
-    }
-    config["REPORTS"] = {
-        "report_dir": str(Path.home() / "Documents" / "PyGuiBank" / "Reports")
-    }
-    return config
-
-
-def export_init_accounts(session: Session):
-    accounts = query.accounts_table(session)
-    account_numbers = query.account_numbers_table(session)
-
-    data = {"Accounts": accounts, "AccountNumbers": account_numbers}
-    with settings.accounts_json.open("w") as f:
-        json.dump(data, f, indent=2)
-
-    msg_box = QMessageBox()
-    msg_box.setIcon(QMessageBox.Information)
-    msg_box.setText("Successfully exported Accounts configuration.")
-    msg_box.setWindowTitle("Configuration Saved")
-    msg_box.setStandardButtons(QMessageBox.Ok)
-    msg_box.exec_()
 
 
 class Account(BaseModel):
@@ -120,6 +28,22 @@ class AccountNumber(BaseModel):
 class AccountConfig(BaseModel):
     Accounts: list[Account]
     AccountNumbers: list[AccountNumber]
+
+
+def export_init_accounts(session: Session):
+    accounts = query.accounts_table(session)
+    account_numbers = query.account_numbers_table(session)
+
+    data = {"Accounts": accounts, "AccountNumbers": account_numbers}
+    with settings.accounts_json.open("w") as f:
+        json.dump(data, f, indent=2)
+
+    msg_box = QMessageBox()
+    msg_box.setIcon(QMessageBox.Information)
+    msg_box.setText("Successfully exported Accounts configuration.")
+    msg_box.setWindowTitle("Configuration Saved")
+    msg_box.setStandardButtons(QMessageBox.Ok)
+    msg_box.exec_()
 
 
 def validate_using_model(fpath: Path, model: BaseModel):

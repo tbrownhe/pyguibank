@@ -190,9 +190,6 @@ def open_file_in_os(fpath: Path):
 
 def create_directory(folder: Path):
     folder = folder.resolve()
-    if not folder.is_dir():
-        logger.error(f"Not a directory: {folder}")
-        raise ValueError(f"Not a directory: {folder}")
     if folder.exists():
         logger.info(f"Directory exists: {folder}")
         return

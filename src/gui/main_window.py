@@ -34,10 +34,7 @@ from PyQt5.QtWidgets import (
 )
 from sqlalchemy.orm import Session
 
-from core import categorize, config, learn, orm, plot, query, reports
-from core.client import check_for_client_updates
-from core.initialize import seed_account_types
-from core.plugins import PluginManager
+from core.settings import save_settings, settings
 from core.statements import StatementProcessor
 from core.utils import create_directory, open_file_in_os
 from gui.accounts import AppreciationDialog, BalanceCheckDialog, EditAccountsDialog
@@ -651,7 +648,7 @@ class PyGuiBank(QMainWindow):
             "Export Accounts Config?",
             (
                 "This will store the Accounts list and any associated Account Numbers"
-                f" from <pre>{self.db_path}</pre> so any new databases use the same settings."
+                f" from <pre>{settings.db_path}</pre> so any new databases use the same settings."
             ),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
@@ -698,7 +695,7 @@ class PyGuiBank(QMainWindow):
 
     def import_all_statements(self):
         # Import everything
-        processor = StatementProcessor(self.Session, self.config, self.plugin_manager)
+        processor = StatementProcessor(self.Session, self.plugin_manager)
         processor.import_all(parent=self)
 
         # Update all GUI elements
@@ -707,20 +704,22 @@ class PyGuiBank(QMainWindow):
 
     def import_one_statement(self):
         # Show file selection dialog
-        default_folder = self.config.get("IMPORT", "import_dir")
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
         file_filter = "Supported Files (*.csv *.pdf *.xlsx);;All Files (*)"
         fpath, _ = QFileDialog.getOpenFileName(
-            None, "Select a File", default_folder, file_filter, options=options
+            None,
+            "Select a File",
+            str(settings.import_dir),
+            file_filter,
+            options=options,
         )
 
         # Prevent weird things from happening
         if not fpath:
             return
         fpath = Path(fpath).resolve()
-        success_dir = Path(self.config.get("IMPORT", "success_dir")).resolve()
-        if fpath.parents[0] == success_dir:
+        if fpath.parents[0] == settings.success_dir:
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Warning)
             msg_box.setText(f"Cannot import statements from the SUCCESS folder.")
@@ -730,7 +729,7 @@ class PyGuiBank(QMainWindow):
             return
 
         # Import statement
-        processor = StatementProcessor(self.Session, self.config, self.plugin_manager)
+        processor = StatementProcessor(self.Session, self.plugin_manager)
         processor.import_one(fpath)
 
         # Update all GUI elements
@@ -787,23 +786,20 @@ class PyGuiBank(QMainWindow):
             plot.plot_category_spending(session)
 
     def report_all_time(self):
-        report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
         timestamp = datetime.now().strftime(r"%Y%m%d%H%M%S")
-        dpath = report_dir / f"{timestamp}_Report_AllTime.xlsx"
+        dpath = settings.report_dir / f"{timestamp}_Report_AllTime.xlsx"
         with self.Session() as session:
             reports.report(session, dpath)
 
     def report_1year(self):
-        report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
         timestamp = datetime.now().strftime(r"%Y%m%d%H%M%S")
-        dpath = report_dir / f"{timestamp}_Report_OneYear.xlsx"
+        dpath = settings.report_dir / f"{timestamp}_Report_OneYear.xlsx"
         with self.Session() as session:
             reports.report(session, dpath, months=12)
 
     def report_3months(self):
-        report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
         timestamp = datetime.now().strftime(r"%Y%m%d%H%M%S")
-        dpath = report_dir / f"{timestamp}_Report_ThreeMonths.xlsx"
+        dpath = settings.report_dir / f"{timestamp}_Report_ThreeMonths.xlsx"
         with self.Session() as session:
             reports.report(session, dpath, months=3)
 
@@ -823,19 +819,12 @@ class PyGuiBank(QMainWindow):
         learn.train_pipeline_test(df, amount=False)
 
     def train_pipeline_save(self):
-        # Get old model path
-        model_path = self.config.get("CLASSIFIER", "model_path")
-        try:
-            model_path = Path(model_path).resolve()
-        except:
-            model_path = Path("") / "pipeline.mdl"
-
         # Prompt user for new save location
         options = QFileDialog.Options()
         save_path, _ = QFileDialog.getSaveFileName(
             self,
             "Select Save Location",
-            str(model_path),
+            str(settings.model_path),
             "MDL Files (*.mdl);;All Files (*);;",
             options=options,
         )
@@ -863,29 +852,23 @@ class PyGuiBank(QMainWindow):
         )
 
         # Save new pipeline path to config
-        if Path("").resolve() == model_path.parents[0]:
-            model_path = model_path.name
-        else:
-            model_path = str(model_path)
-        self.config.set("CLASSIFIER", "model_path", str(model_path))
-        with open("config.ini", "w") as configfile:
-            self.config.write(configfile)
+        settings.model_path = model_path
+        save_settings(settings)
 
     def categorize_uncategorized(self):
-        model_path = Path(self.config.get("CLASSIFIER", "model_path")).resolve()
-        if not model_path.exists():
+        if not settings.model_path.exists():
             QMessageBox.warning(
                 self,
                 "Classifier Model Not Found",
                 (
-                    f"{model_path} could not be found.\n"
+                    f"{settings.model_path} could not be found.\n"
                     "Please select a valid classifier model file in Preferences."
                 ),
             )
             return
         with self.Session() as session:
             categorize.transactions(
-                session, model_path, unverified=True, uncategorized=True
+                session, settings.model_path, unverified=True, uncategorized=True
             )
             self.update_main_gui(session)
         QMessageBox.information(
@@ -895,20 +878,19 @@ class PyGuiBank(QMainWindow):
         )
 
     def categorize_unverified(self):
-        model_path = Path(self.config.get("CLASSIFIER", "model_path")).resolve()
-        if not model_path.exists():
+        if not settings.model_path.exists():
             QMessageBox.warning(
                 self,
                 "Classifier Model Not Found",
                 (
-                    f"{model_path} could not be found.\n"
+                    f"{settings.model_path} could not be found.\n"
                     "Please select a valid classifier model file in Preferences."
                 ),
             )
             return
         with self.Session() as session:
             categorize.transactions(
-                session, model_path, unverified=True, uncategorized=False
+                session, settings.model_path, unverified=True, uncategorized=False
             )
             self.update_main_gui(session)
         QMessageBox.information(
