@@ -18,80 +18,10 @@ from PyQt5.QtWidgets import (
 )
 from sqlalchemy.orm import sessionmaker
 
-from core.config import read_config
 from core.parse import parse_any
-from core.plugins import (
-    PluginManager,
-    compare_plugins,
-    server_plugin_metadata,
-    sync_plugins,
-)
+from core.plugins import PluginManager, check_for_plugin_updates
+from core.settings import settings
 from core.utils import PDFReader
-
-
-def check_for_plugin_updates(plugin_manager: PluginManager, parent=None, manual=False):
-    """
-    Check for plugin updates and synchronize as needed.
-    Args:
-        plugin_manager (PluginManager): The plugin manager instance.
-        parent: The parent dialog or window for showing messages and dialogs.
-        manual (bool): Whether this check was triggered manually.
-    """
-    try:
-        local_plugins = [plugin for plugin in plugin_manager.metadata.values()]
-        server_plugins = server_plugin_metadata()
-    except Exception as e:
-        QMessageBox.critical(
-            parent,
-            "Error Fetching Plugins",
-            f"Could not fetch plugin metadata from the server:\n{e}",
-        )
-        return
-
-    new_plugins, updated_plugins = compare_plugins(local_plugins, server_plugins)
-
-    if new_plugins or updated_plugins:
-        dialog = PluginSyncDialog(local_plugins, server_plugins)
-        if dialog.exec_() == QDialog.Accepted:
-            try:
-                sync_plugins(local_plugins, server_plugins)
-                QMessageBox.information(
-                    parent, "Plugins Synchronized", "Local plugins have been updated."
-                )
-            except Exception as e:
-                QMessageBox.critical(
-                    parent,
-                    "Plugin Synchronization Failed",
-                    f"Local plugins could not be synchronized:\n{e}",
-                )
-                return
-            plugin_manager.load_plugins()
-            if hasattr(parent, "update_table"):
-                parent.update_table()
-            logger.info("Plugins synchronized with server")
-    elif manual:
-        QMessageBox.information(
-            parent, "Plugins Up To Date", "Local plugins are the latest versions."
-        )
-
-
-def display_nested_dict(output_display: QTextEdit, nested_dict: dict, level=0):
-    """
-    Recursively displays a nested dictionary in an indented format.
-
-    Args:
-        output_display: A callable (e.g., self.output_display.append) for displaying output.
-        nested_dict (dict): The dictionary to display.
-        level (int): Current level of indentation.
-    """
-    for key, value in nested_dict.items():
-        if isinstance(value, dict):
-            # If the value is a dictionary, recurse
-            output_display.append("  " * (level + 1) + f"{key}:")
-            display_nested_dict(output_display, value, level + 1)
-        else:
-            # Otherwise, display the key-value pair
-            output_display.append("  " * (level + 1) + f"{key}: {value}")
 
 
 def resize_to_table(parent, table):
@@ -204,7 +134,19 @@ class PluginManagerDialog(QDialog):
         Check for updates to plugins and update the table if plugins are synchronized.
         """
         self.plugin_manager.load_plugins()
-        check_for_plugin_updates(self.plugin_manager, parent=self, manual=True)
+        try:
+            updated = check_for_plugin_updates(self.plugin_manager)
+            if updated:
+                QMessageBox.information(
+                    self, "Plugins Updated", "Plugins are updated to latest versions."
+                )
+            else:
+                QMessageBox.information(
+                    self, "Plugins Up to Date", "No updates were found on the server."
+                )
+        except Exception as e:
+            QMessageBox.critical(self, "Update Failed", f"Update failed: {e}")
+
         self.plugin_manager.load_plugins()
         self.update_table()
 
@@ -347,18 +289,13 @@ class ParseTestDialog(QDialog):
         self.output_display.setFont(QFont("Courier New"))
         layout.addWidget(self.output_display)
 
-        # Load configuration
-        self.config = read_config()
-        self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
-        self.import_dir = self.config.get("IMPORT", "import_dir")
-
     def select_file(self) -> Path:
         """Open a file dialog to select a file."""
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
         file_filter = "Supported Files (*.csv *.pdf *.xlsx);;All Files (*)"
         fpath, _ = QFileDialog.getOpenFileName(
-            self, "Select a File", self.import_dir, file_filter, options=options
+            self, "Select a File", settings.import_dir, file_filter, options=options
         )
         return Path(fpath).resolve() if fpath else None
 

@@ -34,11 +34,19 @@ from PyQt5.QtWidgets import (
 )
 from sqlalchemy.orm import Session
 
+from core import categorize, config, learn, plot, query, reports
+from core.client import (
+    ClientUpdateThread,
+    check_for_client_updates,
+    install_latest_client,
+)
+from core.initialize import initialize_db, initialize_dirs
+from core.plugins import PluginManager, PluginUpdateThread
 from core.settings import save_settings, settings
 from core.statements import StatementProcessor
-from core.utils import create_directory, open_file_in_os
+from core.utils import open_file_in_os
 from gui.accounts import AppreciationDialog, BalanceCheckDialog, EditAccountsDialog
-from gui.plugins import ParseTestDialog, PluginManagerDialog, check_for_plugin_updates
+from gui.plugins import ParseTestDialog, PluginManagerDialog
 from gui.preferences import PreferencesDialog
 from gui.statements import CompletenessDialog
 from gui.transactions import InsertTransactionDialog, RecurringTransactionsDialog
@@ -560,50 +568,50 @@ class PyGuiBank(QMainWindow):
 
     def initialize_all_elements(self):
         # Make sure the config file exists and load into memory
-        self.update_from_config()
-
-        # Update all tables, checklists, and graphs
-        with self.Session() as session:
-            self.update_main_gui(session)
+        self.Session = initialize_db(self)
 
         # Initialize the plugin manager
         self.plugin_manager = PluginManager()
         self.plugin_manager.load_plugins()
 
-        # Check for new versions of plugins and clients
-        check_for_plugin_updates(self.plugin_manager, parent=self, manual=False)
-        check_for_client_updates(manual=False, parent=self)
-
-    def update_from_config(self):
-        self.config = config.read_config()
-        self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
-        self.ensure_db()
-
-    def ensure_db(self):
-        # Ensure db file exists
-        if self.db_path.exists():
-            self.Session = orm.create_database(self.db_path)
-            with self.Session() as session:
-                query.optimize_db(session)
-        else:
-            create_directory(self.db_path.parent)
-            self.Session = orm.create_database(self.db_path)
-            QMessageBox.information(
-                self,
-                "New Database Created",
-                f"Initialized new database at <pre>{self.db_path}</pre>",
-            )
-            self.init_db_tables()
-
-    def init_db_tables(self):
+        # Update all tables, checklists, and graphs
         with self.Session() as session:
-            query.insert_rows_batched(
-                session,
-                orm.AccountTypes,
-                seed_account_types(),
-            )
-            # config.import_init_statement_types(session)
-            config.import_init_accounts(session)
+            self.update_main_gui(session)
+
+        # Check for new versions of plugins and clients
+        self.check_for_plugin_updates_async()
+        self.check_for_client_updates_async()
+
+    def check_for_plugin_updates_async(self):
+        self.plugin_update_thread = PluginUpdateThread(
+            self.plugin_manager,
+        )
+        self.plugin_update_thread.update_complete.connect(self.handle_plugin_update)
+        self.plugin_update_thread.start()
+
+    def handle_plugin_update(
+        self, success: bool, message: str, plugin_manager: PluginManager
+    ):
+        if success:
+            self.plugin_manager = plugin_manager
+            if message:
+                QMessageBox.information(self, "Plugins Updated", message)
+            logger.info("Plugins are up to date.")
+        else:
+            # QMessageBox.critical(self, "Update Failed", message)
+            logger.error(f"Plugin update failed: {message}")
+
+    def check_for_client_updates_async(self):
+        self.client_update_thread = ClientUpdateThread()
+        self.client_update_thread.update_available.connect(self.handle_client_update)
+        self.client_update_thread.start()
+
+    def handle_client_update(self, success: bool, latest_installer: dict, message: str):
+        if success and latest_installer:
+            install_latest_client(self, latest_installer)
+        else:
+            # QMessageBox.critical(self, "Client Update Failed", message)
+            logger.error(f"Client update failed: {message}")
 
     #########################
     ### MENUBAR FUNCTIONS ###
@@ -617,12 +625,13 @@ class PyGuiBank(QMainWindow):
         msg_box.exec_()
 
     def open_db(self):
-        open_file_in_os(self.db_path)
+        open_file_in_os(settings.db_path)
 
     def preferences(self):
         dialog = PreferencesDialog()
         if dialog.exec_() == QDialog.Accepted:
-            self.update_from_config()
+            initialize_dirs()
+            self.Session = initialize_db()
             with self.Session() as session:
                 self.update_main_gui(session)
 
@@ -632,7 +641,7 @@ class PyGuiBank(QMainWindow):
             "Export Database Config?",
             (
                 "This will store the statement search configuration of"
-                f" <pre>{self.db_path}</pre> so any new databases use the same settings."
+                f" <pre>{settings.db_path}</pre> so any new databases use the same settings."
             ),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
@@ -912,12 +921,35 @@ class PyGuiBank(QMainWindow):
 
     def update_main_gui(self, session: Session):
         """Update all tables, checklists, and charts in the main GUI window"""
-        self.setWindowTitle(f"PyGuiBank v{__version__} - {self.db_path}")
-        self.update_balances_table(session)
-        self.update_accounts_checklist(session)
-        self.update_category_checklist(session)
-        self.update_balance_history_chart(session)
-        self.update_category_spending_chart(session)
+        self.setWindowTitle(f"PyGuiBank v{__version__} - {settings.db_path}")
+        try:
+            self.update_balances_table(session)
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Critical",
+                f"Failed to update balances table: {e}",
+            )
+
+        try:
+            self.update_accounts_checklist(session)
+            self.update_balance_history_chart(session)
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Critical",
+                f"Failed to update balance history chart: {e}",
+            )
+
+        try:
+            self.update_category_checklist(session)
+            self.update_category_spending_chart(session)
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Critical",
+                f"Failed to update category spending chart: {e}",
+            )
 
     def update_balances_table(self, session: Session):
         # Fetch data for the table
