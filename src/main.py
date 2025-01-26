@@ -28,9 +28,8 @@ elif system == "Darwin":
     # macOS-specific scaling (already set above for consistency)
     os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
 
-# Then load modules that may depend on env vars
-# from core.initialize import initialize_plugins
-from core.utils import resource_path
+
+# Then load modules that may depend on env vars and settings
 from gui.main_window import PyGuiBank
 
 
@@ -52,7 +51,7 @@ if __name__ == "__main__":
     # Kick off the GUI
     try:
         app = QApplication(sys.argv)
-        app.setWindowIcon(QIcon(str(resource_path("assets/pyguibank_128px.ico"))))
+        app.setWindowIcon(QIcon(str(Path("assets/pyguibank_128px.ico"))))
         window = PyGuiBank()
         window.show()
         sys.exit(app.exec_())
