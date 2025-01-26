@@ -15,9 +15,7 @@ for attempt in range(1, 4):
 
         STOP_WORDS = set(stopwords.words("english"))
     except Exception:
-        logger.debug(
-            "Downloading Stopwords for 'nltk' corpus... Attempt {attempt} of 3"
-        )
+        logger.debug("Downloading Stopwords for 'nltk' corpus... Attempt {attempt} of 3")
         nltk.download("stopwords")
         continue
     break
@@ -79,9 +77,7 @@ def cluster_transactions(
     return transactions
 
 
-def identify_recurring_clusters(
-    transactions: pd.DataFrame, min_size=3, min_interval=0, max_interval=35
-):
+def identify_recurring_clusters(transactions: pd.DataFrame, min_size=3, min_interval=0, max_interval=35):
     """
     Identify recurring clusters based on transaction dates and frequency.
 
@@ -114,9 +110,7 @@ def identify_recurring_clusters(
     return transactions[transactions["Cluster"].isin(recurring)]
 
 
-def filter_by_amount_variance(
-    transactions: pd.DataFrame, max_variance: float
-) -> pd.DataFrame:
+def filter_by_amount_variance(transactions: pd.DataFrame, max_variance: float) -> pd.DataFrame:
     """
     Filter clusters to include only those with similar amounts.
 
@@ -134,11 +128,7 @@ def filter_by_amount_variance(
             continue
 
         # Compute variance and apply filter
-        variance = (
-            group["Amount"].std() / group["Amount"].mean()
-            if group["Amount"].mean() != 0
-            else 0
-        )
+        variance = group["Amount"].std() / group["Amount"].mean() if group["Amount"].mean() != 0 else 0
         if variance <= max_variance:
             recurring.append(cluster_id)
 
@@ -163,16 +153,8 @@ def recurring_transactions(transactions: pd.DataFrame, **kwargs) -> pd.DataFrame
     transactions["Date"] = pd.to_datetime(transactions["Date"])
 
     # Extract relevant arguments for each function
-    cluster_kwargs = {
-        key: kwargs[key]
-        for key in ["eps", "min_samples", "include_amount"]
-        if key in kwargs
-    }
-    recurring_kwargs = {
-        key: kwargs[key]
-        for key in ["min_size", "min_interval", "max_interval"]
-        if key in kwargs
-    }
+    cluster_kwargs = {key: kwargs[key] for key in ["eps", "min_samples", "include_amount"] if key in kwargs}
+    recurring_kwargs = {key: kwargs[key] for key in ["min_size", "min_interval", "max_interval"] if key in kwargs}
     amount_kwargs = {key: kwargs[key] for key in ["max_variance"] if key in kwargs}
 
     # Analyze

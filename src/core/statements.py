@@ -18,7 +18,6 @@ from gui.accounts import AssignAccountNumber
 
 
 class StatementProcessor:
-
     def __init__(self, Session: sessionmaker, plugin_manager: PluginManager) -> None:
         """Initialize the statement processor
 
@@ -37,24 +36,16 @@ class StatementProcessor:
         """
         # Gather files to process
         suffixes = set([plugin["SUFFIX"] for plugin in self.plugin_manager.metadata])
-        fpaths = [
-            fpath
-            for suffix in suffixes
-            for fpath in settings.import_dir.glob(f"*{suffix}")
-        ]
+        fpaths = [fpath for suffix in suffixes for fpath in settings.import_dir.glob(f"*{suffix}")]
         if not fpaths:
-            QMessageBox.information(
-                parent, "No Files", "No files found in the import directory."
-            )
+            QMessageBox.information(parent, "No Files", "No files found in the import directory.")
             return
 
         # Initialize counters
         success, duplicate, fail = 0, 0, 0
 
         # Progress dialog
-        progress = QProgressDialog(
-            "Processing statements...", "Cancel", 0, len(fpaths), parent
-        )
+        progress = QProgressDialog("Processing statements...", "Cancel", 0, len(fpaths), parent)
         progress.setWindowTitle("Import Progress")
         progress.setWindowModality(Qt.WindowModal)
         progress.setValue(0)
@@ -62,9 +53,7 @@ class StatementProcessor:
         for idx, fpath in enumerate(sorted(fpaths)):
             progress.setLabelText(f"Processing {fpath.name}...")
             if progress.wasCanceled():
-                QMessageBox.information(
-                    parent, "Import Canceled", "The import was canceled."
-                )
+                QMessageBox.information(parent, "Import Canceled", "The import was canceled.")
                 break
 
             try:
@@ -167,10 +156,7 @@ class StatementProcessor:
             return False
 
         for statement_id, filename in data:
-            logger.debug(
-                f"Previously imported {filename} (StatementID: {statement_id})"
-                f" has identical hash {md5hash}"
-            )
+            logger.debug(f"Previously imported {filename} (StatementID: {statement_id}) has identical hash {md5hash}")
         return True
 
     def statement_already_imported(self, filename: Path) -> bool:
@@ -188,9 +174,7 @@ class StatementProcessor:
             return False
 
         for statement_id, filename in data:
-            logger.debug(
-                f"Previously imported {filename} (StatementID: {statement_id})"
-            )
+            logger.debug(f"Previously imported {filename} (StatementID: {statement_id})")
         return True
 
     def handle_failure(self, fpath: Path, error: Exception):
@@ -248,13 +232,9 @@ class StatementProcessor:
                 dialog.setWindowModality(Qt.ApplicationModal)  # Ensure it's on top
                 dialog.setWindowFlags(dialog.windowFlags() | Qt.WindowStaysOnTopHint)
                 if dialog.exec_() == QMessageBox.Cancel:
-                    raise RuntimeError(
-                        f"File move operation for <pre>{fpath}</pre> was cancelled by the user."
-                    ) from e
+                    raise RuntimeError(f"File move operation for <pre>{fpath}</pre> was cancelled by the user.") from e
             except Exception as e:
-                raise RuntimeError(
-                    f"An unexpected error occurred while moving <pre>{fpath}</pre>: {e}"
-                ) from e
+                raise RuntimeError(f"An unexpected error occurred while moving <pre>{fpath}</pre>: {e}") from e
 
     def attach_account_info(self, statement: Statement) -> Statement:
         """
@@ -266,18 +246,12 @@ class StatementProcessor:
             try:
                 # Lookup existing account
                 with self.Session() as session:
-                    account_id = query.account_id_of_account_number(
-                        session, account.account_num
-                    )
+                    account_id = query.account_id_of_account_number(session, account.account_num)
             except KeyError:
                 # Prompt user to select account to associate with this account_num
-                plugin_metadata = self.plugin_manager.metadata.get(
-                    statement.plugin_name
-                )
+                plugin_metadata = self.plugin_manager.metadata.get(statement.plugin_name)
                 try:
-                    account_id = self.prompt_account_num(
-                        statement.fpath, account.account_num, plugin_metadata
-                    )
+                    account_id = self.prompt_account_num(statement.fpath, account.account_num, plugin_metadata)
                 except RuntimeError as e:
                     logger.error(f"Account assignment canceled: {e}")
                     raise
@@ -289,9 +263,7 @@ class StatementProcessor:
             # Add the new data to the account
             account.add_account_info(account_id, account_name)
 
-    def prompt_account_num(
-        self, fpath: Path, account_num: str, plugin_metadata: dict, parent=None
-    ) -> int:
+    def prompt_account_num(self, fpath: Path, account_num: str, plugin_metadata: dict, parent=None) -> int:
         """
         Ask user to associate this unknown account_num with an Accounts.AccountID
         """
@@ -347,15 +319,13 @@ class StatementProcessor:
             for account in statement.accounts:
                 # Validate account information
                 if not account.account_id or not account.account_name:
-                    raise ValueError(
-                        f"Account {account.account_num} must have"
-                        " account_id and account_name set."
-                    )
+                    raise ValueError(f"Account {account.account_num} must have account_id and account_name set.")
 
                 # Prepare and insert statement metadata
                 metadata = statement.to_db_row(account)
                 statements_table = Statements(
-                    **metadata, PluginID=plugin_id  # Associate with the plugin
+                    **metadata,
+                    PluginID=plugin_id,  # Associate with the plugin
                 )
                 session.add(statements_table)
 
@@ -364,14 +334,10 @@ class StatementProcessor:
                 statement_id = statements_table.StatementID
 
                 # Prepare transactions for insertion
-                transactions_table = Transaction.to_db_rows(
-                    statement_id, account.account_id, account.transactions
-                )
+                transactions_table = Transaction.to_db_rows(statement_id, account.account_id, account.transactions)
 
                 # Insert transactions using insert_rows_carefully
-                query.insert_rows_carefully(
-                    session, Transactions, transactions_table, skip_duplicates=True
-                )
+                query.insert_rows_carefully(session, Transactions, transactions_table, skip_duplicates=True)
 
             # Attempt to move file to destination.
             # If it fails in this context, the whole transaction is rolled back.

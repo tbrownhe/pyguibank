@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from loguru import logger
 from PyQt5.QtWidgets import QMessageBox
 from sqlalchemy.orm import sessionmaker

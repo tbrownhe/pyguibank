@@ -20,5 +20,5 @@ dependencies:
   - pydantic-settings>=2.7,<3
   - pyinstaller=5.13
   - nsis
-  - pip: 
+  - pip:
       - pdfplumber==0.11.4

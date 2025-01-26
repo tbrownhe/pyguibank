@@ -1,15 +1,16 @@
 import json
+import os
 from datetime import datetime
 from pathlib import Path
-from platform import system, architecture
-from typing import ClassVar, Optional
+from platform import architecture, system
+from typing import ClassVar
 
 from cryptography.fernet import Fernet
 from loguru import logger
 from pydantic import AnyHttpUrl, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 from version import __version__
-import os
 
 
 def get_platform() -> str:
@@ -105,6 +106,7 @@ class AppSettings(BaseSettings):
     _version: str = __version__
     _config_path: Path = APPDATA_DIR / "config.json"
     _accounts_json: Path = APPDATA_DIR / "accounts.json"
+    _server_public_key: Path = APPDATA_DIR / "server_public_key.pem"
     _download_dir: Path = get_download_dir()
 
     @property
@@ -132,6 +134,11 @@ class AppSettings(BaseSettings):
         """Getter for the hidden value"""
         return self._download_dir
 
+    @property
+    def server_public_key(self) -> Path:
+        """Getter for the hidden value"""
+        return self._server_public_key
+
     # Internal settings written to config.json but not editable in PreferencesDialog
     config_version: str = Field("1.0.0", description="NO EDIT")
 
@@ -140,9 +147,7 @@ class AppSettings(BaseSettings):
         "https://api.pyguibank.duckdns.org/api/v1",
         description="Server API URL (dev only)",
     )
-    api_token: str = Field(
-        "", description="Server API Token", json_schema_extra={"sensitive": True}
-    )
+    api_token: str = Field("", description="Server API Token", json_schema_extra={"sensitive": True})
 
     # Basic settings
     db_path: Path = Field(
@@ -233,11 +238,7 @@ def backup_config() -> None:
         return
 
     now = datetime.strftime(datetime.now(), r"%Y%m%d%H%M%S")
-    backup_path = (
-        settings.config_path.parent
-        / "backup"
-        / (settings.config_path.stem + f"_{now}.json")
-    )
+    backup_path = settings.config_path.parent / "backup" / (settings.config_path.stem + f"_{now}.json")
     backup_path.parent.mkdir(parents=True, exist_ok=True)
     settings.config_path.rename(backup_path)
     logger.info(f"Backup created: {backup_path}")

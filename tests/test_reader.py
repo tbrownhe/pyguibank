@@ -1,5 +1,6 @@
-from core.validation import PDFReader
 from pathlib import Path
+
+from core.validation import PDFReader
 
 table_settings = {
     "vertical_strategy": "lines",

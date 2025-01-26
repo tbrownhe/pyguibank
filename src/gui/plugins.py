@@ -29,9 +29,7 @@ def resize_to_table(parent, table):
     Resize the dialog to fit the table, up to 90% of the screen width and height.
     """
     table_width = sum(table.columnWidth(col) for col in range(table.columnCount())) + 50
-    table_height = (
-        table.verticalHeader().length() + table.horizontalHeader().height() + 75
-    )
+    table_height = table.verticalHeader().length() + table.horizontalHeader().height() + 75
 
     # Get screen dimensions
     screen_rect = QDesktopWidget().screenGeometry()
@@ -137,13 +135,9 @@ class PluginManagerDialog(QDialog):
         try:
             updated = check_for_plugin_updates(self.plugin_manager)
             if updated:
-                QMessageBox.information(
-                    self, "Plugins Updated", "Plugins are updated to latest versions."
-                )
+                QMessageBox.information(self, "Plugins Updated", "Plugins are updated to latest versions.")
             else:
-                QMessageBox.information(
-                    self, "Plugins Up to Date", "No updates were found on the server."
-                )
+                QMessageBox.information(self, "Plugins Up to Date", "No updates were found on the server.")
         except Exception as e:
             QMessageBox.critical(self, "Update Failed", f"Update failed: {e}")
 
@@ -162,9 +156,7 @@ class PluginSyncDialog(QDialog):
         layout = QVBoxLayout(self)
 
         # Table for plugin status
-        layout.addWidget(
-            QLabel("Some plugins are out of date or missing.\n\nPlugin Status:")
-        )
+        layout.addWidget(QLabel("Some plugins are out of date or missing.\n\nPlugin Status:"))
         self.table = self.create_table()
         layout.addWidget(self.table)
 
@@ -189,18 +181,11 @@ class PluginSyncDialog(QDialog):
 
         def rename_keys(data):
             """Renames dictionary keys to Titlecase."""
-            return [
-                {k.title().replace("_", " "): v for k, v in item.items()}
-                for item in data
-            ]
+            return [{k.title().replace("_", " "): v for k, v in item.items()} for item in data]
 
         # Merge local and server plugin data
-        local_df = pd.DataFrame(rename_keys(self.local_plugins)).rename(
-            columns={"Version": "Local Version"}
-        )
-        server_df = pd.DataFrame(rename_keys(self.server_plugins)).rename(
-            columns={"Version": "Remote Version"}
-        )
+        local_df = pd.DataFrame(rename_keys(self.local_plugins)).rename(columns={"Version": "Local Version"})
+        server_df = pd.DataFrame(rename_keys(self.server_plugins)).rename(columns={"Version": "Remote Version"})
 
         # Handle empty DataFrame cases
         if local_df.empty:
@@ -224,9 +209,7 @@ class PluginSyncDialog(QDialog):
         # Create a QTableWidget to display the data
         table = QTableWidget()
         table.setColumnCount(3)
-        table.setHorizontalHeaderLabels(
-            ["Plugin Name", "Local Version", "Remote Version"]
-        )
+        table.setHorizontalHeaderLabels(["Plugin Name", "Local Version", "Remote Version"])
         table.setRowCount(len(merged_df))
 
         # Populate the table
@@ -257,9 +240,7 @@ class PluginSyncDialog(QDialog):
 
 
 class ParseTestDialog(QDialog):
-    def __init__(
-        self, Session: sessionmaker, plugin_manager: PluginManager, parent=None
-    ):
+    def __init__(self, Session: sessionmaker, plugin_manager: PluginManager, parent=None):
         super().__init__(parent)
         self.setWindowTitle("PDF Parsing Troubleshooter")
         self.resize(800, 600)
@@ -294,9 +275,7 @@ class ParseTestDialog(QDialog):
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
         file_filter = "Supported Files (*.csv *.pdf *.xlsx);;All Files (*)"
-        fpath, _ = QFileDialog.getOpenFileName(
-            self, "Select a File", settings.import_dir, file_filter, options=options
-        )
+        fpath, _ = QFileDialog.getOpenFileName(self, "Select a File", settings.import_dir, file_filter, options=options)
         return Path(fpath).resolve() if fpath else None
 
     def display_output(self, text: str):
@@ -385,9 +364,7 @@ class ParseTestDialog(QDialog):
                 return
 
             # Return the statement object
-            statement = parse_any(
-                self.Session, self.plugin_manager, fpath, hard_fail=False
-            )
+            statement = parse_any(self.Session, self.plugin_manager, fpath, hard_fail=False)
 
             # Display results
             self.output_display.clear()

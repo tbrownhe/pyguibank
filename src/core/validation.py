@@ -7,12 +7,12 @@ from typing import Any, Callable, Optional, Union
 from loguru import logger
 
 
-### Exceptions
+# Exceptions
 class ValidationError(Exception):
     pass
 
 
-### Data structures
+# Data structures
 @dataclass
 class Transaction:
     transaction_date: datetime
@@ -30,13 +30,9 @@ class Transaction:
         """
         errors = []
         if not isinstance(self.transaction_date, datetime):
-            errors.append(
-                f"transaction_date must be datetime, got {type(self.transaction_date).__name__}"
-            )
+            errors.append(f"transaction_date must be datetime, got {type(self.transaction_date).__name__}")
         if not isinstance(self.posting_date, datetime):
-            errors.append(
-                f"posting_date must be datetime, got {type(self.posting_date).__name__}"
-            )
+            errors.append(f"posting_date must be datetime, got {type(self.posting_date).__name__}")
         if not isinstance(self.amount, float):
             errors.append(f"amount must be float, got {type(self.amount).__name__}")
         if not isinstance(self.desc, str):
@@ -44,20 +40,14 @@ class Transaction:
         if not self.desc:
             errors.append("desc cannot be empty")
         if self.balance is not None and not isinstance(self.balance, float):
-            errors.append(
-                f"balance must be float or None, got {type(self.balance).__name__}"
-            )
+            errors.append(f"balance must be float or None, got {type(self.balance).__name__}")
         if self.md5hash is not None and not isinstance(self.md5hash, str):
-            errors.append(
-                f"md5hash must be str or None, got {type(self.md5hash).__name__}"
-            )
+            errors.append(f"md5hash must be str or None, got {type(self.md5hash).__name__}")
         if errors:
             raise TypeError("\n".join(errors))
 
     @staticmethod
-    def sort_and_compute_balances(
-        transactions: list["Transaction"], start_balance: float
-    ) -> list["Transaction"]:
+    def sort_and_compute_balances(transactions: list["Transaction"], start_balance: float) -> list["Transaction"]:
         """
         Sorts transactions by posting date and computes running balances.
         Note the sorted() method is stable and preserves transaction order
@@ -88,16 +78,13 @@ class Transaction:
         return sorted_transactions
 
     @staticmethod
-    def hash_transactions(
-        account_id: int, transactions: list["Transaction"]
-    ) -> list["Transaction"]:
+    def hash_transactions(account_id: int, transactions: list["Transaction"]) -> list["Transaction"]:
         """
         Generates and appends MD5 hashes for the transactions.
         """
         if any(not isinstance(t.balance, float) for t in transactions):
             raise ValueError(
-                "All transactions must have valid balances to hash."
-                " Run the sort_and_compute_balances() method."
+                "All transactions must have valid balances to hash. Run the sort_and_compute_balances() method."
             )
 
         md5hash_set = set()
@@ -121,9 +108,7 @@ class Transaction:
                     md5hash_set.add(md5hash)
                     break
 
-                logger.warning(
-                    f"Hash collision detected for transaction '{transaction.desc}'. Retrying..."
-                )
+                logger.warning(f"Hash collision detected for transaction '{transaction.desc}'. Retrying...")
                 attempt += 1
 
             transaction.md5hash = md5hash
@@ -145,13 +130,9 @@ class Transaction:
         rows = []
         for t in transactions:
             if not isinstance(t.balance, float):
-                raise ValueError(
-                    f"Transaction {t.desc} is missing a balance and cannot be inserted."
-                )
+                raise ValueError(f"Transaction {t.desc} is missing a balance and cannot be inserted.")
             if not isinstance(t.md5hash, str):
-                raise ValueError(
-                    f"Transaction {t.desc} is missing an MD5 hash and cannot be inserted."
-                )
+                raise ValueError(f"Transaction {t.desc} is missing an MD5 hash and cannot be inserted.")
             rows.append(
                 {
                     "StatementID": statement_id,
@@ -171,9 +152,7 @@ class Transaction:
         Validates that all transactions have valid balances.
         """
         errors = [
-            f"Invalid balance for transaction: {t.desc}"
-            for t in transactions
-            if not isinstance(t.balance, float)
+            f"Invalid balance for transaction: {t.desc}" for t in transactions if not isinstance(t.balance, float)
         ]
         return errors
 
@@ -223,35 +202,21 @@ class Account:
         """
         errors = []
         if not isinstance(self.account_num, str):
-            errors.append(
-                f"account_num must be str, got {type(self.account_num).__name__}"
-            )
+            errors.append(f"account_num must be str, got {type(self.account_num).__name__}")
         if not isinstance(self.start_balance, float):
-            errors.append(
-                f"start_balance must be float, got {type(self.start_balance).__name__}"
-            )
+            errors.append(f"start_balance must be float, got {type(self.start_balance).__name__}")
         if not isinstance(self.end_balance, float):
-            errors.append(
-                f"end_balance must be float, got {type(self.end_balance).__name__}"
-            )
+            errors.append(f"end_balance must be float, got {type(self.end_balance).__name__}")
         if not isinstance(self.transactions, list):
-            errors.append(
-                f"transactions must be list, got {type(self.transactions).__name__}"
-            )
+            errors.append(f"transactions must be list, got {type(self.transactions).__name__}")
         if not all(isinstance(tx, Transaction) for tx in self.transactions):
             errors.append("All items in transactions must be instances of Transaction")
         if self.account_id is not None and not isinstance(self.account_id, int):
-            errors.append(
-                f"account_id must be int or None, got {type(self.account_id).__name__}"
-            )
+            errors.append(f"account_id must be int or None, got {type(self.account_id).__name__}")
         if self.account_name is not None and not isinstance(self.account_name, str):
-            errors.append(
-                f"account_name must be str or None, got {type(self.account_name).__name__}"
-            )
+            errors.append(f"account_name must be str or None, got {type(self.account_name).__name__}")
         if self.statement_id is not None and not isinstance(self.statement_id, int):
-            errors.append(
-                f"statement_id must be int or None, got {type(self.statement_id).__name__}"
-            )
+            errors.append(f"statement_id must be int or None, got {type(self.statement_id).__name__}")
         if errors:
             raise TypeError("\n".join(errors))
 
@@ -259,9 +224,7 @@ class Account:
         """
         Sort transactions and calculate balances within an instance of Account.
         """
-        self.transactions = Transaction.sort_and_compute_balances(
-            self.transactions, self.start_balance
-        )
+        self.transactions = Transaction.sort_and_compute_balances(self.transactions, self.start_balance)
 
     def add_account_info(self, account_id: int, account_name: str):
         if not isinstance(account_id, int):
@@ -272,9 +235,7 @@ class Account:
         self.account_name = account_name
 
     def hash_transactions(self):
-        self.transactions = Transaction.hash_transactions(
-            self.account_id, self.transactions
-        )
+        self.transactions = Transaction.hash_transactions(self.account_id, self.transactions)
 
     def add_statement_id(self, statement_id: int):
         if not isinstance(statement_id, int):
@@ -332,33 +293,21 @@ class Statement:
         """
         errors = []
         if not isinstance(self.start_date, datetime):
-            errors.append(
-                f"start_date must be datetime, got {type(self.start_date).__name__}"
-            )
+            errors.append(f"start_date must be datetime, got {type(self.start_date).__name__}")
         if not isinstance(self.end_date, datetime):
-            errors.append(
-                f"end_date must be datetime, got {type(self.end_date).__name__}"
-            )
+            errors.append(f"end_date must be datetime, got {type(self.end_date).__name__}")
         if not isinstance(self.accounts, list):
             errors.append(f"accounts must be list, got {type(self.accounts).__name__}")
         if not all(isinstance(acc, Account) for acc in self.accounts):
             errors.append("All items in accounts must be instances of Account")
         if self.plugin_name is not None and not isinstance(self.plugin_name, str):
-            errors.append(
-                f"plugin_name must be str or None, got {type(self.plugin_name).__name__}"
-            )
+            errors.append(f"plugin_name must be str or None, got {type(self.plugin_name).__name__}")
         if self.fpath is not None and not isinstance(self.fpath, Path):
-            errors.append(
-                f"fpath must be Path or None, got {type(self.fpath).__name__}"
-            )
+            errors.append(f"fpath must be Path or None, got {type(self.fpath).__name__}")
         if self.dpath is not None and not isinstance(self.dpath, Path):
-            errors.append(
-                f"dpath must be Path or None, got {type(self.dpath).__name__}"
-            )
+            errors.append(f"dpath must be Path or None, got {type(self.dpath).__name__}")
         if self.md5hash is not None and not isinstance(self.md5hash, str):
-            errors.append(
-                f"md5hash must be str or None, got {type(self.md5hash).__name__}"
-            )
+            errors.append(f"md5hash must be str or None, got {type(self.md5hash).__name__}")
         if errors:
             raise TypeError("\n".join(errors))
 
@@ -377,10 +326,7 @@ class Statement:
 
     def set_standard_dpath(self, success_dir: Path):
         if not isinstance(self.accounts[0].account_name, str):
-            raise ValueError(
-                "Account Name must be set on Statement Accounts"
-                " before setting destination path"
-            )
+            raise ValueError("Account Name must be set on Statement Accounts before setting destination path")
         dname = (
             "_".join(
                 [
@@ -424,7 +370,7 @@ class Statement:
         return errors
 
 
-### Validation framework
+# Validation framework
 VALIDATION_CHECKS: list[Callable[[Statement], list[str]]] = []
 
 
@@ -439,7 +385,7 @@ def validate_statement(statement: Statement):
     return errors
 
 
-### Validation functions
+# Validation functions
 def validate_metadata(statement: Statement) -> list[str]:
     return statement.validate_metadata()
 
@@ -451,9 +397,7 @@ def validate_transactions(statement: Statement) -> list[str]:
             # Posting date must be within the satement date range
             if not isinstance(transaction.posting_date, datetime):
                 errors.append(f"Invalid date: {transaction.posting_date}")
-            if (transaction.posting_date < statement.start_date) or (
-                transaction.posting_date > statement.end_date
-            ):
+            if (transaction.posting_date < statement.start_date) or (transaction.posting_date > statement.end_date):
                 errors.append(
                     f"Transaction date {transaction.posting_date} is outside the statement"
                     f" date range {statement.start_date} - {statement.end_date}"
@@ -465,10 +409,7 @@ def validate_transactions(statement: Statement) -> list[str]:
             if transaction.transaction_date:
                 if not isinstance(transaction.transaction_date, datetime):
                     errors.append(f"Invalid date: {transaction.transaction_date}")
-                if (
-                    abs((transaction.transaction_date - transaction.posting_date).days)
-                    > posting_days
-                ):
+                if abs((transaction.transaction_date - transaction.posting_date).days) > posting_days:
                     errors.append(
                         f"Transaction date {transaction.transaction_date} is more than {posting_days} days"
                         f" from posting date {transaction.posting_date}"

@@ -131,7 +131,6 @@ dmypy.json
 
 # Developer
 .flake8
-.pre-commit-config.yaml
 .vscode/
 .DS_Store
 

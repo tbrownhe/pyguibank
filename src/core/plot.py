@@ -1,5 +1,4 @@
 import datetime
-from pathlib import Path
 
 import matplotlib.dates as mdates
 import pandas as pd
@@ -84,9 +83,7 @@ def get_balance_data(session: Session) -> None:
     df["Date"] = pd.to_datetime(df["Date"])
 
     # Make a pivot table containing the EOD balance for each day
-    df_pivot = df.pivot_table(
-        index="Date", columns="AccountName", values="Balance", aggfunc="last"
-    )
+    df_pivot = df.pivot_table(index="Date", columns="AccountName", values="Balance", aggfunc="last")
 
     # Reindex so days are evenly spaced
     full_index = pd.date_range(start=df_pivot.index.min(), end=df_pivot.index.max())
@@ -107,13 +104,9 @@ def get_balance_data(session: Session) -> None:
             case "TangibleAsset":
                 tangible_assets.append(account_name)
                 asset_cols.append(account_name)
-                appreciation_rates[account_name] = query.appreciation_rate(
-                    session, account_name
-                )
+                appreciation_rates[account_name] = query.appreciation_rate(session, account_name)
             case _:
-                raise ValueError(
-                    f"Account {account_name} has unexpected asset type {asset_dict[account_name]}."
-                )
+                raise ValueError(f"Account {account_name} has unexpected asset type {asset_dict[account_name]}.")
 
     # Treat TangibleAssets
     df_pivot = interpolate_and_fill(df_pivot, tangible_assets, appreciation_rates)
@@ -176,9 +169,7 @@ def get_category_data(session: Session) -> None:
     df["Month"] = df["Date"].dt.to_period("M").astype(str)
 
     # Make pivot tables
-    df_pivot = df.pivot_table(
-        index="Month", columns="Category", values="Amount", aggfunc="sum"
-    ).fillna(0)
+    df_pivot = df.pivot_table(index="Month", columns="Category", values="Amount", aggfunc="sum").fillna(0)
 
     # df_pivot.index = df_pivot.index + "-15"
     df_pivot.index = pd.to_datetime(df_pivot.index)

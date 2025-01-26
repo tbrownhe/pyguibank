@@ -64,9 +64,7 @@ class MatplotlibCanvas(FigureCanvas):
         rcParams["savefig.dpi"] = 300
 
         # Connect the resize event
-        self.resize_event_id = self.fig.canvas.mpl_connect(
-            "resize_event", self.on_resize
-        )
+        self.resize_event_id = self.fig.canvas.mpl_connect("resize_event", self.on_resize)
 
         # Connect the legend pick event
         self.fig.canvas.mpl_connect("pick_event", self.on_legend_click)
@@ -93,9 +91,7 @@ class MatplotlibCanvas(FigureCanvas):
         self.axes.yaxis.set_major_locator(MaxNLocator(nbins=max_y_ticks))
 
         # Apply custom Y-axis formatting for accounting format
-        self.axes.yaxis.set_major_formatter(
-            FuncFormatter(lambda x, _: f"-${abs(x):,.0f}" if x < 0 else f"${x:,.0f}")
-        )
+        self.axes.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"-${abs(x):,.0f}" if x < 0 else f"${x:,.0f}"))
 
         # Redraw the canvas to apply changes
         self.draw()
@@ -195,9 +191,7 @@ class MatplotlibCanvas(FigureCanvas):
 
     def on_mouse_move(self, event):
         if self.legend_dragging and event.inaxes:
-            self.legend.set_bbox_to_anchor(
-                (event.xdata, event.ydata), transform=self.axes.transData
-            )
+            self.legend.set_bbox_to_anchor((event.xdata, event.ydata), transform=self.axes.transData)
             self.draw()
 
 
@@ -284,9 +278,7 @@ class PyGuiBank(QMainWindow):
         file_menu = menubar.addMenu("File")
         file_menu.addAction("Preferences", self.preferences)
         file_menu.addAction("Open Database", self.open_db)
-        file_menu.addAction(
-            "Export Database Configuration", self.export_init_statement_types
-        )
+        file_menu.addAction("Export Database Configuration", self.export_init_statement_types)
         file_menu.addAction("Export Account Configuration", self.export_init_accounts)
 
         # Plugins Menu
@@ -321,16 +313,10 @@ class PyGuiBank(QMainWindow):
 
         # Categorize Menu
         categorize_menu = menubar.addMenu("Categorize")
-        categorize_menu.addAction(
-            "Uncategorized Transactions", self.categorize_uncategorized
-        )
+        categorize_menu.addAction("Uncategorized Transactions", self.categorize_uncategorized)
         categorize_menu.addAction("Unverified Transactions", self.categorize_unverified)
-        categorize_menu.addAction(
-            "Train Pipeline for Testing", self.train_pipeline_test
-        )
-        categorize_menu.addAction(
-            "Train Pipeline for Deployment", self.train_pipeline_save
-        )
+        categorize_menu.addAction("Train Pipeline for Testing", self.train_pipeline_test)
+        categorize_menu.addAction("Train Pipeline for Deployment", self.train_pipeline_save)
 
         # Help Menu
         help_menu = menubar.addMenu("Help")
@@ -340,20 +326,19 @@ class PyGuiBank(QMainWindow):
             lambda: check_for_client_updates(manual=True, parent=self),
         )
 
-        ##################
-        # CENTRAL WIDGET #
-        ##################
+        # CENTRAL WIDGET
+
         # Create the main layout and central widget
         central_widget = QWidget(self)
         self.grid_layout = QGridLayout(central_widget)
         self.setCentralWidget(central_widget)
 
-        ### Create the latest balances table view
+        # Create the latest balances table view
         self.table_view = QTableView()
         self.table_view.setSortingEnabled(True)
         self.grid_layout.addWidget(self.table_view, 0, 0, 6, 1)
 
-        ### Create balance history control group
+        # Create balance history control group
         balance_controls_layout = QGridLayout()
 
         # Add account name selection
@@ -386,9 +371,7 @@ class PyGuiBank(QMainWindow):
         balance_controls_layout.addWidget(balance_smoothing_label, row, 0, 1, 1)
         self.balance_smoothing_input = QLineEdit("0")
         self.balance_smoothing_input.setPlaceholderText("Enter number of days")
-        self.balance_smoothing_input.editingFinished.connect(
-            lambda: self.validate_int(self.balance_smoothing_input, 0)
-        )
+        self.balance_smoothing_input.editingFinished.connect(lambda: self.validate_int(self.balance_smoothing_input, 0))
         balance_controls_layout.addWidget(self.balance_smoothing_input, row, 1, 1, 1)
         row += 1
 
@@ -397,9 +380,7 @@ class PyGuiBank(QMainWindow):
         balance_controls_layout.addWidget(balance_years_label, row, 0, 1, 1)
         self.balance_years_input = QLineEdit("10")
         self.balance_years_input.setPlaceholderText("Enter number of years")
-        self.balance_years_input.editingFinished.connect(
-            lambda: self.validate_float(self.balance_years_input, 10)
-        )
+        self.balance_years_input.editingFinished.connect(lambda: self.validate_float(self.balance_years_input, 10))
         balance_controls_layout.addWidget(self.balance_years_input, row, 1, 1, 1)
         row += 1
 
@@ -414,11 +395,9 @@ class PyGuiBank(QMainWindow):
         balance_controls_group.adjustSize()
         max_width = int(0.7 * balance_controls_group.sizeHint().width())
         balance_controls_group.setMaximumWidth(max_width)
-        self.grid_layout.addWidget(
-            balance_controls_group, 0, 1, 3, 1, alignment=Qt.AlignTop
-        )
+        self.grid_layout.addWidget(balance_controls_group, 0, 1, 3, 1, alignment=Qt.AlignTop)
 
-        ### Create Category Spending control group
+        # Create Category Spending control group
         category_controls_layout = QGridLayout()
 
         # Add category selection
@@ -462,9 +441,7 @@ class PyGuiBank(QMainWindow):
         category_controls_layout.addWidget(category_years_label, row, 0, 1, 1)
         self.category_years_input = QLineEdit("10")
         self.category_years_input.setPlaceholderText("Enter number of years")
-        self.category_years_input.editingFinished.connect(
-            lambda: self.validate_float(self.category_years_input, 10)
-        )
+        self.category_years_input.editingFinished.connect(lambda: self.validate_float(self.category_years_input, 10))
         category_controls_layout.addWidget(self.category_years_input, row, 1, 1, 1)
         row += 1
 
@@ -479,11 +456,9 @@ class PyGuiBank(QMainWindow):
         category_controls_group.adjustSize()
         max_width = int(0.7 * category_controls_group.sizeHint().width())
         category_controls_group.setMaximumWidth(max_width)
-        self.grid_layout.addWidget(
-            category_controls_group, 3, 1, 3, 1, alignment=Qt.AlignTop
-        )
+        self.grid_layout.addWidget(category_controls_group, 3, 1, 3, 1, alignment=Qt.AlignTop)
 
-        ### Add balance history chart
+        # Add balance history chart
         self.balance_canvas = MatplotlibCanvas(self, width=7, height=5)
         balance_toolbar = NavigationToolbar(self.balance_canvas, self)
 
@@ -496,7 +471,7 @@ class PyGuiBank(QMainWindow):
         balance_chart_group.adjustSize()
         self.grid_layout.addWidget(balance_chart_group, 0, 2, 3, 1)
 
-        ### Add category spending chart
+        # Add category spending chart
         self.category_canvas = MatplotlibCanvas(self, width=7, height=5)
         category_toolbar = NavigationToolbar(self.category_canvas, self)
 
@@ -532,9 +507,7 @@ class PyGuiBank(QMainWindow):
 
         # Create layout
         layout = QVBoxLayout(dialog)
-        label = QLabel(
-            "An unexpected error occurred. You can review the details below:"
-        )
+        label = QLabel("An unexpected error occurred. You can review the details below:")
         layout.addWidget(label)
 
         # Create text edit for exception traceback
@@ -589,9 +562,7 @@ class PyGuiBank(QMainWindow):
         self.plugin_update_thread.update_complete.connect(self.handle_plugin_update)
         self.plugin_update_thread.start()
 
-    def handle_plugin_update(
-        self, success: bool, message: str, plugin_manager: PluginManager
-    ):
+    def handle_plugin_update(self, success: bool, message: str, plugin_manager: PluginManager):
         if success:
             self.plugin_manager = plugin_manager
             if message:
@@ -613,9 +584,7 @@ class PyGuiBank(QMainWindow):
             # QMessageBox.critical(self, "Client Update Failed", message)
             logger.error(f"Client update failed: {message}")
 
-    #########################
-    ### MENUBAR FUNCTIONS ###
-    #########################
+    # MENUBAR FUNCTIONS
     def about(self):
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Information)
@@ -731,7 +700,7 @@ class PyGuiBank(QMainWindow):
         if fpath.parents[0] == settings.success_dir:
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Warning)
-            msg_box.setText(f"Cannot import statements from the SUCCESS folder.")
+            msg_box.setText("Cannot import statements from the SUCCESS folder.")
             msg_box.setWindowTitle("Protected Folder")
             msg_box.setStandardButtons(QMessageBox.Ok)
             msg_box.exec_()
@@ -767,9 +736,7 @@ class PyGuiBank(QMainWindow):
             if balance_dialog.exec_() != QDialog.Accepted:
                 continue
 
-            insert_dialog = InsertTransactionDialog(
-                self.Session, account_name=account_name, close_account=True
-            )
+            insert_dialog = InsertTransactionDialog(self.Session, account_name=account_name, close_account=True)
             if insert_dialog.exec_() == QDialog.Accepted:
                 # Update all GUI elements
                 with self.Session() as session:
@@ -779,11 +746,7 @@ class PyGuiBank(QMainWindow):
         QMessageBox.information(
             self,
             "Search Complete",
-            (
-                "No additional discrepancies found."
-                if count > 0
-                else "No discrepancies found."
-            ),
+            ("No additional discrepancies found." if count > 0 else "No discrepancies found."),
         )
 
     def plot_balances(self):
@@ -856,9 +819,7 @@ class PyGuiBank(QMainWindow):
         # Train and save pipeline
         learn.train_pipeline_save(df, model_path, amount=False)
 
-        QMessageBox.information(
-            self, "Pipeline Saved", "Trained pipeline has been saved successfully."
-        )
+        QMessageBox.information(self, "Pipeline Saved", "Trained pipeline has been saved successfully.")
 
         # Save new pipeline path to config
         settings.model_path = model_path
@@ -876,9 +837,7 @@ class PyGuiBank(QMainWindow):
             )
             return
         with self.Session() as session:
-            categorize.transactions(
-                session, settings.model_path, unverified=True, uncategorized=True
-            )
+            categorize.transactions(session, settings.model_path, unverified=True, uncategorized=True)
             self.update_main_gui(session)
         QMessageBox.information(
             self,
@@ -898,9 +857,7 @@ class PyGuiBank(QMainWindow):
             )
             return
         with self.Session() as session:
-            categorize.transactions(
-                session, settings.model_path, unverified=True, uncategorized=False
-            )
+            categorize.transactions(session, settings.model_path, unverified=True, uncategorized=False)
             self.update_main_gui(session)
         QMessageBox.information(
             self,
@@ -908,9 +865,8 @@ class PyGuiBank(QMainWindow):
             "Succesfully categorized all unverified transactions",
         )
 
-    ################################
-    ### CENTRAL WIDGET FUNCTIONS ###
-    ################################
+    # CENTRAL WIDGET FUNCTIONS
+
     def update_balance_history_button(self):
         with self.Session() as session:
             self.update_balance_history_chart(session)
@@ -954,9 +910,7 @@ class PyGuiBank(QMainWindow):
     def update_balances_table(self, session: Session):
         # Fetch data for the table
         data = query.latest_balances(session)
-        df_balances = pd.DataFrame(
-            data, columns=["AccountName", "LatestBalance", "LatestDate"]
-        )
+        df_balances = pd.DataFrame(data, columns=["AccountName", "LatestBalance", "LatestDate"])
 
         # Update the table contents
         table_model = PandasModel(df_balances)
@@ -967,13 +921,8 @@ class PyGuiBank(QMainWindow):
         self.table_view.sortByColumn(1, Qt.DescendingOrder)
 
         # Fix the table width
-        total_width = sum(
-            self.table_view.columnWidth(i)
-            for i in range(self.table_view.model().columnCount())
-        )
-        vertical_scrollbar_width = (
-            self.table_view.verticalScrollBar().sizeHint().width()
-        )
+        total_width = sum(self.table_view.columnWidth(i) for i in range(self.table_view.model().columnCount()))
+        vertical_scrollbar_width = self.table_view.verticalScrollBar().sizeHint().width()
         table_width = total_width + vertical_scrollbar_width + 30
         self.table_view.setFixedWidth(table_width)
 
@@ -1009,13 +958,9 @@ class PyGuiBank(QMainWindow):
             # Update based on previous checked/unchecked state
             self.update_checklist(list_widget, initial_checked + items)
 
-    def initialize_checklist(
-        self, list_widget: QListWidget, checked: list[str], unchecked: list[str]
-    ):
+    def initialize_checklist(self, list_widget: QListWidget, checked: list[str], unchecked: list[str]):
         list_widget.clear()
-        for name, state in [(name, Qt.Checked) for name in checked] + [
-            (name, Qt.Unchecked) for name in unchecked
-        ]:
+        for name, state in [(name, Qt.Checked) for name in checked] + [(name, Qt.Unchecked) for name in unchecked]:
             item = QListWidgetItem(name)
             item.setCheckState(state)
             list_widget.addItem(item)
@@ -1027,22 +972,14 @@ class PyGuiBank(QMainWindow):
         for name in names:
             item = QListWidgetItem(name)
             # Preserve checked/unchecked state; default new items to checked
-            item.setCheckState(
-                Qt.Checked
-                if name in checked
-                else Qt.Unchecked if name in unchecked else Qt.Checked
-            )
+            item.setCheckState(Qt.Checked if name in checked else Qt.Unchecked if name in unchecked else Qt.Checked)
             list_widget.addItem(item)
 
-    def get_checked_items(
-        self, list_widget: QListWidget
-    ) -> tuple[list[str], list[str]]:
+    def get_checked_items(self, list_widget: QListWidget) -> tuple[list[str], list[str]]:
         checked, unchecked = [], []
         for index in range(list_widget.count()):
             item = list_widget.item(index)
-            (checked if item.checkState() == Qt.Checked else unchecked).append(
-                item.text()
-            )
+            (checked if item.checkState() == Qt.Checked else unchecked).append(item.text())
         return checked, unchecked
 
     def validate_float(self, line_edit: QLineEdit, fallback: float) -> float:
@@ -1083,9 +1020,7 @@ class PyGuiBank(QMainWindow):
             df = df.rolling(window=smoothing_days, min_periods=1).mean()
 
         # Plot selected account data
-        filtered_accounts = [
-            acct for acct in df.columns.values if acct in selected_accounts
-        ]
+        filtered_accounts = [acct for acct in df.columns.values if acct in selected_accounts]
         self.balance_canvas.plot(
             df,
             filtered_accounts,

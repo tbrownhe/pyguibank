@@ -56,7 +56,7 @@ def get_statement_dates(transactions: list[tuple]) -> list[datetime]:
 
 
 def parse(
-    sheets: dict[str, list[list]]
+    sheets: dict[str, list[list]],
 ) -> tuple[list[datetime], dict[str, list[tuple]]]:
     """
     Parse FedLoan Servicing statement .xlsx

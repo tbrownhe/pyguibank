@@ -75,9 +75,7 @@ class Parser(IParser):
         """
         logger.trace("Attempting to parse dates from text.")
         try:
-            pattern = re.compile(
-                r"Transactions between (\d{2}/\d{2}/\d{4}) - (\d{2}/\d{2}/\d{4})"
-            )
+            pattern = re.compile(r"Transactions between (\d{2}/\d{2}/\d{4}) - (\d{2}/\d{2}/\d{4})")
             result = pattern.search(self.reader.text_simple)
             self.start_date = datetime.strptime(result.group(1), self.HEADER_DATE)
             self.end_date = datetime.strptime(result.group(2), self.HEADER_DATE)
@@ -114,17 +112,13 @@ class Parser(IParser):
         try:
             self.get_statement_balances()
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract balances for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract balances for account {account_num}: {e}")
 
         # Parse transactions
         try:
             transactions = self.parse_transaction_lines()
         except Exception as e:
-            raise ValueError(
-                f"Failed to parse transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to parse transactions for account {account_num}: {e}")
 
         return Account(
             account_num=account_num,
@@ -170,10 +164,7 @@ class Parser(IParser):
         def column_names(lines: list[str]):
             # Get the column headers
             for i, line in enumerate(lines):
-                if all(
-                    word in line
-                    for word in ["Date", "Description", "Principal", "Total"]
-                ):
+                if all(word in line for word in ["Date", "Description", "Principal", "Total"]):
                     return i, line.split()
             raise ValueError("Column header not found in statement")
 

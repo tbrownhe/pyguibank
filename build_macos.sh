@@ -47,7 +47,7 @@ pyinstaller \
     --hidden-import=openpyxl.cell._writer \
     --add-data "assets:assets" \
     --icon "assets/pyguibank.png" \
-    "$SRC_DIR/main.py" || error_exit "Failed to build the executable."    
+    "$SRC_DIR/main.py" || error_exit "Failed to build the executable."
 
 # PyInstaller splash screen not supported on macos
 

@@ -23,9 +23,7 @@ class Parser(IParser):
     COMPANY = "Oregon Community Credit Union"
     STATEMENT_TYPE = "Checking & Savings Monthly Statement"
     SEARCH_STRING = "oregon community credit union&&membernumber"
-    INSTRUCTIONS = (
-        "Login to https://myoccu.org/ and download the PDF statement for your account."
-    )
+    INSTRUCTIONS = "Login to https://myoccu.org/ and download the PDF statement for your account."
 
     # Parsing constants
     FROM_DATE = re.compile(r"FROM \d{2}/\d{2}/\d{2}")
@@ -121,9 +119,7 @@ class Parser(IParser):
         end_date_str = self.extract_from_annotations(page, "TO_DATE")
         self.start_date = datetime.strptime(start_date_str, self.HEADER_DATE)
         self.end_date = datetime.strptime(end_date_str, self.HEADER_DATE)
-        logger.trace(
-            f"Parsed dates from annotations: {self.start_date} to {self.end_date}"
-        )
+        logger.trace(f"Parsed dates from annotations: {self.start_date} to {self.end_date}")
 
     def extract_from_annotations(self, page, pattern: str) -> str:
         """
@@ -164,20 +160,14 @@ class Parser(IParser):
 
         # Determine line indices for each section
         i_sav, sav_line = find_param_in_line(self.lines, sections["savings"])
-        i_chk, chk_line = find_param_in_line(
-            self.lines, sections["checking"], start=i_sav + 1
-        )
+        i_chk, chk_line = find_param_in_line(self.lines, sections["checking"], start=i_sav + 1)
 
         i_other = (
             find_line_startswith(self.lines, sections["other"], start=i_chk + 1)[0]
             if sections["other"] in self.text
             else float("inf")
         )
-        i_loan = (
-            find_param_in_line(self.lines, sections["loan"])[0]
-            if sections["loan"] in self.text
-            else float("inf")
-        )
+        i_loan = find_param_in_line(self.lines, sections["loan"])[0] if sections["loan"] in self.text else float("inf")
 
         # Determine the maximum valid index
         i_max = min(i_other, i_loan, len(self.lines))
@@ -196,10 +186,7 @@ class Parser(IParser):
 
         # Create accounts
         account_dict = {account_chk: lines_chk, account_sav: lines_sav}
-        accounts = [
-            self.extract_account(account_num, lines)
-            for account_num, lines in account_dict.items()
-        ]
+        accounts = [self.extract_account(account_num, lines) for account_num, lines in account_dict.items()]
 
         return accounts
 
@@ -221,25 +208,19 @@ class Parser(IParser):
         try:
             start_balance, end_balance = self.get_statement_balances(lines)
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract balances for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract balances for account {account_num}: {e}")
 
         # Extract transaction lines
         try:
             transaction_lines = self.get_transaction_lines(lines)
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract transactions for account {account_num}: {e}")
 
         # Parse transactions
         try:
             transactions = self.parse_transaction_lines(transaction_lines)
         except Exception as e:
-            raise ValueError(
-                f"Failed to parse transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to parse transactions for account {account_num}: {e}")
 
         # Return the Account dataclass
         return Account(
@@ -274,16 +255,12 @@ class Parser(IParser):
                 balances[pattern] = convert_amount_to_float(balance_str)
                 logger.trace(f"Extracted {pattern}: {balances[pattern]}")
             except ValueError as e:
-                logger.warning(
-                    f"Failed to extract balance for pattern '{pattern}': {e}"
-                )
+                logger.warning(f"Failed to extract balance for pattern '{pattern}': {e}")
 
         # Ensure both balances are found
         if len(balances) != len(patterns):
             missing = [p for p in patterns if p not in balances]
-            raise ValueError(
-                f"Could not extract balances for patterns: {', '.join(missing)}"
-            )
+            raise ValueError(f"Could not extract balances for patterns: {', '.join(missing)}")
 
         return balances["Previous Balance"], balances["Ending Balance"]
 

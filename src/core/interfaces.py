@@ -27,8 +27,7 @@ class IParser(Protocol):
 
     def parse(self, input_data: Any) -> Statement:
         raise ValidationError(
-            "All children of IParser must override the parse() method"
-            " and return type validation.Statement"
+            "All children of IParser must override the parse() method and return type validation.Statement"
         )
 
 
@@ -39,9 +38,7 @@ def class_variables(cls):
     return [
         name
         for name in dir(cls)
-        if not callable(getattr(cls, name))
-        and not name.startswith("_")
-        and isinstance(name, str)
+        if not callable(getattr(cls, name)) and not name.startswith("_") and isinstance(name, str)
     ]
 
 
@@ -53,11 +50,6 @@ def validate_parser(ParserClass, required_variables):
     for var_name in required_variables:
         value = getattr(ParserClass, var_name, None)
         if not isinstance(value, str) or not value.strip():
-            errors.append(
-                f"Variable '{var_name}' is missing or invalid (value: {value!r})"
-            )
+            errors.append(f"Variable '{var_name}' is missing or invalid (value: {value!r})")
     if errors:
-        raise ValueError(
-            f"Validation errors in parser '{ParserClass.__name__}':\n"
-            + "\n".join(errors)
-        )
+        raise ValueError(f"Validation errors in parser '{ParserClass.__name__}':\n" + "\n".join(errors))

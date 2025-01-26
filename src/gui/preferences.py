@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from loguru import logger
+from pydantic import ValidationError
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QCheckBox,
@@ -14,7 +15,7 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QVBoxLayout,
 )
-from pydantic import ValidationError
+
 from core.settings import AppSettings, restore_defaults, save_settings, settings
 
 
@@ -62,7 +63,7 @@ class PreferencesDialog(QDialog):
     def add_fields(self):
         """Dynamically generate input fields for AppSettings attributes."""
         for field_name, field_info in settings.model_fields.items():
-            field_type = field_info.annotation
+            # field_type = field_info.annotation
             description = field_info.description or field_name
             current_value = getattr(settings, field_name)
 
@@ -84,18 +85,12 @@ class PreferencesDialog(QDialog):
                 line_edit = QLineEdit(str(current_value))
                 self.grid_layout.addWidget(line_edit, self.row, 1)
                 select_button = QPushButton("Select...")
-                field_metadata = (
-                    AppSettings.model_fields[field_name].json_schema_extra or {}
-                )
+                field_metadata = AppSettings.model_fields[field_name].json_schema_extra or {}
                 file_type = field_metadata.get("file_type", None)
                 if file_type:
-                    select_button.clicked.connect(
-                        lambda _, le=line_edit, ft=file_type: self.select_file(le, ft)
-                    )
+                    select_button.clicked.connect(lambda _, le=line_edit, ft=file_type: self.select_file(le, ft))
                 else:
-                    select_button.clicked.connect(
-                        lambda _, le=line_edit: self.select_directory(le)
-                    )
+                    select_button.clicked.connect(lambda _, le=line_edit: self.select_directory(le))
                 self.grid_layout.addWidget(select_button, self.row, 2)
                 self.fields[field_name] = line_edit
             else:
@@ -110,7 +105,7 @@ class PreferencesDialog(QDialog):
         """Open a file dialog to select a file path."""
         try:
             default_path = str(Path(line_edit.text()).resolve())
-        except:
+        except Exception:
             default_path = ""
         fpath, _ = QFileDialog.getSaveFileName(
             self,
@@ -126,11 +121,9 @@ class PreferencesDialog(QDialog):
         """Open a file dialog to select a path."""
         try:
             default_path = str(Path(line_edit.text()).resolve())
-        except:
+        except Exception:
             default_path = ""
-        selected_path = QFileDialog.getExistingDirectory(
-            self, "Select Directory", default_path
-        )
+        selected_path = QFileDialog.getExistingDirectory(self, "Select Directory", default_path)
         if selected_path:
             line_edit.setText(selected_path)
 
@@ -175,15 +168,11 @@ class PreferencesDialog(QDialog):
             # Save the config.json
             save_settings(settings)
 
-            QMessageBox.information(
-                self, "Preferences Saved", "Preferences saved successfully."
-            )
+            QMessageBox.information(self, "Preferences Saved", "Preferences saved successfully.")
             self.accept()
         except ValidationError as e:
             # Display validation errors to the user
-            error_message = "\n".join(
-                f"{err['loc'][0]}: {err['msg']}" for err in e.errors()
-            )
+            error_message = "\n".join(f"{err['loc'][0]}: {err['msg']}" for err in e.errors())
             QMessageBox.critical(
                 self,
                 "Validation Error",

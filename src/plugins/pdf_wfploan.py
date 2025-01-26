@@ -115,25 +115,19 @@ class Parser(IParser):
         try:
             self.start_balance, self.end_balance = self.get_statement_balances()
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract balances for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract balances for account {account_num}: {e}")
 
         # Extract transaction lines
         try:
             transaction_lines = self.get_transaction_lines()
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract transactions for account {account_num}: {e}")
 
         # Parse transactions
         try:
             transactions = self.parse_transaction_lines(transaction_lines)
         except Exception as e:
-            raise ValueError(
-                f"Failed to parse transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to parse transactions for account {account_num}: {e}")
 
         # Return the Account dataclass
         return Account(
@@ -172,16 +166,12 @@ class Parser(IParser):
                 balances[pattern] = -convert_amount_to_float(balance_str)
                 logger.trace(f"Extracted {pattern}: {balances[pattern]}")
             except ValueError as e:
-                logger.warning(
-                    f"Failed to extract balance for pattern '{pattern}': {e}"
-                )
+                logger.warning(f"Failed to extract balance for pattern '{pattern}': {e}")
 
         # Ensure both balances are found
         if len(balances) != len(patterns):
             missing = [p for p in patterns if p not in balances]
-            raise ValueError(
-                f"Could not extract balances for patterns: {', '.join(missing)}"
-            )
+            raise ValueError(f"Could not extract balances for patterns: {', '.join(missing)}")
 
         return balances[patterns[0]], balances[patterns[1]]
 
@@ -201,9 +191,7 @@ class Parser(IParser):
 
         return transaction_lines
 
-    def parse_transaction_lines(
-        self, transaction_lines: list[str]
-    ) -> list[Transaction]:
+    def parse_transaction_lines(self, transaction_lines: list[str]) -> list[Transaction]:
         """
         Converts the raw transaction text into an organized list of Transaction objects.
 

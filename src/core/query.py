@@ -3,17 +3,16 @@ from datetime import datetime
 from typing import Any, Optional
 
 from loguru import logger
-from sqlalchemy import Float, cast, select
+from sqlalchemy import Float
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-from sqlalchemy.sql import asc, distinct, func, or_, select, text
+from sqlalchemy.sql import asc, cast, distinct, func, or_, select, text
 
 from core.orm import (
     AccountNumbers,
     Accounts,
     AccountTypes,
     BaseModel,
-    Plugins,
     Statements,
     Transactions,
 )
@@ -53,10 +52,7 @@ def accounts_table(session: Session) -> list[dict]:
 
     # Fetch all data
     data = [
-        {
-            column.get("name", "Unknown"): value
-            for column, value in zip(query.column_descriptions, row)
-        }
+        {column.get("name", "Unknown"): value for column, value in zip(query.column_descriptions, row)}
         for row in query.all()
     ]
 
@@ -77,11 +73,7 @@ def account_id_of_account_name(session: Session, account_name: str) -> int:
     Raises:
         KeyError: If the account number is not found.
     """
-    account_id = (
-        session.query(Accounts.AccountID)
-        .filter(Accounts.AccountName == account_name)
-        .one_or_none()
-    )
+    account_id = session.query(Accounts.AccountID).filter(Accounts.AccountName == account_name).one_or_none()
 
     if account_id is None:
         raise KeyError(f"{account_name} not found in AccountNumbers.AccountNumber")
@@ -108,10 +100,7 @@ def account_numbers_table(session: Session) -> list[dict]:
 
     # Fetch all data
     data = [
-        {
-            column.get("name", "Unknown"): value
-            for column, value in zip(query.column_descriptions, row)
-        }
+        {column.get("name", "Unknown"): value for column, value in zip(query.column_descriptions, row)}
         for row in query.all()
     ]
 
@@ -133,9 +122,7 @@ def account_id_of_account_number(session: Session, account_num: str) -> int:
         KeyError: If the account number is not found.
     """
     account_number = (
-        session.query(AccountNumbers.AccountID)
-        .filter(AccountNumbers.AccountNumber == account_num)
-        .one_or_none()
+        session.query(AccountNumbers.AccountID).filter(AccountNumbers.AccountNumber == account_num).one_or_none()
     )
 
     if account_number is None:
@@ -159,9 +146,7 @@ def account_type_id(session: Session, account_type: str) -> int:
         KeyError: If no account type is found with the given name.
     """
     account_type_entry = (
-        session.query(AccountTypes.AccountTypeID)
-        .filter(AccountTypes.AccountType == account_type)
-        .one_or_none()
+        session.query(AccountTypes.AccountTypeID).filter(AccountTypes.AccountType == account_type).one_or_none()
     )
 
     if account_type_entry is None:
@@ -275,11 +260,7 @@ def account_name_of_account_id(session: Session, account_id: int) -> str:
     Raises:
         ValueError: If no account is found with the given AccountID.
     """
-    account = (
-        session.query(Accounts.AccountName)
-        .filter(Accounts.AccountID == account_id)
-        .one_or_none()
-    )
+    account = session.query(Accounts.AccountName).filter(Accounts.AccountID == account_id).one_or_none()
 
     if account is None:
         raise ValueError(f"No Account with AccountID = {account_id}")
@@ -334,10 +315,7 @@ def account_types_table(session: Session) -> list[dict]:
 
     # Fetch all data
     data = [
-        {
-            column.get("name", "Unknown"): value
-            for column, value in zip(query.column_descriptions, row)
-        }
+        {column.get("name", "Unknown"): value for column, value in zip(query.column_descriptions, row)}
         for row in query.all()
     ]
 
@@ -384,30 +362,20 @@ def statement_id_unique(session: Session, account_id: int, md5hash: str) -> int:
     """
     results = (
         session.execute(
-            select(Statements.StatementID).where(
-                Statements.AccountID == account_id, Statements.MD5 == md5hash
-            )
+            select(Statements.StatementID).where(Statements.AccountID == account_id, Statements.MD5 == md5hash)
         )
         .scalars()
         .all()
     )
 
     if len(results) == 0:
-        raise KeyError(
-            "StatementID could not be found for AccountID"
-            f" = {account_id} and MD5 = '{md5hash}'"
-        )
+        raise KeyError(f"StatementID could not be found for AccountID = {account_id} and MD5 = '{md5hash}'")
     if len(results) > 1:
-        raise KeyError(
-            "StatementID is not unique for"
-            f" AccountID = {account_id} and MD5 = '{md5hash}'"
-        )
+        raise KeyError(f"StatementID is not unique for AccountID = {account_id} and MD5 = '{md5hash}'")
     return results[0]
 
 
-def statement_date_ranges(
-    session: Session, months: int = 15
-) -> tuple[list[tuple[str, datetime, datetime]], list[str]]:
+def statement_date_ranges(session: Session, months: int = 15) -> tuple[list[tuple[str, datetime, datetime]], list[str]]:
     """
     Get the list of statement dates joined with account names.
 
@@ -464,11 +432,7 @@ def statements_with_hash(session: Session, md5hash: str) -> list[tuple]:
         list[tuple]: A list of tuples containing StatementID and Filename.
     """
     try:
-        results = (
-            session.query(Statements.StatementID, Statements.Filename)
-            .filter(Statements.MD5 == md5hash)
-            .all()
-        )
+        results = session.query(Statements.StatementID, Statements.Filename).filter(Statements.MD5 == md5hash).all()
         return results
     except SQLAlchemyError as e:
         session.rollback()
@@ -488,9 +452,7 @@ def statements_with_filename(session: Session, filename: str) -> list[tuple]:
     """
     try:
         results = session.execute(
-            select(Statements.StatementID, Statements.Filename).where(
-                Statements.Filename == filename
-            )
+            select(Statements.StatementID, Statements.Filename).where(Statements.Filename == filename)
         ).all()
         return results
     except SQLAlchemyError as e:
@@ -744,9 +706,7 @@ def distinct_categories(session: Session) -> list[str]:
     Returns:
         list[str]: A sorted list of distinct transaction categories.
     """
-    query = session.query(distinct(Transactions.Category)).order_by(
-        asc(Transactions.Category)
-    )
+    query = session.query(distinct(Transactions.Category)).order_by(asc(Transactions.Category))
     data = query.all()
     return [category[0] for category in data]
 
@@ -804,10 +764,7 @@ def insert_rows_carefully(
                 raise
 
     if skip_duplicates and skipped > 0:
-        logger.info(
-            f"Skipped {skipped} duplicate rows while inserting {len(data)} rows"
-            f" into {model.__tablename__}. "
-        )
+        logger.info(f"Skipped {skipped} duplicate rows while inserting {len(data)} rows into {model.__tablename__}. ")
 
 
 def update_db_where(
@@ -834,9 +791,7 @@ def update_db_where(
 
     for update_vals, where_vals in zip(update_list, where_list):
         # Build the WHERE clause dynamically
-        conditions = [
-            getattr(model, col) == val for col, val in zip(where_cols, where_vals)
-        ]
+        conditions = [getattr(model, col) == val for col, val in zip(where_cols, where_vals)]
 
         # Update the rows matching the conditions
         session.query(model).filter(*conditions).update(

@@ -15,9 +15,7 @@ def report(session: Session, dpath: Path, months: int = None):
     df["Month"] = df["Date"].dt.to_period("M").astype(str)
 
     # Make pivot tables
-    df_pivot = df.pivot_table(
-        index="Month", columns="Category", values="Amount", aggfunc="sum"
-    ).fillna(0)
+    df_pivot = df.pivot_table(index="Month", columns="Category", values="Amount", aggfunc="sum").fillna(0)
 
     df_pivot_assets = df.pivot_table(
         index="Month", columns=["Category", "AssetType"], values="Amount", aggfunc="sum"

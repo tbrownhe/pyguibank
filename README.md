@@ -29,7 +29,7 @@ The modules located in src\plugins can be located anywhere. This is designed to 
 2. Copy the `.pyc` files anywhere. They must remain in their respective pdf, csv, xlsx, etc folder, but the `__pycache__` directory is unnecessary.
 3. When calling `PluginManager.preload_plugins(plugin_path)`, ensure `plugin_path` points to the plugins directory.
 4. Even though the `.pyc` files are not located relative to the project directory, they are imported in a way that treats them as if they are located in \src\plugins
-5. In the .db file StatementTypes.EntryPoint column, the location of the plugin is given like `plugins.pdf.capitaloneauto:Parser` where `plugins.pdf.capitaloneauto` is the module name, and `Parser` is the class name to import from the module to parse the incoming data. 
+5. In the .db file StatementTypes.EntryPoint column, the location of the plugin is given like `plugins.pdf.capitaloneauto:Parser` where `plugins.pdf.capitaloneauto` is the module name, and `Parser` is the class name to import from the module to parse the incoming data.
 
 ## Deployment
 1. Run `build_pyguibank.bat`.
@@ -112,4 +112,3 @@ After submitting, check the notarization status:
 c. Staple the Notarization
 Once notarization is successful, staple the notarization ticket to your .dmg:
 `xcrun stapler staple dist/PyGuiBank.dmg`
-

@@ -3,9 +3,8 @@ from pathlib import Path
 import requests
 from loguru import logger
 from packaging import version
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import QApplication, QMessageBox, QProgressDialog
-from PyQt5.QtCore import QThread, pyqtSignal
 
 from core.settings import settings
 from core.utils import open_file_in_os
@@ -100,9 +99,7 @@ def check_for_client_updates(manual=False, parent=None):
     """
     try:
         installers = get_client_installers()
-        platform_installers = [
-            i for i in installers if i["platform"] == settings.platform
-        ]
+        platform_installers = [i for i in installers if i["platform"] == settings.platform]
 
         if not platform_installers:
             if manual:
@@ -113,23 +110,17 @@ def check_for_client_updates(manual=False, parent=None):
                 )
             return False
 
-        latest_installer = max(
-            platform_installers, key=lambda i: version.parse(i["version"])
-        )
+        latest_installer = max(platform_installers, key=lambda i: version.parse(i["version"]))
 
         if is_newer_version(settings.version, latest_installer["version"]):
             install_latest_client(parent, latest_installer)
         elif manual:
-            QMessageBox.information(
-                parent, "Client Up To Date", "You are already using the latest version."
-            )
+            QMessageBox.information(parent, "Client Up To Date", "You are already using the latest version.")
         return False
     except Exception as e:
         logger.error(f"Error checking for updates: {e}")
         if manual:
-            QMessageBox.critical(
-                parent, "Error", f"An error occurred while checking for updates:\n{e}"
-            )
+            QMessageBox.critical(parent, "Error", f"An error occurred while checking for updates:\n{e}")
         return False
 
 
@@ -148,16 +139,12 @@ def install_latest_client(parent, latest_installer):
 
     if reply == QMessageBox.Yes:
         try:
-            progress_dialog = QProgressDialog(
-                "Downloading update...", "Cancel", 0, 100, parent
-            )
+            progress_dialog = QProgressDialog("Downloading update...", "Cancel", 0, 100, parent)
             progress_dialog.setWindowTitle("Update in Progress")
             progress_dialog.setWindowModality(Qt.WindowModal)
             progress_dialog.setMinimumDuration(0)
 
-            installer_path = download_client_installer(
-                latest_installer, progress_dialog
-            )
+            installer_path = download_client_installer(latest_installer, progress_dialog)
             progress_dialog.close()
 
             response = QMessageBox.question(
@@ -210,9 +197,7 @@ class ClientUpdateThread(QThread):
         try:
             # Get the list of installers for the user's platform
             installers = get_client_installers()
-            platform_installers = [
-                i for i in installers if i["platform"] == settings.platform
-            ]
+            platform_installers = [i for i in installers if i["platform"] == settings.platform]
 
             # Return if there are no installers available
             if not platform_installers:
@@ -220,9 +205,7 @@ class ClientUpdateThread(QThread):
                 return
 
             # Determine if the latest installer is later than the currently installed verison
-            latest_installer = max(
-                platform_installers, key=lambda i: version.parse(i["version"])
-            )
+            latest_installer = max(platform_installers, key=lambda i: version.parse(i["version"]))
             if is_newer_version(settings.version, latest_installer["version"]):
                 self.update_available.emit(True, latest_installer, "Update Available")
             else:

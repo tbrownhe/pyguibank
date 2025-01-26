@@ -32,9 +32,7 @@ from core.validation import Transaction, ValidationError
 
 
 class InsertTransactionDialog(QDialog):
-    def __init__(
-        self, Session: sessionmaker, account_name="", close_account=False, parent=None
-    ):
+    def __init__(self, Session: sessionmaker, account_name="", close_account=False, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Insert Transaction")
         self.setGeometry(100, 100, 400, 200)
@@ -55,9 +53,7 @@ class InsertTransactionDialog(QDialog):
         # Labels for latest balance info
         self.latest_balance_value = QLineEdit("$0.00")
         self.latest_balance_value.setReadOnly(True)
-        self.latest_balance_value.setStyleSheet(
-            "color: gray; background-color: #f0f0f0;"
-        )
+        self.latest_balance_value.setStyleSheet("color: gray; background-color: #f0f0f0;")
 
         self.latest_date_value = QLineEdit("N/A")
         self.latest_date_value.setReadOnly(True)
@@ -109,9 +105,7 @@ class InsertTransactionDialog(QDialog):
 
             selected_index = -1
             for index, (account_id, account_name) in enumerate(data):
-                self.account_dropdown.addItem(
-                    f"{account_name} (ID: {account_id})", account_id
-                )
+                self.account_dropdown.addItem(f"{account_name} (ID: {account_id})", account_id)
                 if self.account_name and account_name == self.account_name:
                     selected_index = index
 
@@ -137,12 +131,8 @@ class InsertTransactionDialog(QDialog):
 
                 # Handle account closure shortcut
                 if self.close_account:
-                    close_date = datetime.strptime(
-                        latest_date, r"%Y-%m-%d"
-                    ) + timedelta(days=30)
-                    self.date_selector.setDate(
-                        QDate(close_date.year, close_date.month, close_date.day)
-                    )
+                    close_date = datetime.strptime(latest_date, r"%Y-%m-%d") + timedelta(days=30)
+                    self.date_selector.setDate(QDate(close_date.year, close_date.month, close_date.day))
                     self.amount_input.setText(f"{-latest_balance:.2f}")
                     self.description_input.setText("Account Closed Manually")
 
@@ -166,9 +156,7 @@ class InsertTransactionDialog(QDialog):
 
         # Validate inputs
         if not account_id or not amount or not balance or not desc:
-            QMessageBox.warning(
-                self, "Missing Information", "Please fill in all fields."
-            )
+            QMessageBox.warning(self, "Missing Information", "Please fill in all fields.")
             return
 
         # Ensure the amount is a valid number
@@ -231,14 +219,10 @@ class InsertTransactionDialog(QDialog):
         try:
             self.insert_transaction()
 
-            QMessageBox.information(
-                self, "Success", "Transaction has been added successfully."
-            )
+            QMessageBox.information(self, "Success", "Transaction has been added successfully.")
             self.accept()
         except Exception as e:
-            QMessageBox.critical(
-                self, "Error", f"Failed to insert transaction:\n{str(e)}"
-            )
+            QMessageBox.critical(self, "Error", f"Failed to insert transaction:\n{str(e)}")
 
 
 class TransactionTableModel(QAbstractTableModel):
@@ -341,28 +325,16 @@ class RecurringTransactionsDialog(QDialog):
         row += 1
 
         # Clustering options
-        self.include_amount_checkbox = QCheckBox(
-            "Include Amount in Clustering Analysis"
-        )
+        self.include_amount_checkbox = QCheckBox("Include Amount in Clustering Analysis")
         control_layout.addWidget(self.include_amount_checkbox, row, 2, 1, 2)
         row += 1
 
         # Sliders
-        self.eps_slider = self._create_slider(
-            "Cluster Separation (Epsilon)", 1, 200, 50, 100
-        )
-        self.min_samples_slider = self._create_slider(
-            "Min Members per Cluster", 1, 10, 2, 1
-        )
-        self.min_frequency_slider = self._create_slider(
-            "Min Interval (days)", 1, 30, 3, 1
-        )
-        self.max_interval_slider = self._create_slider(
-            "Max Interval (days)", 1, 100, 35, 1, show_inf=True
-        )
-        self.variance_slider = self._create_slider(
-            "Max Amount Variance (%)", 0, 300, 100, 1, show_inf=True
-        )
+        self.eps_slider = self._create_slider("Cluster Separation (Epsilon)", 1, 200, 50, 100)
+        self.min_samples_slider = self._create_slider("Min Members per Cluster", 1, 10, 2, 1)
+        self.min_frequency_slider = self._create_slider("Min Interval (days)", 1, 30, 3, 1)
+        self.max_interval_slider = self._create_slider("Max Interval (days)", 1, 100, 35, 1, show_inf=True)
+        self.variance_slider = self._create_slider("Max Amount Variance (%)", 0, 300, 100, 1, show_inf=True)
 
         sliders = [
             self.eps_slider,
@@ -407,9 +379,7 @@ class RecurringTransactionsDialog(QDialog):
 
         self.setLayout(main_layout)
 
-    def _create_slider(
-        self, label, min_val, max_val, default_val, divide_by, show_inf=False
-    ):
+    def _create_slider(self, label, min_val, max_val, default_val, divide_by, show_inf=False):
         precision = int(math.ceil(math.log10(divide_by)))
         slider_label = QLabel(f"{label}: {default_val / divide_by:.{precision}f}")
         slider_label.setAlignment(Qt.AlignRight)
@@ -470,9 +440,7 @@ class RecurringTransactionsDialog(QDialog):
         self.table.setRowCount(len(df))
         for row_index, row in df.iterrows():
             self.table.setItem(row_index, 0, QTableWidgetItem(row["AccountName"]))
-            self.table.setItem(
-                row_index, 1, QTableWidgetItem(row["Date"].strftime("%Y-%m-%d"))
-            )
+            self.table.setItem(row_index, 1, QTableWidgetItem(row["Date"].strftime("%Y-%m-%d")))
             self.table.setItem(row_index, 2, QTableWidgetItem(f"${row['Amount']:.2f}"))
             self.table.setItem(row_index, 3, QTableWidgetItem(str(row["Cluster"])))
             self.table.setItem(row_index, 4, QTableWidgetItem(row["Description"]))
@@ -485,9 +453,7 @@ class RecurringTransactionsDialog(QDialog):
         Save the clustered transactions to a CSV file.
         """
         if self.clustered is None:
-            QMessageBox.warning(
-                self, "No Data", "There are no clustered transactions to save."
-            )
+            QMessageBox.warning(self, "No Data", "There are no clustered transactions to save.")
             return
 
         options = QFileDialog.Options()
@@ -502,8 +468,6 @@ class RecurringTransactionsDialog(QDialog):
             try:
                 # Save the dataframe to CSV
                 self.clustered.to_csv(file_path, index=False)
-                QMessageBox.information(
-                    self, "Success", f"Clustered transactions saved to {file_path}."
-                )
+                QMessageBox.information(self, "Success", f"Clustered transactions saved to {file_path}.")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save file: {e}")

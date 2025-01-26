@@ -30,7 +30,7 @@ elif system == "Darwin":
 
 
 # Then load modules that may depend on env vars and settings
-from gui.main_window import PyGuiBank
+from gui.main_window import PyGuiBank  # noqa: E402
 
 
 def handle_signal(signal, frame):
@@ -55,6 +55,6 @@ if __name__ == "__main__":
         window = PyGuiBank()
         window.show()
         sys.exit(app.exec_())
-    except Exception as e:
+    except Exception:
         logger.exception("An error occurred during application execution")
         sys.exit(1)

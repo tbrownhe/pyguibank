@@ -1,5 +1,6 @@
-from core.utils import PluginManager
 from pathlib import Path
+
+from core.utils import PluginManager
 
 
 def test_plugin_manager(plugin_dir: Path, fpath: Path, entry_point: str):

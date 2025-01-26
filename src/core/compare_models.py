@@ -67,9 +67,7 @@ def factorize_categories(df):
     df["category_id"] = df["Category"].factorize()[0]
 
     # Generate the factorization key
-    category_id_df = (
-        df[["Category", "category_id"]].drop_duplicates().sort_values("category_id")
-    )
+    category_id_df = df[["Category", "category_id"]].drop_duplicates().sort_values("category_id")
 
     return df, category_id_df
 
@@ -220,10 +218,6 @@ def learn():
     labels = df.category_id
 
     train(df)
-
-    # Test a common type of ML model
-    if False:
-        test_logistic_regression(df)
 
     # Convert the categorized transactions into normalized features and labels
     features = vectorize_labeled_data(df)

@@ -65,10 +65,7 @@ def import_init_accounts(session: Session, parent=None):
     # Try to grab from default location
     fpath = settings.accounts_json
     if not fpath.exists():
-        logger.info(
-            f"Account metadata file {fpath} could not be found."
-            " A blank database will be initialized."
-        )
+        logger.info(f"Account metadata file {fpath} could not be found. A blank database will be initialized.")
         return
 
     reply = QMessageBox.question(

@@ -25,18 +25,14 @@ def load_model(model_path: Path) -> tuple[Pipeline, bool]:
     return joblib.load(model_path)
 
 
-def prepare_data(
-    df: pd.DataFrame, amount: bool
-) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+def prepare_data(df: pd.DataFrame, amount: bool) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     # Define numeric and text feature sets
     numeric_features = ["Amount"] if amount else []
     text_features = ["Company", "AccountType", "Description"]
     features = {"text": "TextFeatures", "num": numeric_features}
 
     # Create text features column
-    df[features["text"]] = df[text_features].apply(
-        lambda row: " ".join(row.values.astype(str)), axis=1
-    )
+    df[features["text"]] = df[text_features].apply(lambda row: " ".join(row.values.astype(str)), axis=1)
 
     # Inputs are concatenated text features plus numeric columns
     X = df[[features["text"]] + features["num"]]
@@ -72,9 +68,7 @@ def plot_confusion_matrix(y_test, y_pred, categories, normalized=True) -> None:
     """
     conf_mat = confusion_matrix(y_test, y_pred, labels=categories)
     if normalized:
-        conf_mat_normalized = (
-            100 * conf_mat.astype("float") / conf_mat.sum(axis=1, keepdims=True)
-        )
+        conf_mat_normalized = 100 * conf_mat.astype("float") / conf_mat.sum(axis=1, keepdims=True)
         sns.heatmap(
             conf_mat_normalized,
             annot=True,
@@ -117,9 +111,7 @@ def train_pipeline_test(df: pd.DataFrame, amount=False) -> None:
     pipeline = prepare_pipeline(features)
 
     # Train-Test split
-    x_train, x_test, y_train, y_test = train_test_split(
-        X, Y, test_size=0.3, random_state=0
-    )
+    x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.3, random_state=0)
 
     # Train pipeline
     pipeline.fit(x_train, y_train)
@@ -158,9 +150,7 @@ def confidence_score(pipeline: Pipeline, x_test: pd.DataFrame):
         _type_: _description_
     """
     decision_scores = pipeline.decision_function(x_test)
-    pseudo_probabilities = np.exp(decision_scores) / np.sum(
-        np.exp(decision_scores), axis=1, keepdims=True
-    )
+    pseudo_probabilities = np.exp(decision_scores) / np.sum(np.exp(decision_scores), axis=1, keepdims=True)
     confidence = pseudo_probabilities.max(axis=1)
     return confidence
 

@@ -1,5 +1,6 @@
-from setuptools import setup, find_packages
 import os
+
+from setuptools import find_packages, setup
 
 # Load the version dynamically (if you use a version.py)
 version = {}
@@ -10,7 +11,7 @@ if os.path.exists(version_path):
 
 setup(
     name="PyGuiBank",
-    version=version.get("__version__", "1.0.0"),  # Default to 0.1.0 if not found
+    version=version.get("__version__", "1.0.0"),
     description="Personal finance manager for parsing, analyzing, and visualizing financial statements.",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",

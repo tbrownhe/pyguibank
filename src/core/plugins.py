@@ -176,10 +176,7 @@ def sync_plugins(local_plugins: list[dict], server_plugins: list[dict]):
                 (lp for lp in local_plugins if lp["PLUGIN_NAME"] == plugin_name),
                 None,
             )
-            if (
-                local_plugin is None
-                or local_plugin["VERSION"] < server_plugin["VERSION"]
-            ):
+            if local_plugin is None or local_plugin["VERSION"] < server_plugin["VERSION"]:
                 download_plugin(server_plugin["FILENAME"])
                 if local_plugin:
                     delete_local_plugin(local_plugin["FILENAME"])
@@ -219,12 +216,8 @@ class PluginUpdateThread(QThread):
         try:
             updated = check_for_plugin_updates(self.plugin_manager)
             if updated:
-                self.update_complete.emit(
-                    True, "Plugins have been updated.", self.plugin_manager
-                )
+                self.update_complete.emit(True, "Plugins have been updated.", self.plugin_manager)
             else:
                 self.update_complete.emit(True, "", self.plugin_manager)
         except Exception as e:
-            self.update_complete.emit(
-                False, f"Plugin update Failed: {e}", self.plugin_manager
-            )
+            self.update_complete.emit(False, f"Plugin update Failed: {e}", self.plugin_manager)

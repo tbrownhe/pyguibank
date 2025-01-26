@@ -2,7 +2,7 @@ from dataclasses import asdict, is_dataclass
 from datetime import timedelta
 
 import pandas as pd
-from PyQt5.QtCore import QAbstractTableModel, QDate, Qt
+from PyQt5.QtCore import QAbstractTableModel, Qt
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QApplication,
@@ -43,18 +43,14 @@ def get_missing_coverage(Session: sessionmaker, months=12):
 
     # Stack the table so coverage is all in a single column
     df_stacked = (
-        df_missing.stack()
-        .reset_index()
-        .rename(columns={"level_0": "Date", "level_1": "AccountName", 0: "Coverage"})
+        df_missing.stack().reset_index().rename(columns={"level_0": "Date", "level_1": "AccountName", 0: "Coverage"})
     )
 
     # Add a month column
     df_stacked["Month"] = df_stacked["Date"].dt.strftime(r"%Y-%m-01")
 
     # Make a pivot table showing coverage for the first of the month
-    df_pivot = df_stacked.pivot_table(
-        values="Coverage", index="Month", columns="AccountName", aggfunc="first"
-    )
+    df_pivot = df_stacked.pivot_table(values="Coverage", index="Month", columns="AccountName", aggfunc="first")
 
     # Return the last 13 months as a transposed DataFrame
     return df_pivot.tail(months).T.astype(str)
@@ -134,29 +130,15 @@ class CompletenessDialog(QDialog):
         Adjust the size of the dialog and fix the table width based on its contents.
         """
         # Calculate the total width of the table
-        total_column_width = sum(
-            self.table_view.columnWidth(col)
-            for col in range(self.table_model.columnCount())
-        )
-        vertical_scrollbar_width = (
-            self.table_view.verticalScrollBar().sizeHint().width()
-        )
+        total_column_width = sum(self.table_view.columnWidth(col) for col in range(self.table_model.columnCount()))
+        vertical_scrollbar_width = self.table_view.verticalScrollBar().sizeHint().width()
         table_width = total_column_width + vertical_scrollbar_width + 100
 
         # Calculate the total height of the table
-        total_row_height = sum(
-            self.table_view.rowHeight(row) for row in range(self.table_model.rowCount())
-        )
+        total_row_height = sum(self.table_view.rowHeight(row) for row in range(self.table_model.rowCount()))
         horizontal_header_height = self.table_view.horizontalHeader().height()
-        horizontal_scrollbar_height = (
-            self.table_view.horizontalScrollBar().sizeHint().height()
-        )
-        table_height = (
-            total_row_height
-            + horizontal_header_height
-            + horizontal_scrollbar_height
-            + 50
-        )
+        horizontal_scrollbar_height = self.table_view.horizontalScrollBar().sizeHint().height()
+        table_height = total_row_height + horizontal_header_height + horizontal_scrollbar_height + 50
 
         # Get the available screen size
         screen = QApplication.primaryScreen().availableGeometry()

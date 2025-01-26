@@ -82,13 +82,9 @@ class Parser(IParser):
         """
         logger.trace("Attempting to parse dates from text.")
         try:
-            _, dateline = find_line_startswith(
-                self.reader.lines_clean, "Billing Period:"
-            )
+            _, dateline = find_line_startswith(self.reader.lines_clean, "Billing Period:")
             parts = dateline.split(":")[1].split()[0]
-            self.start_date, self.end_date = [
-                datetime.strptime(date, self.HEADER_DATE) for date in parts.split("-")
-            ]
+            self.start_date, self.end_date = [datetime.strptime(date, self.HEADER_DATE) for date in parts.split("-")]
         except Exception as e:
             logger.trace(f"Failed to parse dates from text: {e}")
             raise ValueError(f"Failed to parse statement dates: {e}")
@@ -122,25 +118,19 @@ class Parser(IParser):
         try:
             self.get_statement_balances()
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract balances for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract balances for account {account_num}: {e}")
 
         # Extract transaction lines
         try:
             transaction_lines = self.get_transaction_lines()
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract transactions for account {account_num}: {e}")
 
         # Parse transactions
         try:
             transactions = self.parse_transaction_lines(transaction_lines)
         except Exception as e:
-            raise ValueError(
-                f"Failed to parse transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to parse transactions for account {account_num}: {e}")
 
         return Account(
             account_num=account_num,
@@ -176,9 +166,7 @@ class Parser(IParser):
                 balance = -convert_amount_to_float(balance_str)
                 balances.append(balance)
             except ValueError as e:
-                raise ValueError(
-                    f"Failed to extract balance for pattern '{pattern}': {e}"
-                )
+                raise ValueError(f"Failed to extract balance for pattern '{pattern}': {e}")
 
         if len(balances) != 2:
             raise ValueError("Could not extract both starting and ending balances.")
@@ -258,9 +246,7 @@ class Parser(IParser):
             return " ".join(words)
 
         # Identify indices of potential transaction start lines
-        transaction_indices = [
-            i for i, line in enumerate(lines_clean) if has_date(line)
-        ]
+        transaction_indices = [i for i, line in enumerate(lines_clean) if has_date(line)]
 
         # Process each potential transaction line
         transaction_lines = []
@@ -284,9 +270,7 @@ class Parser(IParser):
 
         return transaction_lines
 
-    def parse_transaction_lines(
-        self, transaction_lines: list[str]
-    ) -> list[Transaction]:
+    def parse_transaction_lines(self, transaction_lines: list[str]) -> list[Transaction]:
         """Convert raw transaction lines into structured data.
 
         Args:
@@ -312,11 +296,7 @@ class Parser(IParser):
                 posting_date = transaction_date
 
             # Extract the first amount-like string
-            i_amount, amount_str = [
-                (i, word)
-                for i, word in enumerate(words)
-                if re.search(self.AMOUNT, word)
-            ][0]
+            i_amount, amount_str = [(i, word) for i, word in enumerate(words) if re.search(self.AMOUNT, word)][0]
             amount = -convert_amount_to_float(amount_str)
 
             # Extract the description

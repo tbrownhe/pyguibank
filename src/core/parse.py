@@ -161,9 +161,7 @@ class BaseRouter(Generic[T]):
             if match_search_string(search_string.lower(), text.lower()):
                 return plugin_name
 
-        logger.error(
-            "Statement type not recognized. Update plugins and ensure metadata is correct."
-        )
+        logger.error("Statement type not recognized. Update plugins and ensure metadata is correct.")
         raise ValueError("Statement type not recognized.")
 
     def extract_statement(self, plugin_name: str, input_data: T) -> Statement:
@@ -182,10 +180,7 @@ class BaseRouter(Generic[T]):
         errors = validate_statement(statement)
         if errors:
             err = "\n".join(errors)
-            logger.error(
-                f"Validation failed for statement imported using"
-                f" parser '{plugin_name}':\n{err}"
-            )
+            logger.error(f"Validation failed for statement imported using parser '{plugin_name}':\n{err}")
 
             # Show validation error dialog
             dialog = ValidationErrorDialog(statement, errors)
@@ -207,9 +202,7 @@ class BaseRouter(Generic[T]):
         """
         result = parser().parse(input_data)
         if not isinstance(result, Statement):
-            raise TypeError(
-                f"{parser.__name__} did not return a Statement. Check its parse() method."
-            )
+            raise TypeError(f"{parser.__name__} did not return a Statement. Check its parse() method.")
         return result
 
 
@@ -313,22 +306,18 @@ class XLSXRouter(BaseRouter):
     def plain_text(self, sheets) -> str:
         """Convert all workbook data to plaintext"""
         text = "\n".join(
-            "\n".join(", ".join(str(cell) for cell in row if cell) for row in sheet)
-            for sheet in sheets.values()
+            "\n".join(", ".join(str(cell) for cell in row if cell) for row in sheet) for sheet in sheets.values()
         )
         return text
 
     def read_xlsx(self) -> dict[str, list]:
         """Load the worksheets, skipping any blank rows"""
         workbook = openpyxl.load_workbook(self.fpath)
-        sheets = {
-            sheet.title: [row for row in sheet.values if any(row)]
-            for sheet in workbook.worksheets
-        }
+        sheets = {sheet.title: [row for row in sheet.values if any(row)] for sheet in workbook.worksheets}
         return sheets
 
 
-### Router registration framework
+# Router registration framework
 ROUTERS: dict[str, type[BaseRouter]] = {}
 
 
@@ -342,9 +331,7 @@ register_router(".csv", CSVRouter)
 register_router(".xlsx", XLSXRouter)
 
 
-def parse_any(
-    Session: sessionmaker, plugin_manager: PluginManager, fpath: Path, **kwargs
-) -> Statement:
+def parse_any(Session: sessionmaker, plugin_manager: PluginManager, fpath: Path, **kwargs) -> Statement:
     """Routes the file to the appropriate parser based on its suffix.
 
     Args:

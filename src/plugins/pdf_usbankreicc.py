@@ -62,8 +62,7 @@ class Parser(IParser):
             list[str]: Whitespace normalized text extracted from pdf
         """
         pages = [
-            page.extract_text(layout=True, x_tolerance=0.5, y_tolerance=0.5) or ""
-            for page in self.reader.PDF.pages
+            page.extract_text(layout=True, x_tolerance=0.5, y_tolerance=0.5) or "" for page in self.reader.PDF.pages
         ]
         text = "\n".join(pages)
         lines_raw = [line for line in text.splitlines() if line.strip()]
@@ -148,25 +147,19 @@ class Parser(IParser):
         try:
             start_balance, end_balance = self.get_statement_balances()
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract balances for account {self.account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract balances for account {self.account_num}: {e}")
 
         # Extract transaction lines
         try:
             transaction_lines = self.get_transaction_lines()
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract transactions for account {self.account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract transactions for account {self.account_num}: {e}")
 
         # Parse transactions
         try:
             transactions = self.parse_transaction_lines(transaction_lines)
         except Exception as e:
-            raise ValueError(
-                f"Failed to parse transactions for account {self.account_num}: {e}"
-            )
+            raise ValueError(f"Failed to parse transactions for account {self.account_num}: {e}")
 
         # Return the Account dataclass
         return Account(
@@ -202,16 +195,12 @@ class Parser(IParser):
                 balances[pattern] = -convert_amount_to_float(balance_str)
                 logger.trace(f"Extracted {pattern}: {balances[pattern]}")
             except ValueError as e:
-                logger.warning(
-                    f"Failed to extract balance for pattern '{pattern}': {e}"
-                )
+                logger.warning(f"Failed to extract balance for pattern '{pattern}': {e}")
 
         # Ensure both balances are found
         if len(balances) != len(patterns):
             missing = [p for p in patterns if p not in balances]
-            raise ValueError(
-                f"Could not extract balances for patterns: {', '.join(missing)}"
-            )
+            raise ValueError(f"Could not extract balances for patterns: {', '.join(missing)}")
 
         return balances[patterns[0]], balances[patterns[1]]
 
@@ -233,9 +222,7 @@ class Parser(IParser):
 
         return transaction_lines
 
-    def parse_transaction_lines(
-        self, transaction_lines: list[str]
-    ) -> list[Transaction]:
+    def parse_transaction_lines(self, transaction_lines: list[str]) -> list[Transaction]:
         """
         Converts the raw transaction text into an organized list of Transaction objects.
 
@@ -255,15 +242,11 @@ class Parser(IParser):
                 raise ValueError(f"Invalid transaction line: {line}")
 
             # Convert leading mm/dd to full datetime
-            posting_date = get_absolute_date(
-                words.pop(0), self.start_date, self.end_date
-            )
+            posting_date = get_absolute_date(words.pop(0), self.start_date, self.end_date)
 
             # If there is a second date, it is the transaction date
             if words and self.DATE_REGEX.search(words[0]):
-                transaction_date = get_absolute_date(
-                    words.pop(0), self.start_date, self.end_date
-                )
+                transaction_date = get_absolute_date(words.pop(0), self.start_date, self.end_date)
             else:
                 # The single date is the posting date
                 transaction_date = posting_date
