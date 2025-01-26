@@ -11,7 +11,7 @@ from core.plugins import load_plugin
 # Define source and destination directories
 SOURCE_DIR = Path("src/plugins")
 DEST_DIR = Path("dist/plugins")
-SERVER_DATA_DIR = Path("../pyguibank-server/data/plugins").resolve()
+SERVER_DATA_DIR = Path("../pyguibank-server/resources/plugins").resolve()
 
 
 def compile_plugins():
