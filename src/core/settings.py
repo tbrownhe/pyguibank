@@ -68,9 +68,10 @@ APPDATA_DIR = (
 APPDATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def load_secret_key():
+def load_secret_key() -> bytes:
     """
-    Retrieve the secret key. If it doesn't exist, generate and store it.
+    Retrieve the secret key used for field encryption.
+    If it doesn't exist, generate and store it.
     """
     key_path = Path.home() / ".pyguibank.key"
     if not key_path.exists():
