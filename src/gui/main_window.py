@@ -42,6 +42,7 @@ from core.client import (
 )
 from core.initialize import initialize_db, initialize_dirs
 from core.plugins import PluginManager, PluginUpdateThread
+from core.send import send_statement
 from core.settings import save_settings, settings
 from core.statements import StatementProcessor
 from core.utils import open_file_in_os
@@ -297,6 +298,7 @@ class PyGuiBank(QMainWindow):
         statements_menu.addAction("Pick File for Import", self.import_one_statement)
         statements_menu.addAction("Completeness Grid", self.statement_matrix)
         statements_menu.addAction("Correct Discrepancies", self.statement_discrepancies)
+        statements_menu.addAction("Send for Plugin Development", self.send_statement)
 
         # Transactions Menu
         transactions_menu = menubar.addMenu("Transactions")
@@ -578,11 +580,15 @@ class PyGuiBank(QMainWindow):
         self.client_update_thread.start()
 
     def handle_client_update(self, success: bool, latest_installer: dict, message: str):
-        if success and latest_installer:
-            install_latest_client(self, latest_installer)
-        else:
+        if not success:
             # QMessageBox.critical(self, "Client Update Failed", message)
             logger.error(f"Client update failed: {message}")
+            return
+
+        if latest_installer:
+            install_latest_client(self, latest_installer)
+        else:
+            logger.info("Client is up to date.")
 
     # MENUBAR FUNCTIONS
     def about(self):
@@ -1062,3 +1068,30 @@ class PyGuiBank(QMainWindow):
             xlabel="Date",
             ylabel="Amount",
         )
+
+    def send_statement(self):
+        # Show file selection dialog
+        options = QFileDialog.Options()
+        options |= QFileDialog.ReadOnly
+        file_types = " ".join(f"*{suffix}" for suffix in self.plugin_manager.suffixes)
+        file_filter = f"Supported Files ({file_types});;All Files (*)"
+        fpath, _ = QFileDialog.getOpenFileName(
+            None,
+            "Select a Statement File to Submit for Plugin Development",
+            str(settings.fail_dir),
+            file_filter,
+            options=options,
+        )
+
+        # Prevent weird things from happening
+        if not fpath:
+            return
+        fpath = Path(fpath).resolve()
+
+        # Get metadata from calling function, for example:
+        metadata = {
+            "filename": fpath.name,
+            "bank_name": "Sample Bank",
+            "issue": "Parsing failed",
+        }
+        send_statement(fpath, metadata)
