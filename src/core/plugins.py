@@ -65,6 +65,9 @@ class PluginManager:
             except Exception as e:
                 logger.error(f"Failed to load {plugin_file}: {e}")
 
+            # Build the set of supported file extensions
+            self.suffixes = sorted(set(plugin["SUFFIX"] for plugin in self.metadata.values()))
+
     def get_parser(self, plugin_name: str):
         """
         Retrieve a specific parser class from the preloaded plugins.
