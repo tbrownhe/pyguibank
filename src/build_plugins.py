@@ -55,8 +55,9 @@ def generate_metadata():
             _, _, metadata = load_plugin(plugin_file)
 
             # Remove any secret sauce
-            if "SEARCH_STRING" in metadata:
-                del metadata["SEARCH_STRING"]
+            for del_key in ["SEARCH_STRING", "INSTRUCTIONS"]:
+                if del_key in metadata:
+                    del metadata[del_key]
 
             # Add the filename
             metadata["FILENAME"] = plugin_file.name
