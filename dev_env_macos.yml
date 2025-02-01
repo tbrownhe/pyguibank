@@ -13,11 +13,13 @@ dependencies:
   - pydantic-settings>=2.7,<3
   - pyqt=5.15
   - python=3.10
-  - python-dotenv
   - scikit-learn=1.5
   - seaborn=0.13
   - sqlalchemy
   - requests>=2.32,<3
+  - pydantic>=2.10,<3
+  - pydantic-settings>=2.7,<3
+  - cryptography>=44.0.0,<45.0.0
   - cffi  # (hidden requirement of pdfplumber)
   - pip:
       - pdfplumber==0.11.4
