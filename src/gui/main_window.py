@@ -49,6 +49,7 @@ from core.utils import open_file_in_os
 from gui.accounts import AppreciationDialog, BalanceCheckDialog, EditAccountsDialog
 from gui.plugins import ParseTestDialog, PluginManagerDialog
 from gui.preferences import PreferencesDialog
+from gui.send import StatementSubmissionDialog
 from gui.statements import CompletenessDialog
 from gui.transactions import InsertTransactionDialog, RecurringTransactionsDialog
 from version import __version__
@@ -1070,28 +1071,7 @@ class PyGuiBank(QMainWindow):
         )
 
     def send_statement(self):
-        # Show file selection dialog
-        options = QFileDialog.Options()
-        options |= QFileDialog.ReadOnly
-        file_types = " ".join(f"*{suffix}" for suffix in self.plugin_manager.suffixes)
-        file_filter = f"Supported Files ({file_types});;All Files (*)"
-        fpath, _ = QFileDialog.getOpenFileName(
-            None,
-            "Select a Statement File to Submit for Plugin Development",
-            str(settings.fail_dir),
-            file_filter,
-            options=options,
-        )
-
-        # Prevent weird things from happening
-        if not fpath:
-            return
-        fpath = Path(fpath).resolve()
-
-        # Get metadata from calling function, for example:
-        metadata = {
-            "filename": fpath.name,
-            "bank_name": "Sample Bank",
-            "issue": "Parsing failed",
-        }
-        send_statement(fpath, metadata)
+        dialog = StatementSubmissionDialog()
+        if dialog.exec_():
+            metadata = dialog.get_metadata()
+            send_statement(metadata, parent=self)

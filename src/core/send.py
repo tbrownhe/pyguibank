@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import time
 from pathlib import Path
 
 import requests
@@ -8,6 +9,8 @@ from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from loguru import logger
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
 from core.settings import settings
 
@@ -47,9 +50,6 @@ def fetch_public_key_hash() -> str:
     """
     logger.info("Fetching server public key hash")
     response = requests.get(f"{settings.server_url}/keys/public-key-hash")
-
-    print(f"Response: {response.status_code}")
-
     if response.status_code == 200:
         return response.json()["hash"]
     else:
@@ -91,7 +91,7 @@ def validate_public_key():
         raise
 
 
-def encrypt_symmetric_key(_symmetric_key: bytes) -> str:
+def encrypt_symmetric_key(_symmetric_key: bytes, progress=None) -> str:
     """Encrypt the symmetric key using the server's public RSA key.
     High security encryption for very small amounts of data.
     Using RSA to encrypt the symmetric key provides the same level of security
@@ -105,6 +105,11 @@ def encrypt_symmetric_key(_symmetric_key: bytes) -> str:
         bytes: Fernet key encrypted using server's RSA key
     """
     # Get the public key. Retry once if there's a problem.
+    if progress:
+        progress.setValue(progress.value() + 1)
+        progress.setLabelText("Validating public key")
+        time.sleep(1)
+
     try:
         public_key = validate_public_key()
     except ValueError:
@@ -118,6 +123,11 @@ def encrypt_symmetric_key(_symmetric_key: bytes) -> str:
         raise
 
     logger.info("Encrypting symmetric key with server public key")
+    if progress:
+        progress.setValue(progress.value() + 1)
+        progress.setLabelText("Encrypting symmetric key with public key")
+        time.sleep(1)
+
     encrypted_key = public_key.encrypt(
         _symmetric_key,
         padding.OAEP(
@@ -131,7 +141,7 @@ def encrypt_symmetric_key(_symmetric_key: bytes) -> str:
     return base64.b64encode(encrypted_key).decode("utf-8")
 
 
-def encrypt_file(fpath: Path) -> tuple[bytes, bytes]:
+def encrypt_file(fpath: Path, progress=None) -> tuple[bytes, bytes]:
     """Encrypt each file with a unique symmetric key.
 
     Args:
@@ -141,30 +151,71 @@ def encrypt_file(fpath: Path) -> tuple[bytes, bytes]:
         tuple[bytes, bytes]: Encrypted data, Encrypted key
     """
     logger.info("Encrypting file with symmetric key")
+    if progress:
+        progress.setValue(progress.value() + 1)
+        progress.setLabelText("Encrypting file with symmetric key")
+        time.sleep(1)
+
     _symmetric_key = Fernet.generate_key()
     cipher = Fernet(_symmetric_key)
     with fpath.open("rb") as f:
         encrypted_file = cipher.encrypt(f.read())
 
     # Encrypt _symmetric_key before returning from this function to ensure hygiene
-    encrypted_key = encrypt_symmetric_key(_symmetric_key)
+    encrypted_key = encrypt_symmetric_key(_symmetric_key, progress=progress)
 
     return encrypted_file, encrypted_key
 
 
-def send_statement(fpath: Path, metadata: dict):
+def send_statement(metadata: dict, parent=None):
     """Encrypts and sends a file to the server backend API.
 
     Args:
         fpath (Path): Statement file to encrypt and send.
     """
+    # Make sure the user really wants this
+    reply = QMessageBox.question(
+        parent,
+        "Confirm Submission",
+        (
+            "Are you sure you want to submit this statement?\n\n"
+            "Once submitted, this file will be securely encrypted"
+            " and sent to PyGuiBank developers."
+        ),
+        QMessageBox.Yes | QMessageBox.No,
+    )
+    if reply != QMessageBox.Yes:
+        logger.info("User cancelled file send.")
+        return
+
+    # Pull out the file path
+    fpath = metadata.get("file_path", None)
+    if not fpath:
+        raise ValueError("No file_path found in metadata")
+    fpath = Path(fpath).resolve()
+
+    # Logging to user
     logger.info(f"Sending {fpath} to server securely")
+    progress = QProgressDialog("Sending File to PyGuiBank Developers", "Cancel", 0, 7, parent)
+    progress.setMinimumWidth(400)
+    progress.setWindowTitle("Using End-to-End Encryption")
+    progress.setWindowModality(Qt.WindowModal)
+    progress.setMinimumDuration(0)
+    progress.setValue(1)
+    progress.show()
+    QApplication.processEvents()
+    time.sleep(1)
+
     try:
         # Encrypt data and key
-        encrypted_file, encrypted_key = encrypt_file(fpath)
+        encrypted_file, encrypted_key = encrypt_file(fpath, progress=progress)
 
         # Send the encrypted file and metadata to the server
-        logger.info("Posting encrypted data to server via https")
+        logger.info("Posting encrypted file to server via https")
+        progress.setValue(progress.value() + 1)
+        progress.setLabelText("Posting encrypted file to server via https")
+        time.sleep(1)
+
         response = requests.post(
             f"{settings.server_url}/statements/submit-statement",
             headers={"Authorization": f"Bearer {settings.api_token}"},
@@ -176,12 +227,32 @@ def send_statement(fpath: Path, metadata: dict):
             },
         )
 
+        progress.setValue(progress.value() + 1)
+        time.sleep(1)
+        progress.close()
+
         # Confirm server received and stored the file
-        message = json.loads(response.json()).get("message", None)
+        message = response.json().get("message", None)
         if message and message == "SUCCESS":
             logger.success(f"Sent {fpath.name} to server")
+            QMessageBox.information(
+                parent,
+                "Statement Sent",
+                "Server confirmed End-to-End encrypted file transfer.",
+            )
         else:
-            raise ValueError(f"Server did not return success: {message}")
+            logger.error(f"Server responded with error: {message}")
+            QMessageBox.critical(
+                parent,
+                "Statement Not Sent",
+                f"Server responded with error: {message}",
+            )
 
     except Exception as e:
         logger.error(f"Failed to send statement to server: {e}")
+        progress.close()
+        QMessageBox.critical(
+            parent,
+            "Statement Sent",
+            "Server confirmed secure transfer.",
+        )
