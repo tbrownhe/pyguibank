@@ -5,16 +5,9 @@ from contextlib import suppress
 from pathlib import Path
 from platform import system
 
-from dotenv import load_dotenv
 from loguru import logger
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
-
-# Load .env file if present
-dotenv_path = Path(__file__).parents[1] / ".env"
-if dotenv_path.exists():
-    load_dotenv(dotenv_path, override=True)
-    logger.info(f"Loaded .env from {dotenv_path}")
 
 # Set PyQt environment variables
 os.environ.setdefault("QT_API", "PyQt5")  # Specify the Qt bindings to use
