@@ -143,6 +143,7 @@ class PluginManagerDialog(QDialog):
 
         self.plugin_manager.load_plugins()
         self.update_table()
+        resize_to_table(self, self.table)
 
 
 class PluginSyncDialog(QDialog):

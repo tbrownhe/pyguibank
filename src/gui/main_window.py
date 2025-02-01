@@ -280,7 +280,6 @@ class PyGuiBank(QMainWindow):
         file_menu = menubar.addMenu("File")
         file_menu.addAction("Preferences", self.preferences)
         file_menu.addAction("Open Database", self.open_db)
-        file_menu.addAction("Export Database Configuration", self.export_init_statement_types)
         file_menu.addAction("Export Account Configuration", self.export_init_accounts)
 
         # Plugins Menu
@@ -610,22 +609,6 @@ class PyGuiBank(QMainWindow):
             self.Session = initialize_db()
             with self.Session() as session:
                 self.update_main_gui(session)
-
-    def export_init_statement_types(self):
-        reply = QMessageBox.question(
-            self,
-            "Export Database Config?",
-            (
-                "This will store the statement search configuration of"
-                f" <pre>{settings.db_path}</pre> so any new databases use the same settings."
-            ),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if reply != QMessageBox.Yes:
-            return
-        with self.Session() as session:
-            config.export_init_statement_types(session)
 
     def export_init_accounts(self):
         reply = QMessageBox.question(
