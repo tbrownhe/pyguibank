@@ -20,6 +20,7 @@ from PyQt5.QtWidgets import (
     QFileDialog,
     QGridLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -27,7 +28,10 @@ from PyQt5.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
+    QSpacerItem,
     QTableView,
+    QTabWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -49,7 +53,7 @@ from gui.preferences import PreferencesDialog
 from gui.send import StatementSubmissionDialog
 from gui.statements import CompletenessDialog
 from gui.transactions import InsertTransactionDialog, RecurringTransactionsDialog
-from version import __version__
+from version import __version__, __year__
 
 
 class MatplotlibCanvas(FigureCanvas):
@@ -113,7 +117,7 @@ class MatplotlibCanvas(FigureCanvas):
             self.axes.text(
                 0.5,
                 0.5,
-                "No data available",
+                "No data selected",
                 transform=self.axes.transAxes,
                 ha="center",
             )
@@ -329,13 +333,25 @@ class PyGuiBank(QMainWindow):
 
         # Create the main layout and central widget
         central_widget = QWidget(self)
-        self.grid_layout = QGridLayout(central_widget)
+        self.main_layout = QHBoxLayout(central_widget)
         self.setCentralWidget(central_widget)
 
         # Create the latest balances table view
         self.table_view = QTableView()
         self.table_view.setSortingEnabled(True)
-        self.grid_layout.addWidget(self.table_view, 0, 0, 6, 1)
+        self.main_layout.addWidget(self.table_view)
+
+        # Create page selector for right panel
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+
+        # Create a QTabWidget to manage pages
+        self.tabs = QTabWidget()
+        self.tabs.setTabPosition(QTabWidget.North)  # Tabs at the top
+
+        # Page 1: Balance History
+        self.page1 = QWidget()
+        page1_layout = QHBoxLayout(self.page1)
 
         # Create balance history control group
         balance_controls_layout = QGridLayout()
@@ -354,7 +370,11 @@ class PyGuiBank(QMainWindow):
 
         # Add checkable accounts list for plot filtering
         self.account_select_list = QListWidget()
+        self.account_select_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         balance_controls_layout.addWidget(self.account_select_list, row, 0, 1, 2)
+
+        # Make the listbox fill all available space
+        balance_controls_layout.setRowStretch(row, 10)
         row += 1
 
         # Connect "Select All" checkbox to toggle function
@@ -387,14 +407,42 @@ class PyGuiBank(QMainWindow):
         balance_filter_button = QPushButton("Update Balance Plot")
         balance_filter_button.clicked.connect(self.update_balance_history_button)
         balance_controls_layout.addWidget(balance_filter_button, row, 0, 1, 2)
+        row += 1
+
+        # Add a spacer to push the widgets to the top
+        bspacer = QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        balance_controls_layout.addItem(bspacer, row, 0, 1, 2)
 
         # Place the QGridLayout in a GroupBox so its max size can be set
-        balance_controls_group = QGroupBox("Balance History Controls")
-        balance_controls_group.setLayout(balance_controls_layout)
-        balance_controls_group.adjustSize()
-        max_width = int(0.7 * balance_controls_group.sizeHint().width())
-        balance_controls_group.setMaximumWidth(max_width)
-        self.grid_layout.addWidget(balance_controls_group, 0, 1, 3, 1, alignment=Qt.AlignTop)
+        self.balance_controls_group = QGroupBox("Balance History Controls")
+        self.balance_controls_group.setLayout(balance_controls_layout)
+
+        # Limit how much the control group can expand laterally
+        max_width = int(0.7 * self.balance_controls_group.sizeHint().width())
+        self.balance_controls_group.setMaximumWidth(max_width)
+
+        page1_layout.addWidget(self.balance_controls_group)
+
+        # Add balance history chart
+        self.balance_canvas = MatplotlibCanvas(self, width=7, height=5)
+        balance_toolbar = NavigationToolbar(self.balance_canvas, self)
+
+        balance_chart_layout = QVBoxLayout()
+        balance_chart_layout.addWidget(balance_toolbar)
+        balance_chart_layout.addWidget(self.balance_canvas)
+
+        balance_chart_group = QGroupBox("Balance History Chart")
+        balance_chart_group.setLayout(balance_chart_layout)
+        balance_chart_group.adjustSize()
+
+        # Set the layouts
+        page1_layout.addWidget(balance_chart_group)
+        self.page1.setLayout(page1_layout)
+        self.tabs.addTab(self.page1, "Balance History")
+
+        # Page 2: Category Spending
+        self.page2 = QWidget()
+        page2_layout = QHBoxLayout(self.page2)
 
         # Create Category Spending control group
         category_controls_layout = QGridLayout()
@@ -413,7 +461,11 @@ class PyGuiBank(QMainWindow):
 
         # Add checkable accounts list for plot filtering
         self.category_select_list = QListWidget()
+        self.category_select_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         category_controls_layout.addWidget(self.category_select_list, row, 0, 1, 2)
+
+        # Make the listbox fill all available space
+        category_controls_layout.setRowStretch(row, 10)
         row += 1
 
         # Connect "Select All" checkbox to toggle function
@@ -448,27 +500,21 @@ class PyGuiBank(QMainWindow):
         category_filter_button = QPushButton("Update Category Plot")
         category_filter_button.clicked.connect(self.update_category_spending_button)
         category_controls_layout.addWidget(category_filter_button, row, 0, 1, 2)
+        row += 1
+
+        # Add a spacer to push the widgets to the top
+        cspacer = QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        category_controls_layout.addItem(cspacer, row, 0, 1, 2)
 
         # Place the QGridLayout in a GroupBox so its max size can be set
-        category_controls_group = QGroupBox("Category Spending Controls")
-        category_controls_group.setLayout(category_controls_layout)
-        category_controls_group.adjustSize()
-        max_width = int(0.7 * category_controls_group.sizeHint().width())
-        category_controls_group.setMaximumWidth(max_width)
-        self.grid_layout.addWidget(category_controls_group, 3, 1, 3, 1, alignment=Qt.AlignTop)
+        self.category_controls_group = QGroupBox("Category Spending Controls")
+        self.category_controls_group.setLayout(category_controls_layout)
 
-        # Add balance history chart
-        self.balance_canvas = MatplotlibCanvas(self, width=7, height=5)
-        balance_toolbar = NavigationToolbar(self.balance_canvas, self)
+        # Limit how much the control group can expand laterally
+        max_width = int(0.7 * self.category_controls_group.sizeHint().width())
+        self.category_controls_group.setMaximumWidth(max_width)
 
-        balance_chart_layout = QVBoxLayout()
-        balance_chart_layout.addWidget(balance_toolbar)
-        balance_chart_layout.addWidget(self.balance_canvas)
-
-        balance_chart_group = QGroupBox("Balance History Chart")
-        balance_chart_group.setLayout(balance_chart_layout)
-        balance_chart_group.adjustSize()
-        self.grid_layout.addWidget(balance_chart_group, 0, 2, 3, 1)
+        page2_layout.addWidget(self.category_controls_group)
 
         # Add category spending chart
         self.category_canvas = MatplotlibCanvas(self, width=7, height=5)
@@ -481,9 +527,15 @@ class PyGuiBank(QMainWindow):
         category_chart_group = QGroupBox("Category Spending Chart")
         category_chart_group.setLayout(category_chart_layout)
         category_chart_group.adjustSize()
-        self.grid_layout.addWidget(category_chart_group, 3, 2, 3, 1)
 
-        self.setCentralWidget(central_widget)
+        # Set the layouts
+        page2_layout.addWidget(category_chart_group)
+        self.page2.setLayout(page2_layout)
+        self.tabs.addTab(self.page2, "Category Spending")
+
+        # Add right panel to the main layout
+        right_layout.addWidget(self.tabs)
+        self.main_layout.addWidget(right_widget)
 
         # INITIALIZE #########################
         self.initialize_all_elements()
@@ -597,7 +649,7 @@ class PyGuiBank(QMainWindow):
     def about(self):
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Information)
-        msg_box.setText(f"PyGuiBank v{__version__}\n© 2024 Tobias Brown-Heft")
+        msg_box.setText(f"PyGuiBank v{__version__}\n© {__year__} Tobias Brown-Heft")
         msg_box.setWindowTitle("About")
         msg_box.setStandardButtons(QMessageBox.Ok)
         msg_box.exec_()

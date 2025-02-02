@@ -296,7 +296,13 @@ class ParseTestDialog(QDialog):
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
         file_filter = "Supported Files (*.csv *.pdf *.xlsx);;All Files (*)"
-        fpath, _ = QFileDialog.getOpenFileName(self, "Select a File", settings.import_dir, file_filter, options=options)
+        fpath, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select a File",
+            str(settings.import_dir),
+            file_filter,
+            options=options,
+        )
         return Path(fpath).resolve() if fpath else None
 
     def display_output(self, text: str):
