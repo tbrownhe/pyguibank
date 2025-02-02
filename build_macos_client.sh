@@ -21,7 +21,6 @@ APP_PATH="$STAGING_DIR/$APP_NAME.app"
 TMP_DMG_PATH="$DIST_DIR/tmp_$DMG_NAME"
 DMG_PATH="$DIST_DIR/$DMG_NAME"
 VOLUME_PATH="/Volumes/$APP_NAME"
-#SERVER_DIR="../pyguibank-server/data/clients/macos"
 
 # Function to handle errors
 error_exit() {

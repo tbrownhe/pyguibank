@@ -9,6 +9,6 @@ REMOTE_HOST="192.168.1.53"
 REMOTE_DIR="/srv/pyguibank-server/resources/"
 
 echo ''
-rsync -avz --progress "$LOCAL_DIR" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR"
+rsync -avz --progress --chmod=F640,D755 "$LOCAL_DIR" "$REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR"
 
 echo "Sync complete!"
