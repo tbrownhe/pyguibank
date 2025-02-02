@@ -5,10 +5,10 @@ from contextlib import suppress
 from pathlib import Path
 from platform import system
 
-from loguru import logger
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 
+from core.logging import logger
 from core.settings import load_settings, save_settings, settings
 from gui.main_window import PyGuiBank
 
