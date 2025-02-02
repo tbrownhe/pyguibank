@@ -162,7 +162,7 @@ class AppSettings(BaseSettings):
         json_schema_extra={"file_type": "Model Files (*.mdl)"},
     )
     plugin_dir: Path = Field(APPDATA_DIR / "plugins", description="Plugins Directory")
-    log_dir: Path = Field(APPDATA_DIR / "logs", description="Logs Directory")
+    log_file: Path = Field(APPDATA_DIR / "logs" / "pyguibank.log", description="Logs Directory")
 
     # Statement imports
     import_dir: Path = Field(
@@ -217,10 +217,18 @@ class AppSettings(BaseSettings):
         """
         # Decrypt encrypted fields and store them as hidden
         sensitive_data = {}
+        success = 0
         for field in cls.sensitive_fields:
             encrypted_value = data.pop(f"encrypted_{field}", None)
             if encrypted_value:
-                sensitive_data[field] = decrypt(encrypted_value)
+                try:
+                    sensitive_data[field] = decrypt(encrypted_value)
+                    success += 1
+                except Exception:
+                    logger.error(f"Failed to decrypt {field}")
+
+        if success > 0:
+            logger.success(f"Decrypted {success} config parameter(s)")
 
         # Validate with defaults to ensure missing fields are populated
         # Ensure any missing fields from config.json are filled with defaults.
@@ -298,9 +306,5 @@ def restore_defaults(save: bool = True) -> AppSettings:
     return defaults
 
 
-# Instantiate the settings object so it's available for import
-settings = load_settings()
-
-# Save the default settings if the file hasn't been created yet.
-if not settings.config_path.exists():
-    save_settings(settings)
+# Instantiate the settings object so it's available to codebase
+settings = AppSettings()

@@ -9,6 +9,16 @@ from loguru import logger
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 
+from core.settings import load_settings, save_settings, settings
+from gui.main_window import PyGuiBank
+
+# Load settings after logging is imported to log any errors
+loaded_settings = load_settings()
+for field in loaded_settings.model_fields.keys():
+    setattr(settings, field, getattr(loaded_settings, field))
+if not settings.config_path.exists():
+    save_settings(settings)
+
 # Set PyQt environment variables
 os.environ.setdefault("QT_API", "PyQt5")  # Specify the Qt bindings to use
 os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"  # Enable HiDPI scaling for PyQt apps
@@ -20,10 +30,6 @@ if system() == "Windows":
 elif system == "Darwin":
     # macOS-specific scaling (already set above for consistency)
     os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
-
-
-# Then load modules that may depend on env vars and settings
-from gui.main_window import PyGuiBank  # noqa: E402
 
 
 def handle_signal(signal, frame):
