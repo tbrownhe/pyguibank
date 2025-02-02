@@ -21,8 +21,8 @@ def get_client_installers() -> list[dict]:
         response = requests.get(f"{settings.server_url}/clients")
         response.raise_for_status()  # Raise an exception for HTTP errors
         return response.json()  # Parse JSON response
-    except requests.RequestException:
-        logger.error("Error fetching client installer list: Unable to establish connection to server.")
+    except requests.RequestException as e:
+        logger.error(f"Error fetching client installer list: {e}")
         raise ConnectionError("Unable to establish connection to server.")
 
 

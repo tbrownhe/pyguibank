@@ -106,8 +106,8 @@ def server_plugin_metadata():
         response.raise_for_status()  # Raise an exception for HTTP errors
         plugins = response.json()  # Parse JSON response
         return plugins
-    except requests.RequestException:
-        logger.error("Error fetching plugin list: Unable to establish connection to server.")
+    except requests.RequestException as e:
+        logger.error(f"Error fetching plugin list: {e}")
         raise ConnectionError("Unable to establish connection to server.")
 
 
