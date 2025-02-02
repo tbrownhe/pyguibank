@@ -1,10 +1,12 @@
 import importlib.util
 import os
+import time
 from pathlib import Path
 
 import requests
 from loguru import logger
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QApplication, QProgressDialog
 
 from core.interfaces import IParser, class_variables, validate_parser
 from core.settings import settings
@@ -105,32 +107,6 @@ def server_plugin_metadata():
         return []
 
 
-def compare_plugins(local_plugins: list[dict], server_plugins: list[dict]):
-    """
-    Compare server plugins with local plugins to determine updates and new plugins.
-
-    Args:
-        server_plugins (list[dict]): Metadata of plugins available on the server.
-        local_plugins (list[dict]): Metadata of plugins available locally.
-
-    Returns:
-        tuple[list[dict], list[dict]]: (new_plugins, updated_plugins)
-    """
-    local_dict = {plugin["PLUGIN_NAME"]: plugin["VERSION"] for plugin in local_plugins}
-
-    new_plugins = []
-    updated_plugins = []
-
-    for plugin in server_plugins:
-        key = plugin["PLUGIN_NAME"]
-        if key not in local_dict:
-            new_plugins.append(plugin)
-        elif plugin["VERSION"] > local_dict[key]:
-            updated_plugins.append(plugin)
-
-    return new_plugins, updated_plugins
-
-
 def download_plugin(plugin_filename: str):
     """
     Downloads a specific plugin from the server.
@@ -163,7 +139,23 @@ def delete_local_plugin(plugin_filename: str):
         raise
 
 
-def sync_plugins(local_plugins: list[dict], server_plugins: list[dict]):
+def compare_plugins(local_plugins: list[dict], server_plugins: list[dict]) -> list[dict]:
+    new_plugins = []
+    obsolete_plugins = []
+    for server_plugin in server_plugins:
+        plugin_name = server_plugin["PLUGIN_NAME"]
+        local_plugin = next(
+            (lp for lp in local_plugins if lp["PLUGIN_NAME"] == plugin_name),
+            None,
+        )
+        if local_plugin is None or local_plugin["VERSION"] < server_plugin["VERSION"]:
+            new_plugins.append(server_plugin)
+            if local_plugin:
+                obsolete_plugins.append(local_plugin)
+    return new_plugins, obsolete_plugins
+
+
+def sync_plugins(local_plugins: list[dict], server_plugins: list[dict], progress=False, parent=None):
     """For each plugin on the server, downloads plugin if missing from local,
     and updates old plugins if they exist. Ignores plugins on user's machine that
     are not on the server in case something weird happens.
@@ -172,24 +164,68 @@ def sync_plugins(local_plugins: list[dict], server_plugins: list[dict]):
         local_plugins (list[dict]): Local plugin metadata
         server_plugins (list[dict]): Remote plugin metadata
     """
-    for server_plugin in server_plugins:
-        plugin_name = server_plugin["PLUGIN_NAME"]
+    new_plugins, obsolete_plugins = compare_plugins(local_plugins, server_plugins)
+
+    if progress:
+        dialog = QProgressDialog(
+            "Updating Plugins",
+            "Cancel",
+            0,
+            len(new_plugins) + len(obsolete_plugins),
+            parent,
+        )
+        dialog.setMinimumWidth(400)
+        dialog.setWindowTitle("Updating Plugins")
+        dialog.setWindowModality(Qt.WindowModal)
+        dialog.setMinimumDuration(100)
+        dialog.setValue(0)
+        dialog.show()
+        QApplication.processEvents()
+
+    for plugin in new_plugins:
+        plugin_name = plugin["PLUGIN_NAME"]
+        dialog.setLabelText(f"Downloading new {plugin_name}")
         try:
-            local_plugin = next(
-                (lp for lp in local_plugins if lp["PLUGIN_NAME"] == plugin_name),
-                None,
-            )
-            if local_plugin is None or local_plugin["VERSION"] < server_plugin["VERSION"]:
-                download_plugin(server_plugin["FILENAME"])
-                if local_plugin:
-                    delete_local_plugin(local_plugin["FILENAME"])
+            download_plugin(plugin["FILENAME"])
+            if progress:
+                dialog.setValue(dialog.value() + 1)
+                QApplication.processEvents()
         except Exception as e:
-            logger.error(f"Failed to sync plugin {plugin_name}: {e}")
+            logger.error(f"Failed to download new plugin {plugin_name}: {e}")
             raise
 
+    for plugin in obsolete_plugins:
+        plugin_name = plugin["PLUGIN_NAME"]
+        dialog.setLabelText(f"Removing obsolete {plugin_name}")
+        try:
+            delete_local_plugin(plugin["FILENAME"])
+            time.sleep(0.2)
+            if progress:
+                dialog.setValue(dialog.value() + 1)
+        except Exception as e:
+            logger.error(f"Failed to remove obsolete plugin {plugin_name}: {e}")
+            raise
 
-def check_for_plugin_updates(plugin_manager: PluginManager) -> bool:
-    """Downloads any new updated plugins to local machine
+    if progress:
+        dialog.close()
+
+
+def get_plugin_lists(plugin_manager: PluginManager) -> tuple[list, list]:
+    """Silently downloads any new updated plugins to local machine
+
+    Args:
+        plugin_manager (PluginManager): PluginManager
+
+    Returns:
+        tuple[list, list]: local_plugins, server_plugins
+    """
+    local_plugins = [plugin for plugin in plugin_manager.metadata.values()]
+    server_plugins = server_plugin_metadata()
+    return local_plugins, server_plugins
+
+
+def check_for_plugin_updates(plugin_manager: PluginManager, parent=None) -> bool:
+    """Silently downloads any new updated plugins to local machine
 
     Args:
         plugin_manager (PluginManager): PluginManager
@@ -199,28 +235,8 @@ def check_for_plugin_updates(plugin_manager: PluginManager) -> bool:
     """
     local_plugins = [plugin for plugin in plugin_manager.metadata.values()]
     server_plugins = server_plugin_metadata()
-    new_plugins, updated_plugins = compare_plugins(local_plugins, server_plugins)
-    if new_plugins or updated_plugins:
-        sync_plugins(local_plugins, server_plugins)
+    new_plugins, _ = compare_plugins(local_plugins, server_plugins)
+    if new_plugins:
+        sync_plugins(local_plugins, server_plugins, progress=True, parent=parent)
         return True
     return False
-
-
-class PluginUpdateThread(QThread):
-    """Checks for plugins in a separate thread"""
-
-    update_complete = pyqtSignal(bool, str, PluginManager)
-
-    def __init__(self, plugin_manager: PluginManager):
-        super().__init__()
-        self.plugin_manager = plugin_manager
-
-    def run(self):
-        try:
-            updated = check_for_plugin_updates(self.plugin_manager)
-            if updated:
-                self.update_complete.emit(True, "Plugins have been updated.", self.plugin_manager)
-            else:
-                self.update_complete.emit(True, "", self.plugin_manager)
-        except Exception as e:
-            self.update_complete.emit(False, f"Plugin update Failed: {e}", self.plugin_manager)

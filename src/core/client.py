@@ -3,7 +3,7 @@ from pathlib import Path
 import requests
 from loguru import logger
 from packaging import version
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QMessageBox, QProgressDialog
 
 from core.settings import settings
@@ -124,51 +124,6 @@ def check_for_client_updates(manual=False, parent=None):
         return False
 
 
-def install_latest_client(parent, latest_installer):
-    reply = QMessageBox.question(
-        parent,
-        "Client Update Available",
-        (
-            f"A new version of the client is available:\n\n"
-            f"Current Version: {settings.version}\n"
-            f"Latest Version: {latest_installer['version']}\n\n"
-            f"Do you want to download and install it now?"
-        ),
-        QMessageBox.Yes | QMessageBox.No,
-    )
-
-    if reply == QMessageBox.Yes:
-        try:
-            progress_dialog = QProgressDialog("Downloading update...", "Cancel", 0, 100, parent)
-            progress_dialog.setWindowTitle("Update in Progress")
-            progress_dialog.setWindowModality(Qt.WindowModal)
-            progress_dialog.setMinimumDuration(0)
-
-            installer_path = download_client_installer(latest_installer, progress_dialog)
-            progress_dialog.close()
-
-            response = QMessageBox.question(
-                parent,
-                "Update Ready",
-                "The installer is ready to launch. The application will close to proceed. Continue?",
-                QMessageBox.Yes | QMessageBox.No,
-            )
-            if response == QMessageBox.Yes:
-                quit_and_update(installer_path)
-            else:
-                QMessageBox.information(
-                    parent,
-                    "Update Canceled",
-                    "The update process has been canceled.",
-                )
-        except Exception as e:
-            QMessageBox.critical(
-                parent,
-                "Update Failed",
-                f"An error occurred while preparing the update:\n{e}",
-            )
-
-
 def quit_and_update(installer_path: Path):
     """
     Launch the installer and cleanly quit the client app.
@@ -184,31 +139,48 @@ def quit_and_update(installer_path: Path):
         logger.error(f"Failed to launch installer: {e}")
 
 
-class ClientUpdateThread(QThread):
-    """Checks for plugins in a separate thread"""
+def install_latest_client(parent, latest_installer):
+    reply = QMessageBox.question(
+        parent,
+        "Client Update Available",
+        (
+            f"A new version of the client is available:\n\n"
+            f"Current Version: {settings.version}\n"
+            f"Latest Version: {latest_installer['version']}\n\n"
+            f"Do you want to download and install it now?"
+        ),
+        QMessageBox.Yes | QMessageBox.No,
+    )
 
-    # Success, latest_installer or {}
-    update_available = pyqtSignal(bool, dict, str)
+    if reply != QMessageBox.Yes:
+        return
 
-    def __init__(self, parent=None):
-        super().__init__()
+    try:
+        progress_dialog = QProgressDialog("Downloading update...", "Cancel", 0, 100, parent)
+        progress_dialog.setWindowTitle("Update in Progress")
+        progress_dialog.setWindowModality(Qt.WindowModal)
+        progress_dialog.setMinimumDuration(0)
 
-    def run(self):
-        try:
-            # Get the list of installers for the user's platform
-            installers = get_client_installers()
-            platform_installers = [i for i in installers if i["platform"] == settings.platform]
+        installer_path = download_client_installer(latest_installer, progress_dialog)
+        progress_dialog.close()
 
-            # Return if there are no installers available
-            if not platform_installers:
-                self.update_available.emit(True, {}, "No Installers Available")
-                return
-
-            # Determine if the latest installer is later than the currently installed verison
-            latest_installer = max(platform_installers, key=lambda i: version.parse(i["version"]))
-            if is_newer_version(settings.version, latest_installer["version"]):
-                self.update_available.emit(True, latest_installer, "Update Available")
-            else:
-                self.update_available.emit(True, {}, "Client up to date")
-        except Exception as e:
-            self.update_available.emit(False, {}, e)
+        response = QMessageBox.question(
+            parent,
+            "Update Ready",
+            "The installer is ready to launch. The application will close to proceed. Continue?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if response == QMessageBox.Yes:
+            quit_and_update(installer_path)
+        else:
+            QMessageBox.information(
+                parent,
+                "Update Canceled",
+                "The update process has been canceled.",
+            )
+    except Exception as e:
+        QMessageBox.critical(
+            parent,
+            "Update Failed",
+            f"An error occurred while preparing the update:\n{e}",
+        )

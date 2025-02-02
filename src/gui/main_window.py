@@ -35,19 +35,16 @@ from PyQt5.QtWidgets import (
 from sqlalchemy.orm import Session
 
 from core import categorize, config, learn, plot, query, reports
-from core.client import (
-    ClientUpdateThread,
-    check_for_client_updates,
-    install_latest_client,
-)
+from core.client import check_for_client_updates, install_latest_client
 from core.initialize import initialize_db, initialize_dirs
-from core.plugins import PluginManager, PluginUpdateThread
+from core.plugins import PluginManager, sync_plugins
 from core.send import send_statement
 from core.settings import save_settings, settings
 from core.statements import StatementProcessor
+from core.threads import ClientUpdateThread, PluginUpdateThread
 from core.utils import open_file_in_os
 from gui.accounts import AppreciationDialog, BalanceCheckDialog, EditAccountsDialog
-from gui.plugins import ParseTestDialog, PluginManagerDialog
+from gui.plugins import ParseTestDialog, PluginManagerDialog, PluginSyncDialog
 from gui.preferences import PreferencesDialog
 from gui.send import StatementSubmissionDialog
 from gui.statements import CompletenessDialog
@@ -553,26 +550,8 @@ class PyGuiBank(QMainWindow):
         with self.Session() as session:
             self.update_main_gui(session)
 
-        # Check for new versions of plugins and clients
-        self.check_for_plugin_updates_async()
+        # Check for new versions of client and plugins
         self.check_for_client_updates_async()
-
-    def check_for_plugin_updates_async(self):
-        self.plugin_update_thread = PluginUpdateThread(
-            self.plugin_manager,
-        )
-        self.plugin_update_thread.update_complete.connect(self.handle_plugin_update)
-        self.plugin_update_thread.start()
-
-    def handle_plugin_update(self, success: bool, message: str, plugin_manager: PluginManager):
-        if success:
-            self.plugin_manager = plugin_manager
-            if message:
-                QMessageBox.information(self, "Plugins Updated", message)
-            logger.info("Plugins are up to date.")
-        else:
-            # QMessageBox.critical(self, "Update Failed", message)
-            logger.error(f"Plugin update failed: {message}")
 
     def check_for_client_updates_async(self):
         self.client_update_thread = ClientUpdateThread()
@@ -581,7 +560,6 @@ class PyGuiBank(QMainWindow):
 
     def handle_client_update(self, success: bool, latest_installer: dict, message: str):
         if not success:
-            # QMessageBox.critical(self, "Client Update Failed", message)
             logger.error(f"Client update failed: {message}")
             return
 
@@ -589,6 +567,31 @@ class PyGuiBank(QMainWindow):
             install_latest_client(self, latest_installer)
         else:
             logger.info("Client is up to date.")
+
+        # Check for plugin update after client check is done
+        self.check_for_plugin_updates_async()
+
+    def check_for_plugin_updates_async(self):
+        self.plugin_update_thread = PluginUpdateThread(
+            self.plugin_manager,
+        )
+        self.plugin_update_thread.update_available.connect(self.handle_plugin_update_available)
+        self.plugin_update_thread.update_complete.connect(self.handle_plugin_update_complete)
+        self.plugin_update_thread.start()
+
+    def handle_plugin_update_available(self, local_plugins: list, server_plugins: list):
+        dialog = PluginSyncDialog(local_plugins, server_plugins, parent=self)
+        if dialog.exec_() == QDialog.Accepted:
+            sync_plugins(local_plugins, server_plugins, progress=True, parent=self)
+            self.plugin_manager.load_plugins()
+        else:
+            logger.info("User declined to sync plugins")
+
+    def handle_plugin_update_complete(self, success: bool, message: str):
+        if success:
+            logger.info("Plugins are up to date.")
+        else:
+            logger.error(f"Plugin update failed: {message}")
 
     # MENUBAR FUNCTIONS
     def about(self):
