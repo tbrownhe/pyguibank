@@ -1,6 +1,5 @@
 import json
 import py_compile
-import shutil
 import sys
 from pathlib import Path
 
@@ -11,12 +10,10 @@ from core.plugins import load_plugin
 # Define source and destination directories
 SOURCE_DIR = Path("src/plugins")
 DEST_DIR = Path("dist/plugins")
-SERVER_DATA_DIR = Path("../pyguibank-server/resources/plugins").resolve()
 
 
 def compile_plugins():
     DEST_DIR.mkdir(parents=True, exist_ok=True)
-    SERVER_DATA_DIR.mkdir(parents=True, exist_ok=True)
     for plugin_file in SOURCE_DIR.glob("*.py"):
         if plugin_file.stem == "__init__":
             continue
@@ -35,7 +32,6 @@ def compile_plugins():
             py_compile.compile(plugin_file, cfile=compiled_path)
 
             # Copy to the server data/plugins directory for deployment
-            shutil.copy2(compiled_path, SERVER_DATA_DIR)
             logger.success(f"Compiled: {plugin_file} -> {compiled_path}")
         except Exception as e:
             logger.error(f"Failed to compile {plugin_file}: {e}")
@@ -47,9 +43,9 @@ def generate_metadata():
     Must be done here since .pyc files must be read by the same version of
     Python they were compiled with.
     """
-    metadata_file = SERVER_DATA_DIR / "plugin_metadata.json"
+    metadata_file = DEST_DIR / "plugin_metadata.json"
     metadata_list = []
-    for plugin_file in SERVER_DATA_DIR.glob("*.pyc"):
+    for plugin_file in DEST_DIR.glob("*.pyc"):
         try:
             # Get the metadata
             _, _, metadata = load_plugin(plugin_file)

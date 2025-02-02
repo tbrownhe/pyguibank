@@ -1,88 +1,137 @@
-; ------------------------------------------------
+# NSIS Script for installing a Python application packed with PyInstaller.
+# NSIS can be installed like `conda install nsis`
 
-; Basic info. Admin is required for installing into Program Files.
-Name "PyGuiBank"
+# ------------------------------------------------
+# Argument Variables
+# Pass version as an argvar like:
+# `makensis -DVERSION="1.2.3" win64_installer.nsi`
 
-; Output file directory relative to this .nsi file. Dir must already exist.
-Outfile "..\dist\pyguibank_version_win64_setup.exe"
+!ifdef VERSION
+  # do nothing
+!else
+  !define VERSION "0.0.0"
+!endif
 
-; RequestExecutionLevel admin
+# ------------------------------------------------
+# Definitions
+# Paths relative to THIS File
+
+!define APP_NAME "PyGuiBank"
+!define SOURCE_DIR "..\build\PyGuiBank\*.*"
+!define EXE_IN_SOURCE "PyGuiBank.exe"
+!define OUTPUT_PATH "..\dist\win64\pyguibank_${VERSION}_win64_setup.exe"
+!define INSTALLER_ICON "..\assets\pyguibank_128px.ico"
+!define COMPANY_NAME "PyGuiBank"
+!define APP_REGKEY "Software\${APP_NAME}"
+!define UNINSTALL_REGKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
+
+# ------------------------------------------------
+# Setup
+
+Name "${APP_NAME} v${VERSION}"
+Outfile "${OUTPUT_PATH}"
+Icon ${INSTALLER_ICON}
+UninstallIcon ${INSTALLER_ICON}
 Unicode True
-InstallDir "$PROGRAMFILES64\PyGuiBank"
+InstallDir "$PROGRAMFILES64\${APP_NAME}"
 
-; Registry key to check for directory so if you install again, it will overwrite the old one automatically
-InstallDirRegKey HKLM "Software\PyGuiBank" "Install_Dir"
+# Check for a previous installation. If found, use the previous install path instead of 'InstallDir'
+InstallDirRegKey HKLM "${APP_REGKEY}" "InstallDir"
 
-
-; Pages
+# ------------------------------------------------
+# Pages
 
 Page components
-
-; The install directory override page is disabled to prevent user from specifying an important directory.
-; Page directory
-
 Page instfiles
-
 UninstPage uninstConfirm
 UninstPage instfiles
 
-; ------------------------------------------------
+# ------------------------------------------------
+# Installation Options
 
-; Installation Options
+Section "${APP_NAME}"
+  # Detect previous installation by checking the registry key
+  ReadRegStr $R0 HKLM "${APP_REGKEY}" "InstallDir"
+  StrCmp $R0 "" new_install found_previous
 
-Section "PyGuiBank" SEC02
-    ; This section contains the main program files
+  found_previous:
+    # Check if the uninstaller exists
+    IfFileExists "$R0\uninstall.exe" uninstall_previous skip_uninstall
+
+  uninstall_previous:
+    ExecWait '"$R0\uninstall.exe" /S'
+
+    # Wait for the uninstaller to finish (max timeout: 10s)
+    Var /GLOBAL timeout
+    StrCpy $timeout 0
+    loop_check:
+      Sleep 500  # Wait 500ms
+      IntOp $timeout $timeout + 1
+      IfFileExists "$R0\uninstall.exe" loop_check
+      IfFileExists "$R0\*.*" loop_check
+      StrCmp $timeout 20 new_install
+
+    MessageBox MB_ICONEXCLAMATION "Uninstallation did not complete in time. Proceeding with new install."
+
+  skip_uninstall:
+    MessageBox MB_ICONEXCLAMATION "Previous version found, but uninstaller is missing!"
+
+  new_install:
+    # Continue with main installation
     SetOutPath $INSTDIR
 
-    ; Output of PyInstaller relative to this .nsi file
-    File /r "..\build\PyGuiBank\*.*"
+    # Copy application files
+    File /r ${SOURCE_DIR}
 
-    ; Write registry data so windows can track the installation and uninstaller
-    WriteRegStr HKLM "SOFTWARE\PyGuiBank" "Install_Dir" "$INSTDIR"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\PyGuiBank" "DisplayName" "PyGuiBank"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\PyGuiBank" "UninstallString" '"$INSTDIR\uninstall.exe"'
-    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\PyGuiBank" "NoModify" 1
-    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\PyGuiBank" "NoRepair" 1
+    # Create the uninstaller
     WriteUninstaller "$INSTDIR\uninstall.exe"
+
+    # Write application-specific registry keys
+    WriteRegStr HKLM "${APP_REGKEY}" "InstallDir" "$INSTDIR"
+
+    # Write uninstall-related registry keys for Windows
+    WriteRegStr HKLM "${UNINSTALL_REGKEY}" "DisplayName" "${APP_NAME}"
+    WriteRegStr HKLM "${UNINSTALL_REGKEY}" "DisplayIcon" "$INSTDIR\uninstall.exe"
+    WriteRegStr HKLM "${UNINSTALL_REGKEY}" "DisplayVersion" "${VERSION}"
+    WriteRegStr HKLM "${UNINSTALL_REGKEY}" "Publisher" "${COMPANY_NAME}"
+    WriteRegStr HKLM "${UNINSTALL_REGKEY}" "InstallLocation" "$INSTDIR"
+    WriteRegStr HKLM "${UNINSTALL_REGKEY}" "UninstallString" "$INSTDIR\uninstall.exe"
+    WriteRegDWORD HKLM "${UNINSTALL_REGKEY}" "NoModify" 1
+    WriteRegDWORD HKLM "${UNINSTALL_REGKEY}" "NoRepair" 1
 
 SectionEnd
 
 Section "Start Menu Shortcuts"
   SetOutPath $INSTDIR
 
-  ; Create Start Menu shortcuts
-  CreateDirectory "$SMPROGRAMS\PyGuiBank"
-  CreateShortcut "$SMPROGRAMS\PyGuiBank\Uninstall.lnk" "$INSTDIR\uninstall.exe"
-  CreateShortcut "$SMPROGRAMS\PyGuiBank\PyGuiBank.lnk" "$INSTDIR\PyGuiBank.exe"
+  # Create Start Menu shortcuts
+  CreateDirectory "$SMPROGRAMS\${APP_NAME}"
+  CreateShortcut "$SMPROGRAMS\${APP_NAME}\Uninstall.lnk" "$INSTDIR\uninstall.exe"
+  CreateShortcut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${EXE_IN_SOURCE}"
 
 SectionEnd
 
 Section "Desktop Shortcut"
   SetOutPath $INSTDIR
 
-  ; Create a desktop shortcut
-  CreateShortcut "$DESKTOP\PyGuiBank.lnk" "$INSTDIR\PyGuiBank.exe"
+  # Create a desktop shortcut
+  CreateShortcut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${EXE_IN_SOURCE}"
 
 SectionEnd
 
-; ------------------------------------------------
-
-; Uninstaller
+# ------------------------------------------------
+# Uninstaller
 
 Section "Uninstall"
+  # Remove registry keys
+  DeleteRegKey HKLM "${APP_REGKEY}"
+  DeleteRegKey HKLM "${UNINSTALL_REGKEY}"
 
-  ; Remove registry keys
-  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\PyGuiBank"
-  DeleteRegKey HKLM "SOFTWARE\PyGuiBank"
+  # Remove shortcuts and start menu folder
+  Delete /REBOOTOK "$DESKTOP\${APP_NAME}.lnk"
+  RMDir /r /REBOOTOK "$SMPROGRAMS\${APP_NAME}"
 
-  SetOutPath $DESKTOP
-
-  ; Remove shortcuts and start menu folder
-  Delete /REBOOTOK "$DESKTOP\PyGuiBank.lnk"
-  RMDir /r /REBOOTOK "$SMPROGRAMS\PyGuiBank"
-
-  ; Remove installation files
-  ; NOTE THE r FLAG IS NOT SAFE IF YOU ALLOW THE USER TO SPECIFY THEIR OWN INSTALL DIR IN Pages
-  RMDir /r /REBOOTOK $INSTDIR
+  # Remove installation files
+  RMDir /r /REBOOTOK "$INSTDIR"
 
 SectionEnd
