@@ -611,14 +611,12 @@ class PyGuiBank(QMainWindow):
         self.client_update_thread.start()
 
     def handle_client_update(self, success: bool, latest_installer: dict, message: str):
-        if not success:
-            logger.error(f"Client update failed: {message}")
-            return
-
-        if latest_installer:
-            install_latest_client(self, latest_installer)
+        if success:
+            logger.info(message)
+            if latest_installer:
+                install_latest_client(self, latest_installer)
         else:
-            logger.info("Client is up to date.")
+            logger.error(message)
 
         # Check for plugin update after client check is done
         self.check_for_plugin_updates_async()
@@ -641,9 +639,9 @@ class PyGuiBank(QMainWindow):
 
     def handle_plugin_update_complete(self, success: bool, message: str):
         if success:
-            logger.info("Plugins are up to date.")
+            logger.info(message)
         else:
-            logger.error(f"Plugin update failed: {message}")
+            logger.error(message)
 
     # MENUBAR FUNCTIONS
     def about(self):

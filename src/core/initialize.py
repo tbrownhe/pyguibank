@@ -44,7 +44,6 @@ def initialize_db(parent=None) -> sessionmaker:
     Returns:
         sessionmaker: Database Session maker
     """
-    print("here", settings.db_path)
     if settings.db_path.exists():
         # Connect to and clean up the existing db
         Session = orm.create_database(settings.db_path)

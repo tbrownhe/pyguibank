@@ -24,7 +24,7 @@ class ClientUpdateThread(QThread):
 
             # Return if there are no installers available
             if not platform_installers:
-                self.update_available.emit(True, {}, "No Installers Available")
+                self.update_available.emit(False, {}, "No client installers available on server")
                 return
 
             # Determine if the latest installer is later than the currently installed verison
@@ -34,7 +34,7 @@ class ClientUpdateThread(QThread):
             else:
                 self.update_available.emit(True, {}, "Client up to date")
         except Exception as e:
-            self.update_available.emit(False, {}, e)
+            self.update_available.emit(False, {}, f"Client update failed: {e}")
 
 
 class PluginUpdateThread(QThread):
@@ -54,6 +54,6 @@ class PluginUpdateThread(QThread):
             if new_plugins:
                 self.update_available.emit(local_plugins, server_plugins)
             else:
-                self.update_complete.emit(True, "")
+                self.update_complete.emit(True, "Plugins are up to date.")
         except Exception as e:
-            self.update_complete.emit(False, f"Plugin update Failed: {e}", self.plugin_manager)
+            self.update_complete.emit(False, f"Plugin update Failed: {e}")

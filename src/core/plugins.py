@@ -57,18 +57,22 @@ class PluginManager:
         self.plugins = {}
         self.metadata = {}
 
+        success = 0
         for plugin_file in settings.plugin_dir.glob("*.pyc"):
             # Retrieve the Parser(Iparser) class from the plugin and store it
             try:
                 plugin_name, ParserClass, metadata = load_plugin(plugin_file)
                 self.plugins[plugin_name] = ParserClass
                 self.metadata[plugin_name] = metadata
-                logger.success(f"Loaded plugin: {plugin_file}")
+                success += 1
             except Exception as e:
                 logger.error(f"Failed to load {plugin_file}: {e}")
 
-            # Build the set of supported file extensions
-            self.suffixes = sorted(set(plugin["SUFFIX"] for plugin in self.metadata.values()))
+        if success > 0:
+            logger.success(f"Loaded {success} plugins")
+
+        # Build the set of supported file extensions
+        self.suffixes = sorted(set(plugin["SUFFIX"] for plugin in self.metadata.values()))
 
     def get_parser(self, plugin_name: str):
         """
@@ -102,9 +106,9 @@ def server_plugin_metadata():
         response.raise_for_status()  # Raise an exception for HTTP errors
         plugins = response.json()  # Parse JSON response
         return plugins
-    except requests.RequestException as e:
-        logger.error(f"Error fetching plugins: {e}")
-        return []
+    except requests.RequestException:
+        logger.error("Error fetching plugin list: Unable to establish connection to server.")
+        raise ConnectionError("Unable to establish connection to server.")
 
 
 def download_plugin(plugin_filename: str):

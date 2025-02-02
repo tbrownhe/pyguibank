@@ -21,9 +21,9 @@ def get_client_installers() -> list[dict]:
         response = requests.get(f"{settings.server_url}/clients")
         response.raise_for_status()  # Raise an exception for HTTP errors
         return response.json()  # Parse JSON response
-    except requests.RequestException as e:
-        logger.error(f"Error fetching client installers: {e}")
-        return []
+    except requests.RequestException:
+        logger.error("Error fetching client installer list: Unable to establish connection to server.")
+        raise ConnectionError("Unable to establish connection to server.")
 
 
 def is_newer_version(local_version, server_version) -> bool:
