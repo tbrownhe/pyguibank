@@ -53,7 +53,7 @@ from gui.preferences import PreferencesDialog
 from gui.send import StatementSubmissionDialog
 from gui.statements import CompletenessDialog
 from gui.transactions import InsertTransactionDialog, RecurringTransactionsDialog
-from version import __version__, __year__
+from version import __developer__, __version__, __year__
 
 
 class MatplotlibCanvas(FigureCanvas):
@@ -647,7 +647,7 @@ class PyGuiBank(QMainWindow):
     def about(self):
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Information)
-        msg_box.setText(f"PyGuiBank v{__version__}\n© {__year__} Tobias Brown-Heft")
+        msg_box.setText(f"PyGuiBank v{__version__}\n© {__year__} {__developer__}")
         msg_box.setWindowTitle("About")
         msg_box.setStandardButtons(QMessageBox.Ok)
         msg_box.exec_()
