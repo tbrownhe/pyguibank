@@ -67,6 +67,17 @@ echo Deploying installer to server
 set SCRIPT_PATH=/mnt/c/Users/tbrow/dev/pyguibank/scripts/deploy_win64_client.sh
 wsl /bin/sh %SCRIPT_PATH%
 
+if ERRORLEVEL 1 (
+    echo ERROR: Failed to transfer installer to server
+    set ERRORS=1
+    goto :error_exit
+)
+
+:: Delete prebuild and build dirs
+echo Deleting temporary build dirs
+RMDIR .\prebuild /S /Q
+RMDIR .\build /S /Q
+
 :: Exit without error
 @echo Script execution completed successfully!
 pause

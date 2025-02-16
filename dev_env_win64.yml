@@ -20,5 +20,6 @@ dependencies:
   - cryptography>=44.0.0,<45.0.0
   - pyinstaller=5.13
   - nsis
+  - psycopg2
   - pip:
       - pdfplumber==0.11.4
