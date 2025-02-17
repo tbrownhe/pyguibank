@@ -396,7 +396,7 @@ class ParseTestDialog(QDialog):
             # Display results
             self.output_display.clear()
             self.display_output(f"File: {statement.fpath}")
-            self.display_output(f"StatementTypeID: {statement.stid}")
+            self.display_output(f"Plugin Name: {statement.plugin_name}")
             self.display_output(f"Start Date: {statement.start_date}")
             self.display_output(f"End Date: {statement.end_date}")
             for account in statement.accounts:
