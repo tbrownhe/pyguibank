@@ -41,6 +41,7 @@ def load_plugin(plugin_file: Path) -> tuple[str, IParser, dict[str, str]]:
 
     # Extract plugin metadata
     metadata = {var: getattr(ParserClass, var) for var in required_variables}
+    metadata["FILENAME"] = plugin_file.name
 
     return plugin_name, ParserClass, metadata
 
