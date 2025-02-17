@@ -61,9 +61,26 @@ class PluginManager:
         for plugin_file in settings.plugin_dir.glob("*.pyc"):
             # Retrieve the Parser(Iparser) class from the plugin and store it
             try:
-                plugin_name, ParserClass, metadata = load_plugin(plugin_file)
-                self.plugins[plugin_name] = ParserClass
-                self.metadata[plugin_name] = metadata
+                plugin_id, ParserClass, metadata = load_plugin(plugin_file)
+
+                # Deal with multiple versions of plugins in the plugin dir
+                duplicate = [
+                    plugin_id
+                    for plugin_id, mdata in self.metadata.items()
+                    if mdata["PLUGIN_NAME"] == metadata["PLUGIN_NAME"]
+                ]
+                if duplicate:
+                    if self.metadata[duplicate[0]]["VERSION"] > metadata["VERSION"]:
+                        # Skip import of the older copy
+                        continue
+                    else:
+                        # Delete the older plugin and continue with import
+                        del self.plugins[duplicate[0]]
+                        del self.metadata[duplicate[0]]
+                        success -= 1
+
+                self.plugins[plugin_id] = ParserClass
+                self.metadata[plugin_id] = metadata
                 success += 1
             except Exception as e:
                 logger.error(f"Failed to load {plugin_file}: {e}")
@@ -74,25 +91,25 @@ class PluginManager:
         # Build the set of supported file extensions
         self.suffixes = sorted(set(plugin["SUFFIX"] for plugin in self.metadata.values()))
 
-    def get_parser(self, plugin_name: str):
+    def get_parser(self, plugin_id: str):
         """
         Retrieve a specific parser class from the preloaded plugins.
         """
-        ParserClass = self.plugins.get(plugin_name)
+        ParserClass = self.plugins.get(plugin_id)
         if not ParserClass:
-            raise ImportError(f"Plugin '{plugin_name}' not loaded.")
+            raise ImportError(f"Plugin '{plugin_id}' not loaded.")
         return ParserClass
 
     def list_plugins(self):
-        for plugin_name, ParserClass in self.plugins.items():
-            print(plugin_name, ParserClass)
+        for plugin_id, ParserClass in self.plugins.items():
+            print(plugin_id, ParserClass)
 
     def list_metadata(self):
         """
         Display validated metadata for all plugins.
         """
-        for plugin_name, metadata in self.metadata.items():
-            print(f"Plugin: {plugin_name}")
+        for plugin_id, metadata in self.metadata.items():
+            print(f"Plugin: {plugin_id}")
             for key, value in metadata.items():
                 print(f"  {key}: {value}")
 
