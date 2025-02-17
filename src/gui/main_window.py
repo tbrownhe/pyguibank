@@ -6,9 +6,11 @@ from pathlib import Path
 import matplotlib.dates as mdates
 import pandas as pd
 from loguru import logger
+from matplotlib import rcParams
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 from PyQt5.QtCore import QAbstractTableModel, Qt
 from PyQt5.QtGui import QColor, QFontMetrics
 from PyQt5.QtWidgets import (
@@ -18,6 +20,7 @@ from PyQt5.QtWidgets import (
     QFileDialog,
     QGridLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -25,36 +28,76 @@ from PyQt5.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
+    QSpacerItem,
     QTableView,
+    QTabWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 from sqlalchemy.orm import Session
 
-from core import categorize, config, learn, orm, plot, query, reports
-from core.client import check_for_client_updates
-from core.initialize import seed_account_types
-from core.plugins import PluginManager
+from core import categorize, config, learn, plot, query, reports
+from core.client import check_for_client_updates, install_latest_client
+from core.initialize import initialize_db, initialize_dirs
+from core.plugins import PluginManager, sync_plugins
+from core.send import send_statement
+from core.settings import save_settings, settings
 from core.statements import StatementProcessor
+from core.threads import ClientUpdateThread, PluginUpdateThread
 from core.utils import open_file_in_os
 from gui.accounts import AppreciationDialog, BalanceCheckDialog, EditAccountsDialog
-from gui.plugins import ParseTestDialog, PluginManagerDialog, check_for_plugin_updates
+from gui.plugins import ParseTestDialog, PluginManagerDialog, PluginSyncDialog
 from gui.preferences import PreferencesDialog
+from gui.send import StatementSubmissionDialog
 from gui.statements import CompletenessDialog
 from gui.transactions import InsertTransactionDialog, RecurringTransactionsDialog
-from version import __version__
+from version import __developer__, __version__, __year__
 
 
 class MatplotlibCanvas(FigureCanvas):
-    def __init__(self, parent=None, width=5, height=4, dpi=100):
+    def __init__(self, parent=None, width=3, height=4, dpi=100):
         self.fig = Figure(figsize=(width, height), dpi=dpi, constrained_layout=True)
         self.axes = self.fig.add_subplot(111)
         super().__init__(self.fig)
         self.setParent(parent)
 
-        # Connect the pick event
+        # Set higher resolution for toolbar exports
+        rcParams["savefig.dpi"] = 300
+
+        # Connect the resize event
+        self.resize_event_id = self.fig.canvas.mpl_connect("resize_event", self.on_resize)
+
+        # Connect the legend pick event
         self.fig.canvas.mpl_connect("pick_event", self.on_legend_click)
+
+        # Connect mouse events for moving the legend
+        self.fig.canvas.mpl_connect("button_press_event", self.on_mouse_press)
+        self.fig.canvas.mpl_connect("button_release_event", self.on_mouse_release)
+        self.fig.canvas.mpl_connect("motion_notify_event", self.on_mouse_move)
+        self.legend_dragging = False
+
+    def on_resize(self, event):
+        # Get the canvas size in pixels
+        width, height = self.get_width_height()
+
+        # Calculate maximum ticks based on canvas size and ticks per pixel
+        max_x_ticks = int(width / 80)
+        max_y_ticks = int(height / 50)
+
+        # Update tick locators dynamically
+        locator = mdates.AutoDateLocator(maxticks=max_x_ticks)
+        formatter = mdates.ConciseDateFormatter(locator)
+        self.axes.xaxis.set_major_locator(locator)
+        self.axes.xaxis.set_major_formatter(formatter)
+        self.axes.yaxis.set_major_locator(MaxNLocator(nbins=max_y_ticks))
+
+        # Apply custom Y-axis formatting for accounting format
+        self.axes.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"-${abs(x):,.0f}" if x < 0 else f"${x:,.0f}"))
+
+        # Redraw the canvas to apply changes
+        self.draw()
 
     def plot(
         self,
@@ -74,7 +117,7 @@ class MatplotlibCanvas(FigureCanvas):
             self.axes.text(
                 0.5,
                 0.5,
-                "No data available",
+                "No data selected",
                 transform=self.axes.transAxes,
                 ha="center",
             )
@@ -106,15 +149,17 @@ class MatplotlibCanvas(FigureCanvas):
         self.axes.set_xlabel(xlabel)
         self.axes.set_ylabel(ylabel)
         self.axes.grid(True)
+
         self.axes.fmt_xdata = lambda x: mdates.num2date(x).strftime(r"%Y-%m-%d")
 
         # Add legend with picking enabled
-        legend = self.axes.legend(loc="upper left", fontsize="xx-small")
+        self.legend = self.axes.legend(loc="upper left", fontsize="x-small")
         hitbox = 5.0
-        for legend_entry in legend.get_lines():
+        for legend_entry in self.legend.get_lines():
             legend_entry.set_picker(hitbox)
 
-        self.draw()
+        # Set consistent tick format. Includes self.draw().
+        self.on_resize(None)
 
     def on_legend_click(self, event):
         # Get the corresponding label
@@ -137,6 +182,19 @@ class MatplotlibCanvas(FigureCanvas):
             legend_entry.set_alpha(1.0 if visible else 0.2)
 
             # Redraw the canvas
+            self.draw()
+
+    def on_mouse_press(self, event):
+        if self.legend and self.legend.contains(event)[0]:
+            self.legend_dragging = True
+
+    def on_mouse_release(self, event):
+        if self.legend_dragging:
+            self.legend_dragging = False
+
+    def on_mouse_move(self, event):
+        if self.legend_dragging and event.inaxes:
+            self.legend.set_bbox_to_anchor((event.xdata, event.ydata), transform=self.axes.transData)
             self.draw()
 
 
@@ -208,7 +266,12 @@ class PyGuiBank(QMainWindow):
         # Maximize to primary screen
         screen = QApplication.primaryScreen()
         geometry = screen.availableGeometry()
-        self.setGeometry(geometry)
+        self.setGeometry(
+            int(0.2 * geometry.width()),
+            int(0.1 * geometry.height()),
+            int(0.6 * geometry.width()),
+            int(0.8 * geometry.height()),
+        )
         self.showMaximized()
 
         # MENU BAR #######################
@@ -218,9 +281,6 @@ class PyGuiBank(QMainWindow):
         file_menu = menubar.addMenu("File")
         file_menu.addAction("Preferences", self.preferences)
         file_menu.addAction("Open Database", self.open_db)
-        file_menu.addAction(
-            "Export Database Configuration", self.export_init_statement_types
-        )
         file_menu.addAction("Export Account Configuration", self.export_init_accounts)
 
         # Plugins Menu
@@ -239,6 +299,7 @@ class PyGuiBank(QMainWindow):
         statements_menu.addAction("Pick File for Import", self.import_one_statement)
         statements_menu.addAction("Completeness Grid", self.statement_matrix)
         statements_menu.addAction("Correct Discrepancies", self.statement_discrepancies)
+        statements_menu.addAction("Send for Plugin Development", self.send_statement)
 
         # Transactions Menu
         transactions_menu = menubar.addMenu("Transactions")
@@ -255,16 +316,10 @@ class PyGuiBank(QMainWindow):
 
         # Categorize Menu
         categorize_menu = menubar.addMenu("Categorize")
-        categorize_menu.addAction(
-            "Uncategorized Transactions", self.categorize_uncategorized
-        )
+        categorize_menu.addAction("Uncategorized Transactions", self.categorize_uncategorized)
         categorize_menu.addAction("Unverified Transactions", self.categorize_unverified)
-        categorize_menu.addAction(
-            "Train Pipeline for Testing", self.train_pipeline_test
-        )
-        categorize_menu.addAction(
-            "Train Pipeline for Deployment", self.train_pipeline_save
-        )
+        categorize_menu.addAction("Train Pipeline for Testing", self.train_pipeline_test)
+        categorize_menu.addAction("Train Pipeline for Deployment", self.train_pipeline_save)
 
         # Help Menu
         help_menu = menubar.addMenu("Help")
@@ -274,20 +329,31 @@ class PyGuiBank(QMainWindow):
             lambda: check_for_client_updates(manual=True, parent=self),
         )
 
-        ##################
-        # CENTRAL WIDGET #
-        ##################
+        # CENTRAL WIDGET
+
         # Create the main layout and central widget
         central_widget = QWidget(self)
-        self.grid_layout = QGridLayout(central_widget)
+        self.main_layout = QHBoxLayout(central_widget)
         self.setCentralWidget(central_widget)
 
-        ### Create the latest balances table view
+        # Create the latest balances table view
         self.table_view = QTableView()
         self.table_view.setSortingEnabled(True)
-        self.grid_layout.addWidget(self.table_view, 0, 0, 6, 1)
+        self.main_layout.addWidget(self.table_view)
 
-        ### Create balance history control group
+        # Create page selector for right panel
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+
+        # Create a QTabWidget to manage pages
+        self.tabs = QTabWidget()
+        self.tabs.setTabPosition(QTabWidget.North)  # Tabs at the top
+
+        # Page 1: Balance History
+        self.page1 = QWidget()
+        page1_layout = QHBoxLayout(self.page1)
+
+        # Create balance history control group
         balance_controls_layout = QGridLayout()
 
         # Add account name selection
@@ -298,13 +364,17 @@ class PyGuiBank(QMainWindow):
 
         # Add "Select All" checkbox
         select_all_accounts_checkbox = QCheckBox("Select All")
-        select_all_accounts_checkbox.setCheckState(Qt.Checked)
+        select_all_accounts_checkbox.setCheckState(Qt.Unchecked)
         balance_controls_layout.addWidget(select_all_accounts_checkbox, row, 0, 1, 2)
         row += 1
 
         # Add checkable accounts list for plot filtering
         self.account_select_list = QListWidget()
+        self.account_select_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         balance_controls_layout.addWidget(self.account_select_list, row, 0, 1, 2)
+
+        # Make the listbox fill all available space
+        balance_controls_layout.setRowStretch(row, 10)
         row += 1
 
         # Connect "Select All" checkbox to toggle function
@@ -320,9 +390,7 @@ class PyGuiBank(QMainWindow):
         balance_controls_layout.addWidget(balance_smoothing_label, row, 0, 1, 1)
         self.balance_smoothing_input = QLineEdit("0")
         self.balance_smoothing_input.setPlaceholderText("Enter number of days")
-        self.balance_smoothing_input.editingFinished.connect(
-            lambda: self.validate_int(self.balance_smoothing_input, 0)
-        )
+        self.balance_smoothing_input.editingFinished.connect(lambda: self.validate_int(self.balance_smoothing_input, 0))
         balance_controls_layout.addWidget(self.balance_smoothing_input, row, 1, 1, 1)
         row += 1
 
@@ -331,9 +399,7 @@ class PyGuiBank(QMainWindow):
         balance_controls_layout.addWidget(balance_years_label, row, 0, 1, 1)
         self.balance_years_input = QLineEdit("10")
         self.balance_years_input.setPlaceholderText("Enter number of years")
-        self.balance_years_input.editingFinished.connect(
-            lambda: self.validate_float(self.balance_years_input, 10)
-        )
+        self.balance_years_input.editingFinished.connect(lambda: self.validate_float(self.balance_years_input, 10))
         balance_controls_layout.addWidget(self.balance_years_input, row, 1, 1, 1)
         row += 1
 
@@ -341,18 +407,44 @@ class PyGuiBank(QMainWindow):
         balance_filter_button = QPushButton("Update Balance Plot")
         balance_filter_button.clicked.connect(self.update_balance_history_button)
         balance_controls_layout.addWidget(balance_filter_button, row, 0, 1, 2)
+        row += 1
+
+        # Add a spacer to push the widgets to the top
+        bspacer = QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        balance_controls_layout.addItem(bspacer, row, 0, 1, 2)
 
         # Place the QGridLayout in a GroupBox so its max size can be set
-        balance_controls_group = QGroupBox("Balance History Controls")
-        balance_controls_group.setLayout(balance_controls_layout)
-        balance_controls_group.adjustSize()
-        max_width = int(0.7 * balance_controls_group.sizeHint().width())
-        balance_controls_group.setMaximumWidth(max_width)
-        self.grid_layout.addWidget(
-            balance_controls_group, 0, 1, 3, 1, alignment=Qt.AlignTop
-        )
+        self.balance_controls_group = QGroupBox("Balance History Controls")
+        self.balance_controls_group.setLayout(balance_controls_layout)
 
-        ### Create Category Spending control group
+        # Limit how much the control group can expand laterally
+        max_width = int(0.7 * self.balance_controls_group.sizeHint().width())
+        self.balance_controls_group.setMaximumWidth(max_width)
+
+        page1_layout.addWidget(self.balance_controls_group)
+
+        # Add balance history chart
+        self.balance_canvas = MatplotlibCanvas(self, width=7, height=5)
+        balance_toolbar = NavigationToolbar(self.balance_canvas, self)
+
+        balance_chart_layout = QVBoxLayout()
+        balance_chart_layout.addWidget(balance_toolbar)
+        balance_chart_layout.addWidget(self.balance_canvas)
+
+        balance_chart_group = QGroupBox("Balance History Chart")
+        balance_chart_group.setLayout(balance_chart_layout)
+        balance_chart_group.adjustSize()
+
+        # Set the layouts
+        page1_layout.addWidget(balance_chart_group)
+        self.page1.setLayout(page1_layout)
+        self.tabs.addTab(self.page1, "Balance History")
+
+        # Page 2: Category Spending
+        self.page2 = QWidget()
+        page2_layout = QHBoxLayout(self.page2)
+
+        # Create Category Spending control group
         category_controls_layout = QGridLayout()
 
         # Add category selection
@@ -363,13 +455,17 @@ class PyGuiBank(QMainWindow):
 
         # Add "Select All" checkbox
         select_all_category_checkbox = QCheckBox("Select All")
-        select_all_category_checkbox.setCheckState(Qt.Checked)
+        select_all_category_checkbox.setCheckState(Qt.Unchecked)
         category_controls_layout.addWidget(select_all_category_checkbox, row, 0, 1, 2)
         row += 1
 
         # Add checkable accounts list for plot filtering
         self.category_select_list = QListWidget()
+        self.category_select_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         category_controls_layout.addWidget(self.category_select_list, row, 0, 1, 2)
+
+        # Make the listbox fill all available space
+        category_controls_layout.setRowStretch(row, 10)
         row += 1
 
         # Connect "Select All" checkbox to toggle function
@@ -396,9 +492,7 @@ class PyGuiBank(QMainWindow):
         category_controls_layout.addWidget(category_years_label, row, 0, 1, 1)
         self.category_years_input = QLineEdit("10")
         self.category_years_input.setPlaceholderText("Enter number of years")
-        self.category_years_input.editingFinished.connect(
-            lambda: self.validate_float(self.category_years_input, 10)
-        )
+        self.category_years_input.editingFinished.connect(lambda: self.validate_float(self.category_years_input, 10))
         category_controls_layout.addWidget(self.category_years_input, row, 1, 1, 1)
         row += 1
 
@@ -406,31 +500,23 @@ class PyGuiBank(QMainWindow):
         category_filter_button = QPushButton("Update Category Plot")
         category_filter_button.clicked.connect(self.update_category_spending_button)
         category_controls_layout.addWidget(category_filter_button, row, 0, 1, 2)
+        row += 1
+
+        # Add a spacer to push the widgets to the top
+        cspacer = QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        category_controls_layout.addItem(cspacer, row, 0, 1, 2)
 
         # Place the QGridLayout in a GroupBox so its max size can be set
-        category_controls_group = QGroupBox("Category Spending Controls")
-        category_controls_group.setLayout(category_controls_layout)
-        category_controls_group.adjustSize()
-        max_width = int(0.7 * category_controls_group.sizeHint().width())
-        category_controls_group.setMaximumWidth(max_width)
-        self.grid_layout.addWidget(
-            category_controls_group, 3, 1, 3, 1, alignment=Qt.AlignTop
-        )
+        self.category_controls_group = QGroupBox("Category Spending Controls")
+        self.category_controls_group.setLayout(category_controls_layout)
 
-        ### Add balance history chart
-        self.balance_canvas = MatplotlibCanvas(self, width=7, height=5)
-        balance_toolbar = NavigationToolbar(self.balance_canvas, self)
+        # Limit how much the control group can expand laterally
+        max_width = int(0.7 * self.category_controls_group.sizeHint().width())
+        self.category_controls_group.setMaximumWidth(max_width)
 
-        balance_chart_layout = QVBoxLayout()
-        balance_chart_layout.addWidget(balance_toolbar)
-        balance_chart_layout.addWidget(self.balance_canvas)
+        page2_layout.addWidget(self.category_controls_group)
 
-        balance_chart_group = QGroupBox("Balance History Chart")
-        balance_chart_group.setLayout(balance_chart_layout)
-        balance_chart_group.adjustSize()
-        self.grid_layout.addWidget(balance_chart_group, 0, 2, 3, 1)
-
-        ### Add category spending chart
+        # Add category spending chart
         self.category_canvas = MatplotlibCanvas(self, width=7, height=5)
         category_toolbar = NavigationToolbar(self.category_canvas, self)
 
@@ -441,9 +527,15 @@ class PyGuiBank(QMainWindow):
         category_chart_group = QGroupBox("Category Spending Chart")
         category_chart_group.setLayout(category_chart_layout)
         category_chart_group.adjustSize()
-        self.grid_layout.addWidget(category_chart_group, 3, 2, 3, 1)
 
-        self.setCentralWidget(central_widget)
+        # Set the layouts
+        page2_layout.addWidget(category_chart_group)
+        self.page2.setLayout(page2_layout)
+        self.tabs.addTab(self.page2, "Category Spending")
+
+        # Add right panel to the main layout
+        right_layout.addWidget(self.tabs)
+        self.main_layout.addWidget(right_widget)
 
         # INITIALIZE #########################
         self.initialize_all_elements()
@@ -466,9 +558,7 @@ class PyGuiBank(QMainWindow):
 
         # Create layout
         layout = QVBoxLayout(dialog)
-        label = QLabel(
-            "An unexpected error occurred. You can review the details below:"
-        )
+        label = QLabel("An unexpected error occurred. You can review the details below:")
         layout.addWidget(label)
 
         # Create text edit for exception traceback
@@ -502,86 +592,76 @@ class PyGuiBank(QMainWindow):
 
     def initialize_all_elements(self):
         # Make sure the config file exists and load into memory
-        self.update_from_config()
-
-        # Update all tables, checklists, and graphs
-        with self.Session() as session:
-            self.update_main_gui(session)
+        self.Session = initialize_db(self)
 
         # Initialize the plugin manager
         self.plugin_manager = PluginManager()
         self.plugin_manager.load_plugins()
 
-        # Check for new versions of plugins and clients
-        check_for_plugin_updates(self.plugin_manager, parent=self, manual=False)
-        check_for_client_updates(manual=False, parent=self)
-
-    def update_from_config(self):
-        self.config = config.read_config()
-        self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
-        self.ensure_db()
-
-    def ensure_db(self):
-        # Ensure db file exists
-        if self.db_path.exists():
-            self.Session = orm.create_database(self.db_path)
-            with self.Session() as session:
-                query.optimize_db(session)
-        else:
-            self.Session = orm.create_database(self.db_path)
-            QMessageBox.information(
-                self,
-                "New Database Created",
-                f"Initialized new database at <pre>{self.db_path}</pre>",
-            )
-            self.init_db_tables()
-
-    def init_db_tables(self):
+        # Update all tables, checklists, and graphs
         with self.Session() as session:
-            query.insert_rows_batched(
-                session,
-                orm.AccountTypes,
-                seed_account_types(),
-            )
-            # config.import_init_statement_types(session)
-            config.import_init_accounts(session)
+            self.update_main_gui(session)
 
-    #########################
-    ### MENUBAR FUNCTIONS ###
-    #########################
+        # Check for new versions of client and plugins
+        self.check_for_client_updates_async()
+
+    def check_for_client_updates_async(self):
+        self.client_update_thread = ClientUpdateThread()
+        self.client_update_thread.update_available.connect(self.handle_client_update)
+        self.client_update_thread.start()
+
+    def handle_client_update(self, success: bool, latest_installer: dict, message: str):
+        if success:
+            logger.info(message)
+            if latest_installer:
+                install_latest_client(self, latest_installer)
+        else:
+            logger.error(message)
+
+        # Check for plugin update after client check is done
+        self.check_for_plugin_updates_async()
+
+    def check_for_plugin_updates_async(self):
+        self.plugin_update_thread = PluginUpdateThread(
+            self.plugin_manager,
+        )
+        self.plugin_update_thread.update_available.connect(self.handle_plugin_update_available)
+        self.plugin_update_thread.update_complete.connect(self.handle_plugin_update_complete)
+        self.plugin_update_thread.start()
+
+    def handle_plugin_update_available(self, local_plugins: list, server_plugins: list):
+        dialog = PluginSyncDialog(local_plugins, server_plugins, parent=self)
+        if dialog.exec_() == QDialog.Accepted:
+            sync_plugins(local_plugins, server_plugins, progress=True, parent=self)
+            self.plugin_manager.load_plugins()
+        else:
+            logger.info("User declined to sync plugins")
+
+    def handle_plugin_update_complete(self, success: bool, message: str):
+        if success:
+            logger.info(message)
+        else:
+            logger.error(message)
+
+    # MENUBAR FUNCTIONS
     def about(self):
         msg_box = QMessageBox()
         msg_box.setIcon(QMessageBox.Information)
-        msg_box.setText(f"PyGuiBank v{__version__}\n© 2024 Tobias Brown-Heft")
+        msg_box.setText(f"PyGuiBank v{__version__}\n© {__year__} {__developer__}")
         msg_box.setWindowTitle("About")
         msg_box.setStandardButtons(QMessageBox.Ok)
         msg_box.exec_()
 
     def open_db(self):
-        open_file_in_os(self.db_path)
+        open_file_in_os(settings.db_path)
 
     def preferences(self):
         dialog = PreferencesDialog()
         if dialog.exec_() == QDialog.Accepted:
-            self.update_from_config()
+            initialize_dirs()
+            self.Session = initialize_db()
             with self.Session() as session:
                 self.update_main_gui(session)
-
-    def export_init_statement_types(self):
-        reply = QMessageBox.question(
-            self,
-            "Export Database Config?",
-            (
-                "This will store the statement search configuration of"
-                f" <pre>{self.db_path}</pre> so any new databases use the same settings."
-            ),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if reply != QMessageBox.Yes:
-            return
-        with self.Session() as session:
-            config.export_init_statement_types(session)
 
     def export_init_accounts(self):
         reply = QMessageBox.question(
@@ -589,7 +669,7 @@ class PyGuiBank(QMainWindow):
             "Export Accounts Config?",
             (
                 "This will store the Accounts list and any associated Account Numbers"
-                f" from <pre>{self.db_path}</pre> so any new databases use the same settings."
+                f" from <pre>{settings.db_path}</pre> so any new databases use the same settings."
             ),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
@@ -636,7 +716,7 @@ class PyGuiBank(QMainWindow):
 
     def import_all_statements(self):
         # Import everything
-        processor = StatementProcessor(self.Session, self.config, self.plugin_manager)
+        processor = StatementProcessor(self.Session, self.plugin_manager)
         processor.import_all(parent=self)
 
         # Update all GUI elements
@@ -645,30 +725,32 @@ class PyGuiBank(QMainWindow):
 
     def import_one_statement(self):
         # Show file selection dialog
-        default_folder = self.config.get("IMPORT", "import_dir")
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
         file_filter = "Supported Files (*.csv *.pdf *.xlsx);;All Files (*)"
         fpath, _ = QFileDialog.getOpenFileName(
-            None, "Select a File", default_folder, file_filter, options=options
+            None,
+            "Select a File",
+            str(settings.import_dir),
+            file_filter,
+            options=options,
         )
 
         # Prevent weird things from happening
         if not fpath:
             return
         fpath = Path(fpath).resolve()
-        success_dir = Path(self.config.get("IMPORT", "success_dir")).resolve()
-        if fpath.parents[0] == success_dir:
+        if fpath.parents[0] == settings.success_dir:
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Warning)
-            msg_box.setText(f"Cannot import statements from the SUCCESS folder.")
+            msg_box.setText("Cannot import statements from the SUCCESS folder.")
             msg_box.setWindowTitle("Protected Folder")
             msg_box.setStandardButtons(QMessageBox.Ok)
             msg_box.exec_()
             return
 
         # Import statement
-        processor = StatementProcessor(self.Session, self.config, self.plugin_manager)
+        processor = StatementProcessor(self.Session, self.plugin_manager)
         processor.import_one(fpath)
 
         # Update all GUI elements
@@ -697,9 +779,7 @@ class PyGuiBank(QMainWindow):
             if balance_dialog.exec_() != QDialog.Accepted:
                 continue
 
-            insert_dialog = InsertTransactionDialog(
-                self.Session, account_name=account_name, close_account=True
-            )
+            insert_dialog = InsertTransactionDialog(self.Session, account_name=account_name, close_account=True)
             if insert_dialog.exec_() == QDialog.Accepted:
                 # Update all GUI elements
                 with self.Session() as session:
@@ -709,11 +789,7 @@ class PyGuiBank(QMainWindow):
         QMessageBox.information(
             self,
             "Search Complete",
-            (
-                "No additional discrepancies found."
-                if count > 0
-                else "No discrepancies found."
-            ),
+            ("No additional discrepancies found." if count > 0 else "No discrepancies found."),
         )
 
     def plot_balances(self):
@@ -725,23 +801,20 @@ class PyGuiBank(QMainWindow):
             plot.plot_category_spending(session)
 
     def report_all_time(self):
-        report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
         timestamp = datetime.now().strftime(r"%Y%m%d%H%M%S")
-        dpath = report_dir / f"{timestamp}_Report_AllTime.xlsx"
+        dpath = settings.report_dir / f"{timestamp}_Report_AllTime.xlsx"
         with self.Session() as session:
             reports.report(session, dpath)
 
     def report_1year(self):
-        report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
         timestamp = datetime.now().strftime(r"%Y%m%d%H%M%S")
-        dpath = report_dir / f"{timestamp}_Report_OneYear.xlsx"
+        dpath = settings.report_dir / f"{timestamp}_Report_OneYear.xlsx"
         with self.Session() as session:
             reports.report(session, dpath, months=12)
 
     def report_3months(self):
-        report_dir = Path(self.config.get("REPORTS", "report_dir")).resolve()
         timestamp = datetime.now().strftime(r"%Y%m%d%H%M%S")
-        dpath = report_dir / f"{timestamp}_Report_ThreeMonths.xlsx"
+        dpath = settings.report_dir / f"{timestamp}_Report_ThreeMonths.xlsx"
         with self.Session() as session:
             reports.report(session, dpath, months=3)
 
@@ -761,19 +834,12 @@ class PyGuiBank(QMainWindow):
         learn.train_pipeline_test(df, amount=False)
 
     def train_pipeline_save(self):
-        # Get old model path
-        model_path = self.config.get("CLASSIFIER", "model_path")
-        try:
-            model_path = Path(model_path).resolve()
-        except:
-            model_path = Path("") / "pipeline.mdl"
-
         # Prompt user for new save location
         options = QFileDialog.Options()
         save_path, _ = QFileDialog.getSaveFileName(
             self,
             "Select Save Location",
-            str(model_path),
+            str(settings.model_path),
             "MDL Files (*.mdl);;All Files (*);;",
             options=options,
         )
@@ -796,35 +862,25 @@ class PyGuiBank(QMainWindow):
         # Train and save pipeline
         learn.train_pipeline_save(df, model_path, amount=False)
 
-        QMessageBox.information(
-            self, "Pipeline Saved", "Trained pipeline has been saved successfully."
-        )
+        QMessageBox.information(self, "Pipeline Saved", "Trained pipeline has been saved successfully.")
 
         # Save new pipeline path to config
-        if Path("").resolve() == model_path.parents[0]:
-            model_path = model_path.name
-        else:
-            model_path = str(model_path)
-        self.config.set("CLASSIFIER", "model_path", str(model_path))
-        with open("config.ini", "w") as configfile:
-            self.config.write(configfile)
+        settings.model_path = model_path
+        save_settings(settings)
 
     def categorize_uncategorized(self):
-        model_path = Path(self.config.get("CLASSIFIER", "model_path")).resolve()
-        if not model_path.exists():
+        if not settings.model_path.exists():
             QMessageBox.warning(
                 self,
                 "Classifier Model Not Found",
                 (
-                    f"{model_path} could not be found.\n"
+                    f"{settings.model_path} could not be found.\n"
                     "Please select a valid classifier model file in Preferences."
                 ),
             )
             return
         with self.Session() as session:
-            categorize.transactions(
-                session, model_path, unverified=True, uncategorized=True
-            )
+            categorize.transactions(session, settings.model_path, unverified=True, uncategorized=True)
             self.update_main_gui(session)
         QMessageBox.information(
             self,
@@ -833,21 +889,18 @@ class PyGuiBank(QMainWindow):
         )
 
     def categorize_unverified(self):
-        model_path = Path(self.config.get("CLASSIFIER", "model_path")).resolve()
-        if not model_path.exists():
+        if not settings.model_path.exists():
             QMessageBox.warning(
                 self,
                 "Classifier Model Not Found",
                 (
-                    f"{model_path} could not be found.\n"
+                    f"{settings.model_path} could not be found.\n"
                     "Please select a valid classifier model file in Preferences."
                 ),
             )
             return
         with self.Session() as session:
-            categorize.transactions(
-                session, model_path, unverified=True, uncategorized=False
-            )
+            categorize.transactions(session, settings.model_path, unverified=True, uncategorized=False)
             self.update_main_gui(session)
         QMessageBox.information(
             self,
@@ -855,9 +908,8 @@ class PyGuiBank(QMainWindow):
             "Succesfully categorized all unverified transactions",
         )
 
-    ################################
-    ### CENTRAL WIDGET FUNCTIONS ###
-    ################################
+    # CENTRAL WIDGET FUNCTIONS
+
     def update_balance_history_button(self):
         with self.Session() as session:
             self.update_balance_history_chart(session)
@@ -868,19 +920,40 @@ class PyGuiBank(QMainWindow):
 
     def update_main_gui(self, session: Session):
         """Update all tables, checklists, and charts in the main GUI window"""
-        self.setWindowTitle(f"PyGuiBank v{__version__} - {self.db_path}")
-        self.update_balances_table(session)
-        self.update_accounts_checklist(session)
-        self.update_category_checklist(session)
-        self.update_balance_history_chart(session)
-        self.update_category_spending_chart(session)
+        self.setWindowTitle(f"PyGuiBank v{__version__} - {settings.db_path}")
+        try:
+            self.update_balances_table(session)
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Critical",
+                f"Failed to update balances table: {e}",
+            )
+
+        try:
+            self.update_accounts_checklist(session)
+            self.update_balance_history_chart(session)
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Critical",
+                f"Failed to update balance history chart: {e}",
+            )
+
+        try:
+            self.update_category_checklist(session)
+            self.update_category_spending_chart(session)
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Critical",
+                f"Failed to update category spending chart: {e}",
+            )
 
     def update_balances_table(self, session: Session):
         # Fetch data for the table
         data = query.latest_balances(session)
-        df_balances = pd.DataFrame(
-            data, columns=["AccountName", "LatestBalance", "LatestDate"]
-        )
+        df_balances = pd.DataFrame(data, columns=["AccountName", "LatestBalance", "LatestDate"])
 
         # Update the table contents
         table_model = PandasModel(df_balances)
@@ -891,53 +964,65 @@ class PyGuiBank(QMainWindow):
         self.table_view.sortByColumn(1, Qt.DescendingOrder)
 
         # Fix the table width
-        total_width = sum(
-            self.table_view.columnWidth(i)
-            for i in range(self.table_view.model().columnCount())
-        )
-        vertical_scrollbar_width = (
-            self.table_view.verticalScrollBar().sizeHint().width()
-        )
+        total_width = sum(self.table_view.columnWidth(i) for i in range(self.table_view.model().columnCount()))
+        vertical_scrollbar_width = self.table_view.verticalScrollBar().sizeHint().width()
         table_width = total_width + vertical_scrollbar_width + 30
         self.table_view.setFixedWidth(table_width)
 
     def update_accounts_checklist(self, session: Session):
-        account_names = [
-            "Net Worth",
-            "Total Assets",
-            "Total Debts",
-        ]
-        account_names.extend(query.account_names(session))
-        self.update_checklist(self.account_select_list, account_names)
+        self.update_generic_checklist(
+            session=session,
+            list_widget=self.account_select_list,
+            initial_checked=["Net Worth", "Total Assets", "Total Debts"],
+            query_func=query.account_names,
+        )
 
     def update_category_checklist(self, session: Session):
-        category_names = query.distinct_categories(session)
-        self.update_checklist(self.category_select_list, category_names)
+        self.update_generic_checklist(
+            session=session,
+            list_widget=self.category_select_list,
+            initial_checked=[],
+            query_func=query.distinct_categories,
+        )
 
-    def update_checklist(self, list_widget, names):
+    def update_generic_checklist(
+        self,
+        session: Session,
+        list_widget: QListWidget,
+        initial_checked: list[str],
+        query_func,
+    ):
+        items = query_func(session)
+
+        if list_widget.count() == 0:
+            # App just started, initialize checklist
+            self.initialize_checklist(list_widget, initial_checked, items)
+        else:
+            # Update based on previous checked/unchecked state
+            self.update_checklist(list_widget, initial_checked + items)
+
+    def initialize_checklist(self, list_widget: QListWidget, checked: list[str], unchecked: list[str]):
+        list_widget.clear()
+        for name, state in [(name, Qt.Checked) for name in checked] + [(name, Qt.Unchecked) for name in unchecked]:
+            item = QListWidgetItem(name)
+            item.setCheckState(state)
+            list_widget.addItem(item)
+
+    def update_checklist(self, list_widget: QListWidget, names: list[str]):
         checked, unchecked = self.get_checked_items(list_widget)
+
         list_widget.clear()
         for name in names:
             item = QListWidgetItem(name)
-            if name in checked:
-                item.setCheckState(Qt.Checked)
-            elif name in unchecked:
-                item.setCheckState(Qt.Unchecked)
-            else:
-                # New items should be checked
-                item.setCheckState(Qt.Checked)
+            # Preserve checked/unchecked state; default new items to checked
+            item.setCheckState(Qt.Checked if name in checked else Qt.Unchecked if name in unchecked else Qt.Checked)
             list_widget.addItem(item)
 
-    def get_checked_items(
-        self, list_widget: QListWidget
-    ) -> tuple[list[str], list[str]]:
+    def get_checked_items(self, list_widget: QListWidget) -> tuple[list[str], list[str]]:
         checked, unchecked = [], []
         for index in range(list_widget.count()):
             item = list_widget.item(index)
-            if item.checkState() == Qt.Checked:
-                checked.append(item.text())
-            else:
-                unchecked.append(item.text())
+            (checked if item.checkState() == Qt.Checked else unchecked).append(item.text())
         return checked, unchecked
 
     def validate_float(self, line_edit: QLineEdit, fallback: float) -> float:
@@ -978,9 +1063,7 @@ class PyGuiBank(QMainWindow):
             df = df.rolling(window=smoothing_days, min_periods=1).mean()
 
         # Plot selected account data
-        filtered_accounts = [
-            acct for acct in df.columns.values if acct in selected_accounts
-        ]
+        filtered_accounts = [acct for acct in df.columns.values if acct in selected_accounts]
         self.balance_canvas.plot(
             df,
             filtered_accounts,
@@ -988,7 +1071,7 @@ class PyGuiBank(QMainWindow):
             right=now,
             title="Balance History",
             xlabel="Date",
-            ylabel="Balance ($)",
+            ylabel="Balance",
             dashed=debt_cols,
         )
 
@@ -1004,7 +1087,7 @@ class PyGuiBank(QMainWindow):
 
         # Limit the data to the specified year range
         now = datetime.now()
-        cutoff_date = now - timedelta(days=limit_years * 365)
+        cutoff_date = now - timedelta(days=(1.2 * limit_years * 365))
         df = df[df.index >= cutoff_date]
 
         # Apply smoothing (rolling average)
@@ -1020,5 +1103,11 @@ class PyGuiBank(QMainWindow):
             right=now,
             title="Monthly Spending by Category",
             xlabel="Date",
-            ylabel="Amount ($)",
+            ylabel="Amount",
         )
+
+    def send_statement(self):
+        dialog = StatementSubmissionDialog()
+        if dialog.exec_():
+            metadata = dialog.get_metadata()
+            send_statement(metadata, parent=self)

@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import requests
@@ -11,26 +10,7 @@ from core.settings import settings
 from core.utils import open_file_in_os
 
 
-def get_download_dir() -> Path:
-    """
-    Get the platform-specific downloads directory.
-
-    Returns:
-        Path: The downloads directory for the current platform.
-    """
-    name = os.name
-    if name == "nt":  # Windows
-        return Path(os.getenv("USERPROFILE")) / "Downloads"
-    elif name == "posix":
-        home_dir = Path.home()
-        if "XDG_DOWNLOAD_DIR" in os.environ:  # Linux with XDG spec
-            return Path(os.getenv("XDG_DOWNLOAD_DIR"))
-        return home_dir / "Downloads"  # Default for Linux/macOS
-    else:
-        raise ValueError("Unsupported operating system")
-
-
-def get_client_installers():
+def get_client_installers() -> list[dict]:
     """
     Fetch the list of available client installers from the server.
 
@@ -42,11 +22,11 @@ def get_client_installers():
         response.raise_for_status()  # Raise an exception for HTTP errors
         return response.json()  # Parse JSON response
     except requests.RequestException as e:
-        print(f"Error fetching client installers: {e}")
-        return []
+        logger.error(f"Error fetching client installer list: {e}")
+        raise ConnectionError("Unable to establish connection to server.")
 
 
-def is_newer_version(local_version, server_version):
+def is_newer_version(local_version, server_version) -> bool:
     """
     Compare local and server versions.
 
@@ -71,7 +51,7 @@ def download_client_installer(installer_metadata, progress_dialog=None):
     platform = installer_metadata["platform"]
     version = installer_metadata["version"]
     url = f"{settings.server_url}/clients/{platform}/{version}"
-    save_path = get_download_dir() / filename
+    save_path = settings.download_dir / filename
     save_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -119,9 +99,7 @@ def check_for_client_updates(manual=False, parent=None):
     """
     try:
         installers = get_client_installers()
-        platform_installers = [
-            i for i in installers if i["platform"] == settings.platform
-        ]
+        platform_installers = [i for i in installers if i["platform"] == settings.platform]
 
         if not platform_installers:
             if manual:
@@ -132,68 +110,17 @@ def check_for_client_updates(manual=False, parent=None):
                 )
             return False
 
-        latest_installer = max(
-            platform_installers, key=lambda i: version.parse(i["version"])
-        )
+        latest_installer = max(platform_installers, key=lambda i: version.parse(i["version"]))
 
         if is_newer_version(settings.version, latest_installer["version"]):
-            reply = QMessageBox.question(
-                parent,
-                "Client Update Available",
-                (
-                    f"A new version of the client is available:\n\n"
-                    f"Current Version: {settings.version}\n"
-                    f"Latest Version: {latest_installer['version']}\n\n"
-                    f"Do you want to download and install it now?"
-                ),
-                QMessageBox.Yes | QMessageBox.No,
-            )
-
-            if reply == QMessageBox.Yes:
-                try:
-                    progress_dialog = QProgressDialog(
-                        "Downloading update...", "Cancel", 0, 100, parent
-                    )
-                    progress_dialog.setWindowTitle("Update in Progress")
-                    progress_dialog.setWindowModality(Qt.WindowModal)
-                    progress_dialog.setMinimumDuration(0)
-
-                    installer_path = download_client_installer(
-                        latest_installer, progress_dialog
-                    )
-                    progress_dialog.close()
-
-                    response = QMessageBox.question(
-                        parent,
-                        "Update Ready",
-                        "The installer is ready to launch. The application will close to proceed. Continue?",
-                        QMessageBox.Yes | QMessageBox.No,
-                    )
-                    if response == QMessageBox.Yes:
-                        quit_and_update(installer_path)
-                    else:
-                        QMessageBox.information(
-                            parent,
-                            "Update Canceled",
-                            "The update process has been canceled.",
-                        )
-                except Exception as e:
-                    QMessageBox.critical(
-                        parent,
-                        "Update Failed",
-                        f"An error occurred while preparing the update:\n{e}",
-                    )
+            install_latest_client(parent, latest_installer)
         elif manual:
-            QMessageBox.information(
-                parent, "Client Up To Date", "You are already using the latest version."
-            )
+            QMessageBox.information(parent, "Client Up To Date", "You are already using the latest version.")
         return False
     except Exception as e:
         logger.error(f"Error checking for updates: {e}")
         if manual:
-            QMessageBox.critical(
-                parent, "Error", f"An error occurred while checking for updates:\n{e}"
-            )
+            QMessageBox.critical(parent, "Error", f"An error occurred while checking for updates:\n{e}")
         return False
 
 
@@ -210,3 +137,50 @@ def quit_and_update(installer_path: Path):
         QApplication.quit()  # Ensure this is called in the main thread
     except Exception as e:
         logger.error(f"Failed to launch installer: {e}")
+
+
+def install_latest_client(parent, latest_installer):
+    reply = QMessageBox.question(
+        parent,
+        "Client Update Available",
+        (
+            f"A new version of the client is available:\n\n"
+            f"Current Version: {settings.version}\n"
+            f"Latest Version: {latest_installer['version']}\n\n"
+            f"Do you want to download and install it now?"
+        ),
+        QMessageBox.Yes | QMessageBox.No,
+    )
+
+    if reply != QMessageBox.Yes:
+        return
+
+    try:
+        progress_dialog = QProgressDialog("Downloading update...", "Cancel", 0, 100, parent)
+        progress_dialog.setWindowTitle("Update in Progress")
+        progress_dialog.setWindowModality(Qt.WindowModal)
+        progress_dialog.setMinimumDuration(0)
+
+        installer_path = download_client_installer(latest_installer, progress_dialog)
+        progress_dialog.close()
+
+        response = QMessageBox.question(
+            parent,
+            "Update Ready",
+            "The installer is ready to launch. The application will close to proceed. Continue?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if response == QMessageBox.Yes:
+            quit_and_update(installer_path)
+        else:
+            QMessageBox.information(
+                parent,
+                "Update Canceled",
+                "The update process has been canceled.",
+            )
+    except Exception as e:
+        QMessageBox.critical(
+            parent,
+            "Update Failed",
+            f"An error occurred while preparing the update:\n{e}",
+        )

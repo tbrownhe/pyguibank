@@ -80,9 +80,7 @@ class Parser(IParser):
         try:
             transactions = self.parse_transactions()
         except Exception as e:
-            raise ValueError(
-                f"Failed to parse transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to parse transactions for account {account_num}: {e}")
 
         return Account(
             account_num=account_num,
@@ -113,7 +111,6 @@ class Parser(IParser):
         transactions = []
         balance = 0
         for entry in sorted(data, key=lambda x: x["Date"]):
-
             # Melt table into individual transactions
             total = -convert_amount_to_float(entry["Total"])
             interest = convert_amount_to_float(entry["Interest"])

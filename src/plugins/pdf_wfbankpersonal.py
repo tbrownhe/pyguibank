@@ -18,7 +18,7 @@ from core.validation import Account, Statement, Transaction
 class Parser(IParser):
     # Plugin metadata required by IParser
     PLUGIN_NAME = "pdf_wfbankpersonal"
-    VERSION = "0.1.0"
+    VERSION = "0.1.1"
     SUFFIX = ".pdf"
     COMPANY = "Wells Fargo"
     STATEMENT_TYPE = "Personal Banking Monthly Statement"
@@ -145,25 +145,19 @@ class Parser(IParser):
         try:
             start_balance, end_balance = self.get_statement_balances()
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract balances for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract balances for account {account_num}: {e}")
 
         # Extract transaction lines
         try:
             transaction_array = self.get_transaction_array()
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract transactions for account {account_num}: {e}")
 
         # Parse transactions
         try:
             transactions = self.parse_transaction_array(transaction_array)
         except Exception as e:
-            raise ValueError(
-                f"Failed to parse transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to parse transactions for account {account_num}: {e}")
 
         return Account(
             account_num=account_num,
@@ -198,9 +192,7 @@ class Parser(IParser):
 
         for pattern in try_patterns:
             try:
-                _, balance_line = find_line_startswith(
-                    self.reader.lines_simple, pattern
-                )
+                _, balance_line = find_line_startswith(self.reader.lines_simple, pattern)
                 result = self.AMOUNT.search(balance_line)
                 amount_str = result.group()
                 balance = convert_amount_to_float(amount_str)
@@ -245,34 +237,48 @@ class Parser(IParser):
         """
         # Get the metadata and text of every word in the header.
         page_words_all = page.extract_words()
-        page_words = [
-            word for word in page_words_all if word.get("text") in self.HEADER_COLS
-        ]
-        page_word_list = [pword.get("text") for pword in page_words]
 
-        # Make sure all header words were found. If not, return empty row
-        missing_words = [
-            word for word in self.HEADER_COLS if word not in page_word_list
-        ]
+        # Dynamically correct partial matches for columns
+        word_list = [word.get("text") for word in page_words_all]
+        word_set = set(word_list)
+        header_cols = []
+        for col in self.HEADER_COLS:
+            if col in word_set:
+                # Use the col word as is
+                header_cols.append(col)
+            else:
+                # Attempt to find the largest partial match
+                matches = [word for word in word_set if col.endswith(word) and len(word) >= 3]
+                if matches:
+                    best_match = sorted(
+                        matches,
+                        key=lambda x: len(x),
+                        reverse=True,
+                    )[0]
+                    logger.debug(f"Matching fragment '{best_match}' to missing header '{col}'")
+                    header_cols.append(best_match)
+                else:
+                    # Use the original word
+                    header_cols.append(col)
+
+        # Return empty if not all header names were found, even after partial match detection
+        missing_words = [word for word in header_cols if word not in word_set]
         if missing_words:
-            logger.trace(
-                f"Skipping {page.page_number} because a table header was not found."
-            )
+            logger.debug(f"Skipping page {page.page_number} because a table header was not found.")
             return []
+
+        # Get all the word objects that match the corrected header_cols
+        page_words = [word for word in page_words_all if word.get("text") in header_cols]
 
         # Filter out spurious words by removing anything > 2 points from the mode
         y_mode = mode(word.get("bottom") for word in page_words)
-        page_words = [
-            word for word in page_words if abs(word.get("bottom") - y_mode) < 2
-        ]
+        page_words = [word for word in page_words if abs(word.get("bottom") - y_mode) < 2]
 
-        # Make sure there are no duplicates
+        # Make sure there are the right number of matches, or return empty
         if len(page_words) != len(self.HEADER_COLS):
             word_list = [word.get("text") for word in page_words]
-            raise ValueError(
-                "Too many header keywords were found."
-                f" Expected: {self.HEADER_COLS}\nGot: {word_list}"
-            )
+            logger.debug(f"Header keywords could not be matched. Expected: {self.HEADER_COLS}\nGot: {word_list}")
+            return []
 
         # Remap words list[dict] so it's addressable by column name
         header = {}
@@ -287,9 +293,9 @@ class Parser(IParser):
         # Crop the page to the table size: [x0, top, x1, bottom]
         crop_page = page.crop(
             [
-                header[self.HEADER_COLS[0]]["x0"] - 3,  # Date col
-                header[self.HEADER_COLS[0]]["bottom"] + 0.1,  # Date col
-                header[self.HEADER_COLS[-1]]["x1"] + 2,  # balance col
+                header[header_cols[0]]["x0"] - 3,  # Date col
+                header[header_cols[0]]["bottom"] + 0.1,  # Date col
+                header[header_cols[-1]]["x1"] + 2,  # balance col
                 page.height,
             ]
         )
@@ -305,13 +311,13 @@ class Parser(IParser):
             4: balance:      R Justified
             """
             return [
-                header[self.HEADER_COLS[0]]["x0"] - 3,  # date col left
-                header[self.HEADER_COLS[0]]["x1"] + 2,  # number, placeholder col left
-                header[self.HEADER_COLS[1]]["x0"] - 2,  # desc col left
-                header[self.HEADER_COLS[2]]["x0"] - 3,  # addition/credit col left
-                header[self.HEADER_COLS[2]]["x1"] + 2,  # subtraction
-                header[self.HEADER_COLS[3]]["x1"] + 2,  # balance col left
-                header[self.HEADER_COLS[4]]["x1"] + 2,  # balance col right
+                header[header_cols[0]]["x0"] - 3,  # date col left
+                header[header_cols[0]]["x1"] + 2,  # number, placeholder col left
+                header[header_cols[1]]["x0"] - 2,  # desc col left
+                header[header_cols[2]]["x0"] - 3,  # addition/credit col left
+                header[header_cols[2]]["x1"] + 2,  # subtraction
+                header[header_cols[3]]["x1"] + 2,  # balance col left
+                header[header_cols[4]]["x1"] + 2,  # balance col right
             ]
 
         # Extract the table from the cropped page using dynamic vertical separators
@@ -350,11 +356,7 @@ class Parser(IParser):
             """Lookahead for multi-line transactions"""
             desc = array[i_row][2]
             multilines = 1
-            while (
-                i_row + multilines < len(array)
-                and not array[i_row + multilines][0]
-                and array[i_row + multilines][2]
-            ):
+            while i_row + multilines < len(array) and not array[i_row + multilines][0] and array[i_row + multilines][2]:
                 desc += f" {array[i_row + multilines][2]}"
                 multilines += 1
             return desc, multilines - 1

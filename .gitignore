@@ -8,6 +8,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+prebuild/
 build/
 develop-eggs/
 dist/
@@ -130,18 +131,8 @@ dmypy.json
 
 # Developer
 .flake8
-.pre-commit-config.yaml
 .vscode/
 .DS_Store
 
-# Pyguibank output
-*.csv
-*.xlsx
-*.mdl
-init_accounts.json
-*test.py
-*.ini
-
-# DB Browser for SQLite3
-*.db
-*.sqbpro
+# GIMP
+*.xcf

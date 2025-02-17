@@ -120,25 +120,19 @@ class Parser(IParser):
         try:
             start_balance, end_balance, i_start, i_end = self.get_statement_balances()
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract balances for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract balances for account {account_num}: {e}")
 
         # Extract transaction lines
         try:
             transaction_lines = self.get_transaction_lines(i_start, i_end)
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract transactions for account {account_num}: {e}")
 
         # Parse transactions
         try:
             transactions = self.parse_transaction_lines(transaction_lines)
         except Exception as e:
-            raise ValueError(
-                f"Failed to parse transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to parse transactions for account {account_num}: {e}")
 
         # Return the Account dataclass
         return Account(
@@ -176,9 +170,7 @@ class Parser(IParser):
 
             # Get ending balance
             pattern = "Ending balance"
-            i_end, balance_line = find_line_startswith(
-                self.lines, pattern, start=i_start + 1
-            )
+            i_end, balance_line = find_line_startswith(self.lines, pattern, start=i_start + 1)
             balance_str = balance_line.split(pattern)[-1].strip().split()[0]
             end_balance = convert_amount_to_float(balance_str)
             logger.trace(f"Extracted {pattern}: {end_balance}")
@@ -202,9 +194,7 @@ class Parser(IParser):
                 transaction_lines.append(line)
         return transaction_lines
 
-    def parse_transaction_lines(
-        self, transaction_lines: list[str]
-    ) -> list[Transaction]:
+    def parse_transaction_lines(self, transaction_lines: list[str]) -> list[Transaction]:
         """
         Converts the raw transaction text into an organized list of Transaction objects.
 
@@ -220,9 +210,7 @@ class Parser(IParser):
             # Split the line into words
             words = line.split()
 
-            result = [
-                (i, word) for i, word in enumerate(words) if self.AMOUNT.search(word)
-            ]
+            result = [(i, word) for i, word in enumerate(words) if self.AMOUNT.search(word)]
             if not result:
                 # Skip this line, it's not a transaction line
                 continue

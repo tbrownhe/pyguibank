@@ -21,10 +21,8 @@ class Parser(IParser):
     VERSION = "0.1.0"
     SUFFIX = ".pdf"
     COMPANY = "Wells Fargo"
-    STATEMENT_TYPE = "Personal Banking Monthly Statement"
-    SEARCH_STRING = (
-        "wells fargo&&(initiate business checking||business market rate savings)"
-    )
+    STATEMENT_TYPE = "Business Banking Monthly Statement"
+    SEARCH_STRING = "wells fargo&&(initiate business checking||business market rate savings)"
     INSTRUCTIONS = (
         "Login to https://www.wellsfargo.com/, then navigate to"
         " Accounts > 'View Statements and Documents' > 'Statements and Disclosures'."
@@ -147,25 +145,19 @@ class Parser(IParser):
         try:
             start_balance, end_balance = self.get_statement_balances()
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract balances for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract balances for account {account_num}: {e}")
 
         # Extract transaction lines
         try:
             transaction_array = self.get_transaction_array()
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract transactions for account {account_num}: {e}")
 
         # Parse transactions
         try:
             transactions = self.parse_transaction_array(transaction_array)
         except Exception as e:
-            raise ValueError(
-                f"Failed to parse transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to parse transactions for account {account_num}: {e}")
 
         return Account(
             account_num=account_num,
@@ -200,9 +192,7 @@ class Parser(IParser):
 
         for pattern in try_patterns:
             try:
-                _, balance_line = find_line_startswith(
-                    self.reader.lines_simple, pattern
-                )
+                _, balance_line = find_line_startswith(self.reader.lines_simple, pattern)
                 result = self.AMOUNT.search(balance_line)
                 amount_str = result.group()
                 balance = convert_amount_to_float(amount_str)
@@ -247,34 +237,23 @@ class Parser(IParser):
         """
         # Get the metadata and text of every word in the header.
         page_words_all = page.extract_words()
-        page_words = [
-            word for word in page_words_all if word.get("text") in self.HEADER_COLS
-        ]
+        page_words = [word for word in page_words_all if word.get("text") in self.HEADER_COLS]
         page_word_list = [pword.get("text") for pword in page_words]
 
         # Make sure all header words were found. If not, return empty row
-        missing_words = [
-            word for word in self.HEADER_COLS if word not in page_word_list
-        ]
+        missing_words = [word for word in self.HEADER_COLS if word not in page_word_list]
         if missing_words:
-            logger.trace(
-                f"Skipping {page.page_number} because a table header was not found."
-            )
+            logger.trace(f"Skipping {page.page_number} because a table header was not found.")
             return []
 
         # Filter out spurious words by removing anything > 2 points from the mode
         y_mode = mode(word.get("bottom") for word in page_words)
-        page_words = [
-            word for word in page_words if abs(word.get("bottom") - y_mode) < 2
-        ]
+        page_words = [word for word in page_words if abs(word.get("bottom") - y_mode) < 2]
 
         # Make sure there are no duplicates
         if len(page_words) != len(self.HEADER_COLS):
             word_list = [word.get("text") for word in page_words]
-            raise ValueError(
-                "Too many header keywords were found."
-                f" Expected: {self.HEADER_COLS}\nGot: {word_list}"
-            )
+            raise ValueError(f"Too many header keywords were found. Expected: {self.HEADER_COLS}\nGot: {word_list}")
 
         # Remap words list[dict] so it's addressable by column name
         header = {}
@@ -352,11 +331,7 @@ class Parser(IParser):
             """Lookahead for multi-line transactions"""
             desc = array[i_row][2]
             multilines = 1
-            while (
-                i_row + multilines < len(array)
-                and not array[i_row + multilines][0]
-                and array[i_row + multilines][2]
-            ):
+            while i_row + multilines < len(array) and not array[i_row + multilines][0] and array[i_row + multilines][2]:
                 desc += f" {array[i_row + multilines][2]}"
                 multilines += 1
             return desc, multilines - 1

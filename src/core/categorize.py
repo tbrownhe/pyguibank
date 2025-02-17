@@ -26,9 +26,7 @@ def update_db_categories(session: Session, df: pd.DataFrame) -> None:
     where_list = list(zip(df["TransactionID"]))
 
     # Use the generalized update function
-    update_db_where(
-        session, Transactions, update_cols, update_list, where_cols, where_list
-    )
+    update_db_where(session, Transactions, update_cols, update_list, where_cols, where_list)
 
 
 def transactions(
@@ -47,9 +45,7 @@ def transactions(
         uncategorized (bool, optional): Categorize only uncategorized transactions if True.
     """
     # Fetch the transactions based on the flags
-    data, columns = training_set(
-        session, unverified=unverified, uncategorized=uncategorized
-    )
+    data, columns = training_set(session, unverified=unverified, uncategorized=uncategorized)
 
     if len(data) == 0:
         print("No new transactions to categorize!")

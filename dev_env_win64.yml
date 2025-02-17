@@ -14,11 +14,12 @@ dependencies:
   - seaborn
   - sqlalchemy
   - nltk
-  - pyinstaller=5.13
-  - nsis
   - requests>=2.32,<3
-  - python-dotenv
   - pydantic>=2.10,<3
   - pydantic-settings>=2.7,<3
+  - cryptography>=44.0.0,<45.0.0
+  - pyinstaller=5.13
+  - nsis
+  - psycopg2
   - pip:
       - pdfplumber==0.11.4

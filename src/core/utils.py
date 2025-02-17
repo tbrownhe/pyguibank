@@ -5,7 +5,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Union
+from typing import Tuple, Union
 
 import pdfplumber
 from loguru import logger
@@ -61,14 +61,9 @@ class PDFReader:
             return self.text_simple
         if self.PDF is None:
             raise ValueError("PDF not opened properly")
-        self.pages_simple = [
-            page.extract_text_simple() or "" for page in self.PDF.pages
-        ]
+        self.pages_simple = [page.extract_text_simple() or "" for page in self.PDF.pages]
         text_simple_raw = "\n".join(self.pages_simple)
-        self.lines_simple = [
-            " ".join(word for word in line.split())
-            for line in text_simple_raw.splitlines()
-        ]
+        self.lines_simple = [" ".join(word for word in line.split()) for line in text_simple_raw.splitlines()]
         self.text_simple = "\n".join(self.lines_simple)
         return self.text_simple
 
@@ -104,9 +99,7 @@ class PDFReader:
             return self.pages_layout
         if self.PDF is None:
             raise ValueError("PDF not opened properly")
-        self.pages_layout = [
-            page.extract_text(layout=True, **kwargs) or "" for page in self.PDF.pages
-        ]
+        self.pages_layout = [page.extract_text(layout=True, **kwargs) or "" for page in self.PDF.pages]
         return self.pages_layout
 
     def extract_text_layout(self, **kwargs) -> str:
@@ -141,9 +134,7 @@ class PDFReader:
             return self.lines_layout
         if self.text_layout is None:
             self.extract_text_layout(**kwargs)
-        self.lines_layout = [
-            line for line in self.text_layout.splitlines() if line.strip()
-        ]
+        self.lines_layout = [line for line in self.text_layout.splitlines() if line.strip()]
         return self.lines_layout
 
     def extract_lines_clean(self, **kwargs) -> list[str]:
@@ -201,9 +192,7 @@ def create_directory(folder: Path):
         raise
 
 
-def find_line_startswith(
-    lines: list[str], search_str: str, start: int = 0
-) -> tuple[int, str]:
+def find_line_startswith(lines: list[str], search_str: str, start: int = 0) -> tuple[int, str]:
     """
     Finds the first line in the list that starts with the given search string.
 
@@ -232,9 +221,7 @@ def find_line_startswith(
     raise ValueError(f"Search string '{search_str}' not found in lines.")
 
 
-def find_regex_in_line(
-    lines: list[str], search_str: Union[str, re.Pattern]
-) -> tuple[int, str, str]:
+def find_regex_in_line(lines: list[str], search_str: Union[str, re.Pattern]) -> tuple[int, str, str]:
     """
     Finds the first line in the list that matches the given regular expression.
 
@@ -254,9 +241,7 @@ def find_regex_in_line(
     if not isinstance(lines, list) or not all(isinstance(line, str) for line in lines):
         raise TypeError("Input 'lines' must be a list of strings.")
     if not isinstance(search_str, (str, re.Pattern)):
-        raise TypeError(
-            "Input 'search_str' must be a string or a compiled regex pattern."
-        )
+        raise TypeError("Input 'search_str' must be a string or a compiled regex pattern.")
 
     # Compile search_str if it's a string
     regex = search_str if isinstance(search_str, re.Pattern) else re.compile(search_str)
@@ -267,9 +252,6 @@ def find_regex_in_line(
             return i, line, match.group(0)
 
     raise ValueError(f"Regex pattern '{search_str}' not found in lines.")
-
-
-from typing import Tuple
 
 
 def find_param_in_line(
@@ -308,9 +290,7 @@ def find_param_in_line(
     raise ValueError(f"Parameter '{search_str}' not found in lines.")
 
 
-def find_line_re_search(
-    lines: list[str], search_str: Union[str, re.Pattern]
-) -> tuple[int, str]:
+def find_line_re_search(lines: list[str], search_str: Union[str, re.Pattern]) -> tuple[int, str]:
     """
     Finds the first line matching the given regex pattern.
 
@@ -329,9 +309,7 @@ def find_line_re_search(
     if not isinstance(lines, list) or not all(isinstance(line, str) for line in lines):
         raise TypeError("Input 'lines' must be a list of strings.")
     if not isinstance(search_str, (str, re.Pattern)):
-        raise TypeError(
-            "Input 'search_str' must be a string or a compiled regex pattern."
-        )
+        raise TypeError("Input 'search_str' must be a string or a compiled regex pattern.")
 
     # Compile search_str if it's a string
     regex = search_str if isinstance(search_str, re.Pattern) else re.compile(search_str)
@@ -376,16 +354,11 @@ def get_absolute_date(mmdd: str, start_date: datetime, end_date: datetime) -> da
     # Find the guess closest to the statement period
     best_guess = min(
         guesses,
-        key=lambda date: min(
-            abs((date - start_date).days), abs((date - end_date).days)
-        ),
+        key=lambda date: min(abs((date - start_date).days), abs((date - end_date).days)),
     )
 
     # Ensure the guess is within a reasonable range
-    if (
-        abs((best_guess - start_date).days) <= statement_days
-        or abs((best_guess - end_date).days) <= statement_days
-    ):
+    if abs((best_guess - start_date).days) <= statement_days or abs((best_guess - end_date).days) <= statement_days:
         return best_guess
 
     raise ValueError(f"Could not resolve a valid date for MM/DD: {mmdd}")
@@ -406,9 +379,7 @@ def remove_stop_words(description: str, stop_words=None) -> str:
         stop_words = {"purchase", "pos", "dbt", "recur-purch"}  # , "return"}
 
     # Filter out stop words
-    clean_words = [
-        word for word in description.split() if word.lower() not in stop_words
-    ]
+    clean_words = [word for word in description.split() if word.lower() not in stop_words]
     return " ".join(clean_words)
 
 
@@ -424,9 +395,7 @@ def convert_amount_to_float(amount_str: str) -> float:
         $12.34-  -> -12.34
     """
     # Remove common characters and normalize string
-    normalized_str = (
-        amount_str.replace(",", "").replace("$", "").replace(" ", "").upper()
-    )
+    normalized_str = amount_str.replace(",", "").replace("$", "").replace(" ", "").upper()
 
     # Determine negativity from indicators
     negative = (
@@ -437,12 +406,7 @@ def convert_amount_to_float(amount_str: str) -> float:
     )
 
     # Remove negative indicators
-    cleaned_str = (
-        normalized_str.replace("-", "")
-        .replace("CR", "")
-        .replace("(", "")
-        .replace(")", "")
-    )
+    cleaned_str = normalized_str.replace("-", "").replace("CR", "").replace("(", "").replace(")", "")
 
     # Convert to float and apply negativity if applicable
     amount = float(cleaned_str)

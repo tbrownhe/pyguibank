@@ -108,9 +108,7 @@ class AppreciationDialog(QDialog):
 
             # Calculate appreciation rate
             days = (end_date - start_date).days
-            annual_rate = (
-                (end_value / start_value) ** (365 / days) - 1
-            ) * 100  # Convert to percentage
+            annual_rate = ((end_value / start_value) ** (365 / days) - 1) * 100  # Convert to percentage
 
             # Display result
             self.result_edit.setText(f"{annual_rate:.2f}")
@@ -184,9 +182,7 @@ def update_accounts_table(
     # Set minimum width based on table contents
     accounts_table.resizeColumnsToContents()
     pad = 200 if len(data) == 0 else 60
-    total_width = sum(
-        accounts_table.columnWidth(i) for i in range(accounts_table.columnCount())
-    )
+    total_width = sum(accounts_table.columnWidth(i) for i in range(accounts_table.columnCount()))
     total_width += accounts_table.verticalHeader().width()
     total_width += accounts_table.frameWidth() * 2
 
@@ -224,9 +220,7 @@ class EditAccountsDialog(QDialog):
         self.accounts_table.cellClicked.connect(self.populate_fields)
 
         # Descriptive text
-        desc2_text = (
-            "To add or edit an account, please fill out the following information:"
-        )
+        desc2_text = "To add or edit an account, please fill out the following information:"
         desc2_label = QLabel(desc2_text)
         layout.addWidget(desc2_label)
 
@@ -234,9 +228,7 @@ class EditAccountsDialog(QDialog):
         form_layout = QFormLayout()
 
         self.account_name_edit = QLineEdit(self)
-        self.account_name_edit.setPlaceholderText(
-            "Enter a UNIQUE name for this account"
-        )
+        self.account_name_edit.setPlaceholderText("Enter a UNIQUE name for this account")
         self.company_edit = QLineEdit(self)
         self.company_edit.setPlaceholderText("Enter the company name for this account")
         if company:
@@ -252,14 +244,10 @@ class EditAccountsDialog(QDialog):
         self.account_type_combo.addItems([""] + account_types)
 
         self.appreciation_edit = QLineEdit(self)
-        self.appreciation_edit.setPlaceholderText(
-            "Enter annual appreciation rate (%) for TangibleAssets only"
-        )
+        self.appreciation_edit.setPlaceholderText("Enter annual appreciation rate (%) for TangibleAssets only")
         self.appreciation_edit.setEnabled(False)
 
-        self.account_type_combo.currentTextChanged.connect(
-            self.toggle_appreciation_field
-        )
+        self.account_type_combo.currentTextChanged.connect(self.toggle_appreciation_field)
 
         form_layout.addRow("Account Name:", self.account_name_edit)
         form_layout.addRow("Company:", self.company_edit)
@@ -399,9 +387,7 @@ class EditAccountsDialog(QDialog):
 
         try:
             with self.Session() as session:
-                session.query(Accounts).filter_by(
-                    AccountName=self.selected_account
-                ).delete()
+                session.query(Accounts).filter_by(AccountName=self.selected_account).delete()
                 session.commit()
             QMessageBox.information(self, "Success", "Account deleted successfully.")
         except Exception as e:
@@ -420,9 +406,7 @@ class EditAccountsDialog(QDialog):
                 self.account_type_combo.currentText(),
             ]
         ):
-            QMessageBox.warning(
-                self, "Missing Information", "Please fill in all required fields."
-            )
+            QMessageBox.warning(self, "Missing Information", "Please fill in all required fields.")
             return False
         return True
 
@@ -494,10 +478,7 @@ class AssignAccountNumber(QDialog):
         self.statement_type = metadata.get("STATEMENT_TYPE", "statement type")
 
         # Display info to user
-        desc1 = (
-            f"A {self.company} {self.statement_type} was found with\n"
-            f"new Account Number: {account_num}"
-        )
+        desc1 = f"A {self.company} {self.statement_type} was found with\nnew Account Number: {account_num}"
         desc1_label = QLabel(desc1)
         layout.addWidget(desc1_label)
 
@@ -543,9 +524,7 @@ class AssignAccountNumber(QDialog):
 
     def handle_cell_click(self, row, column):
         # Capture the AccountID of the clicked row
-        account_id_item = self.accounts_table.item(
-            row, 0
-        )  # Assuming AccountID is in the first column
+        account_id_item = self.accounts_table.item(row, 0)  # Assuming AccountID is in the first column
         if account_id_item:
             self.account_name = account_id_item.text()
 
@@ -558,9 +537,7 @@ class AssignAccountNumber(QDialog):
 
         # Auto-select the newly created account (assuming it's added to the last row)
         self.accounts_table.selectRow(self.accounts_table.rowCount() - 1)
-        self.account_name = self.accounts_table.item(
-            self.accounts_table.rowCount() - 1, 0
-        ).text()
+        self.account_name = self.accounts_table.item(self.accounts_table.rowCount() - 1, 0).text()
 
     def submit(self):
         """
@@ -576,9 +553,7 @@ class AssignAccountNumber(QDialog):
         else:
             # Create the AccountNumber -> AccountID association in the db
             with self.Session() as session:
-                self.account_id = query.account_id_of_account_name(
-                    session, self.account_name
-                )
+                self.account_id = query.account_id_of_account_name(session, self.account_name)
                 row = {
                     "AccountID": self.account_id,
                     "AccountNumber": self.account_num,

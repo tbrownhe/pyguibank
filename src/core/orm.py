@@ -118,8 +118,6 @@ def create_database(db_path: Path, echo: bool = False) -> sessionmaker:
         connections. If a connection remains open, the db file can't be opened
         externally, for example with utils.open_file_in_os.
     """
-    engine = create_engine(
-        f"sqlite:///{db_path}?check_same_thread=False", poolclass=NullPool, echo=echo
-    )
+    engine = create_engine(f"sqlite:///{db_path}?check_same_thread=False", poolclass=NullPool, echo=echo)
     Base.metadata.create_all(engine)
     return sessionmaker(bind=engine)

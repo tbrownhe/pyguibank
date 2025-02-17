@@ -120,25 +120,19 @@ class Parser(IParser):
         try:
             start_balance, end_balance = self.get_statement_balances()
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract balances for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract balances for account {account_num}: {e}")
 
         # Extract transaction lines
         try:
             transaction_lines = self.get_transaction_lines()
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract transactions for account {account_num}: {e}")
 
         # Parse transactions
         try:
             transactions = self.parse_transaction_lines(transaction_lines)
         except Exception as e:
-            raise ValueError(
-                f"Failed to parse transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to parse transactions for account {account_num}: {e}")
 
         return Account(
             account_num=account_num,
@@ -174,9 +168,7 @@ class Parser(IParser):
                 balance = -convert_amount_to_float(balance_str)
                 balances[pattern] = balance
             except ValueError as e:
-                raise ValueError(
-                    f"Failed to extract balance for pattern '{pattern}': {e}"
-                )
+                raise ValueError(f"Failed to extract balance for pattern '{pattern}': {e}")
 
         if len(balances) != 2:
             raise ValueError("Could not extract both starting and ending balances.")
@@ -195,9 +187,7 @@ class Parser(IParser):
                 transaction_lines.append(line)
         return transaction_lines
 
-    def parse_transaction_lines(
-        self, transaction_lines: list[str]
-    ) -> list[Transaction]:
+    def parse_transaction_lines(self, transaction_lines: list[str]) -> list[Transaction]:
         """Convert raw transaction lines into structured data.
 
         Args:
@@ -215,9 +205,7 @@ class Parser(IParser):
 
             # Convert leading mm/dd to full datetime
             mmdd = words.pop(0)
-            transaction_date = get_absolute_date(
-                words[0], self.start_date, self.end_date
-            )
+            transaction_date = get_absolute_date(words[0], self.start_date, self.end_date)
 
             # If there is a second date, it is the posting date
             if words and self.DATE_REGEX.search(words[0]):
@@ -228,9 +216,7 @@ class Parser(IParser):
                 posting_date = transaction_date
 
             # Extract the first amount-like string
-            i_amount, amount_str = [
-                (i, word) for i, word in enumerate(words) if "$" in word
-            ][0]
+            i_amount, amount_str = [(i, word) for i, word in enumerate(words) if "$" in word][0]
             amount = -convert_amount_to_float(amount_str)
 
             # Extract the description

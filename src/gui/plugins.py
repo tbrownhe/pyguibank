@@ -18,80 +18,10 @@ from PyQt5.QtWidgets import (
 )
 from sqlalchemy.orm import sessionmaker
 
-from core.config import read_config
 from core.parse import parse_any
-from core.plugins import (
-    PluginManager,
-    compare_plugins,
-    server_plugin_metadata,
-    sync_plugins,
-)
+from core.plugins import PluginManager, compare_plugins, get_plugin_lists, sync_plugins
+from core.settings import settings
 from core.utils import PDFReader
-
-
-def check_for_plugin_updates(plugin_manager: PluginManager, parent=None, manual=False):
-    """
-    Check for plugin updates and synchronize as needed.
-    Args:
-        plugin_manager (PluginManager): The plugin manager instance.
-        parent: The parent dialog or window for showing messages and dialogs.
-        manual (bool): Whether this check was triggered manually.
-    """
-    try:
-        local_plugins = [plugin for plugin in plugin_manager.metadata.values()]
-        server_plugins = server_plugin_metadata()
-    except Exception as e:
-        QMessageBox.critical(
-            parent,
-            "Error Fetching Plugins",
-            f"Could not fetch plugin metadata from the server:\n{e}",
-        )
-        return
-
-    new_plugins, updated_plugins = compare_plugins(local_plugins, server_plugins)
-
-    if new_plugins or updated_plugins:
-        dialog = PluginSyncDialog(local_plugins, server_plugins)
-        if dialog.exec_() == QDialog.Accepted:
-            try:
-                sync_plugins(local_plugins, server_plugins)
-                QMessageBox.information(
-                    parent, "Plugins Synchronized", "Local plugins have been updated."
-                )
-            except Exception as e:
-                QMessageBox.critical(
-                    parent,
-                    "Plugin Synchronization Failed",
-                    f"Local plugins could not be synchronized:\n{e}",
-                )
-                return
-            plugin_manager.load_plugins()
-            if hasattr(parent, "update_table"):
-                parent.update_table()
-            logger.info("Plugins synchronized with server")
-    elif manual:
-        QMessageBox.information(
-            parent, "Plugins Up To Date", "Local plugins are the latest versions."
-        )
-
-
-def display_nested_dict(output_display: QTextEdit, nested_dict: dict, level=0):
-    """
-    Recursively displays a nested dictionary in an indented format.
-
-    Args:
-        output_display: A callable (e.g., self.output_display.append) for displaying output.
-        nested_dict (dict): The dictionary to display.
-        level (int): Current level of indentation.
-    """
-    for key, value in nested_dict.items():
-        if isinstance(value, dict):
-            # If the value is a dictionary, recurse
-            output_display.append("  " * (level + 1) + f"{key}:")
-            display_nested_dict(output_display, value, level + 1)
-        else:
-            # Otherwise, display the key-value pair
-            output_display.append("  " * (level + 1) + f"{key}: {value}")
 
 
 def resize_to_table(parent, table):
@@ -99,9 +29,7 @@ def resize_to_table(parent, table):
     Resize the dialog to fit the table, up to 90% of the screen width and height.
     """
     table_width = sum(table.columnWidth(col) for col in range(table.columnCount())) + 50
-    table_height = (
-        table.verticalHeader().length() + table.horizontalHeader().height() + 75
-    )
+    table_height = table.verticalHeader().length() + table.horizontalHeader().height() + 75
 
     # Get screen dimensions
     screen_rect = QDesktopWidget().screenGeometry()
@@ -125,6 +53,10 @@ class PluginManagerDialog(QDialog):
         # Main layout
         main_layout = QVBoxLayout(self)
 
+        # Description
+        self.desc = QLabel("Click on a plugin to show instructions for downloading a financial statement.")
+        main_layout.addWidget(self.desc)
+
         # Plugins Table
         self.table = QTableWidget()
         self.table.setColumnCount(6)
@@ -147,6 +79,9 @@ class PluginManagerDialog(QDialog):
         font = QFont("Arial", 10)
         self.table.setFont(font)
 
+        # Connect the row selection to the instructions popup
+        self.table.cellClicked.connect(self.show_instructions_dialog)
+
         # Populate the table with plugin data
         self.update_table()
         main_layout.addWidget(self.table)
@@ -154,9 +89,9 @@ class PluginManagerDialog(QDialog):
         # Buttons layout
         buttons_layout = QHBoxLayout()
 
-        self.find_plugins_button = QPushButton("Check For Updates")
-        self.find_plugins_button.clicked.connect(self.check_for_updates)
-        buttons_layout.addWidget(self.find_plugins_button)
+        self.check_updates_button = QPushButton("Check For Updates")
+        self.check_updates_button.clicked.connect(self.check_for_updates)
+        buttons_layout.addWidget(self.check_updates_button)
 
         self.close_button = QPushButton("Close")
         self.close_button.clicked.connect(self.close)
@@ -199,20 +134,42 @@ class PluginManagerDialog(QDialog):
         # Resize table columns to fit content
         self.table.resizeColumnsToContents()
 
+    def show_instructions_dialog(self, row, column):
+        """
+        Show the INSTRUCTIONS metadata for the selected plugin.
+        """
+        plugin_name = self.table.item(row, 0).text()
+        metadata = self.plugin_manager.metadata.get(plugin_name, {})
+        instructions = metadata.get("INSTRUCTIONS", "No instructions available.")
+
+        QMessageBox.information(self, f"Instructions for {plugin_name}", instructions, QMessageBox.Ok)
+
     def check_for_updates(self):
         """
         Check for updates to plugins and update the table if plugins are synchronized.
         """
         self.plugin_manager.load_plugins()
-        check_for_plugin_updates(self.plugin_manager, parent=self, manual=True)
+        try:
+            local_plugins, server_plugins = get_plugin_lists(self.plugin_manager)
+            new_plugins, _ = compare_plugins(local_plugins, server_plugins)
+            if new_plugins:
+                dialog = PluginSyncDialog(local_plugins, server_plugins, parent=self)
+                if dialog.exec_() == QDialog.Accepted:
+                    sync_plugins(local_plugins, server_plugins, progress=True, parent=self)
+            else:
+                QMessageBox.information(self, "Plugins Up to Date", "Plugins are already up to date.")
+        except Exception as e:
+            QMessageBox.critical(self, "Update Failed", f"Update failed: {e}")
+
         self.plugin_manager.load_plugins()
         self.update_table()
+        resize_to_table(self, self.table)
 
 
 class PluginSyncDialog(QDialog):
     def __init__(self, local_plugins, server_plugins, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Plugin Sync")
+        self.setWindowTitle("Plugin Sync Status")
         self.local_plugins = local_plugins
         self.server_plugins = server_plugins
 
@@ -220,17 +177,15 @@ class PluginSyncDialog(QDialog):
         layout = QVBoxLayout(self)
 
         # Table for plugin status
-        layout.addWidget(
-            QLabel("Some plugins are out of date or missing.\n\nPlugin Status:")
-        )
+        layout.addWidget(QLabel("Some plugins are out of date:"))
         self.table = self.create_table()
         layout.addWidget(self.table)
 
         # Buttons
         buttons_layout = QHBoxLayout()
-        self.sync_button = QPushButton("Sync Plugins")
+        self.sync_button = QPushButton("Update Plugins")
         self.sync_button.clicked.connect(self.accept)
-        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button = QPushButton("No Update")
         self.cancel_button.clicked.connect(self.reject)
         buttons_layout.addWidget(self.sync_button)
         buttons_layout.addWidget(self.cancel_button)
@@ -247,24 +202,17 @@ class PluginSyncDialog(QDialog):
 
         def rename_keys(data):
             """Renames dictionary keys to Titlecase."""
-            return [
-                {k.title().replace("_", " "): v for k, v in item.items()}
-                for item in data
-            ]
+            return [{k.title().replace("_", " "): v for k, v in item.items()} for item in data]
 
         # Merge local and server plugin data
-        local_df = pd.DataFrame(rename_keys(self.local_plugins)).rename(
-            columns={"Version": "Local Version"}
-        )
-        server_df = pd.DataFrame(rename_keys(self.server_plugins)).rename(
-            columns={"Version": "Remote Version"}
-        )
+        local_df = pd.DataFrame(rename_keys(self.local_plugins)).rename(columns={"Version": "Current Version"})
+        server_df = pd.DataFrame(rename_keys(self.server_plugins)).rename(columns={"Version": "New Version"})
 
         # Handle empty DataFrame cases
         if local_df.empty:
-            local_df = pd.DataFrame(columns=["Plugin Name", "Local Version"])
+            local_df = pd.DataFrame(columns=["Plugin Name", "Current Version"])
         if server_df.empty:
-            server_df = pd.DataFrame(columns=["Plugin Name", "Remote Version"])
+            server_df = pd.DataFrame(columns=["Plugin Name", "New Version"])
 
         # Join local and remote data
         merged_df = pd.merge(
@@ -276,22 +224,20 @@ class PluginSyncDialog(QDialog):
         )
 
         # Fill missing values for clarity
-        merged_df["Local Version"].fillna("Not Installed", inplace=True)
-        merged_df["Remote Version"].fillna("Unknown", inplace=True)
+        merged_df["Current Version"] = merged_df["Current Version"].fillna("Not Installed")
+        merged_df["New Version"] = merged_df["New Version"].fillna("Unknown")
 
         # Create a QTableWidget to display the data
         table = QTableWidget()
         table.setColumnCount(3)
-        table.setHorizontalHeaderLabels(
-            ["Plugin Name", "Local Version", "Remote Version"]
-        )
+        table.setHorizontalHeaderLabels(["Plugin Name", "Current Version", "New Version"])
         table.setRowCount(len(merged_df))
 
         # Populate the table
         for row, data in merged_df.iterrows():
             plugin_name = data["Plugin Name"]
-            local_version = data["Local Version"]
-            remote_version = data["Remote Version"]
+            local_version = data["Current Version"]
+            remote_version = data["New Version"]
 
             # Add items to the table
             table.setItem(row, 0, QTableWidgetItem(plugin_name))
@@ -315,9 +261,7 @@ class PluginSyncDialog(QDialog):
 
 
 class ParseTestDialog(QDialog):
-    def __init__(
-        self, Session: sessionmaker, plugin_manager: PluginManager, parent=None
-    ):
+    def __init__(self, Session: sessionmaker, plugin_manager: PluginManager, parent=None):
         super().__init__(parent)
         self.setWindowTitle("PDF Parsing Troubleshooter")
         self.resize(800, 600)
@@ -347,18 +291,17 @@ class ParseTestDialog(QDialog):
         self.output_display.setFont(QFont("Courier New"))
         layout.addWidget(self.output_display)
 
-        # Load configuration
-        self.config = read_config()
-        self.db_path = Path(self.config.get("DATABASE", "db_path")).resolve()
-        self.import_dir = self.config.get("IMPORT", "import_dir")
-
     def select_file(self) -> Path:
         """Open a file dialog to select a file."""
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
         file_filter = "Supported Files (*.csv *.pdf *.xlsx);;All Files (*)"
         fpath, _ = QFileDialog.getOpenFileName(
-            self, "Select a File", self.import_dir, file_filter, options=options
+            self,
+            "Select a File",
+            str(settings.import_dir),
+            file_filter,
+            options=options,
         )
         return Path(fpath).resolve() if fpath else None
 
@@ -448,14 +391,12 @@ class ParseTestDialog(QDialog):
                 return
 
             # Return the statement object
-            statement = parse_any(
-                self.Session, self.plugin_manager, fpath, hard_fail=False
-            )
+            statement = parse_any(self.Session, self.plugin_manager, fpath, hard_fail=False)
 
             # Display results
             self.output_display.clear()
             self.display_output(f"File: {statement.fpath}")
-            self.display_output(f"StatementTypeID: {statement.stid}")
+            self.display_output(f"Plugin Name: {statement.plugin_name}")
             self.display_output(f"Start Date: {statement.start_date}")
             self.display_output(f"End Date: {statement.end_date}")
             for account in statement.accounts:

@@ -18,7 +18,7 @@ class Parser(IParser):
     VERSION = "0.1.0"
     SUFFIX = ".pdf"
     COMPANY = "Fidelity"
-    STATEMENT_TYPE = "Fidelity Retirement Savings Monthly Statement"
+    STATEMENT_TYPE = "Retirement Savings Monthly Statement"
     SEARCH_STRING = "Fidelity Brokerage Services&&Retirement Savings Statement"
     INSTRUCTIONS = (
         "Login to https://www.fidelity.com and navigate to your 401(k) account."
@@ -126,25 +126,19 @@ class Parser(IParser):
         try:
             start_balance, end_balance, i_start, i_end = self.get_statement_balances()
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract balances for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract balances for account {account_num}: {e}")
 
         # Extract transaction lines
         try:
             transaction_lines = self.get_transaction_lines(i_start, i_end)
         except Exception as e:
-            raise ValueError(
-                f"Failed to extract transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to extract transactions for account {account_num}: {e}")
 
         # Parse transactions
         try:
             transactions = self.parse_transaction_lines(transaction_lines)
         except Exception as e:
-            raise ValueError(
-                f"Failed to parse transactions for account {account_num}: {e}"
-            )
+            raise ValueError(f"Failed to parse transactions for account {account_num}: {e}")
 
         # Return the Account dataclass
         return Account(
@@ -183,16 +177,12 @@ class Parser(IParser):
                 balances[pattern] = convert_amount_to_float(balance_str)
                 logger.trace(f"Extracted {pattern}: {balances[pattern]}")
             except ValueError as e:
-                logger.warning(
-                    f"Failed to extract balance for pattern '{pattern}': {e}"
-                )
+                logger.warning(f"Failed to extract balance for pattern '{pattern}': {e}")
 
         # Ensure both balances are found
         missing = [p for p in patterns if p not in balances]
         if missing:
-            raise ValueError(
-                f"Could not extract balances for patterns: {', '.join(missing)}"
-            )
+            raise ValueError(f"Could not extract balances for patterns: {', '.join(missing)}")
 
         return (
             balances["Beginning Balance"],
@@ -215,9 +205,7 @@ class Parser(IParser):
                 transaction_lines.append(line)
         return transaction_lines
 
-    def parse_transaction_lines(
-        self, transaction_lines: list[str]
-    ) -> list[Transaction]:
+    def parse_transaction_lines(self, transaction_lines: list[str]) -> list[Transaction]:
         """
         Converts the raw transaction text into an organized list of Transaction objects.
 

@@ -1,6 +1,5 @@
 import os
 import shutil
-from configparser import ConfigParser
 from pathlib import Path
 
 from loguru import logger
@@ -12,38 +11,21 @@ from core import query
 from core.orm import Plugins, Statements, Transactions
 from core.parse import parse_any
 from core.plugins import PluginManager
+from core.settings import settings
 from core.utils import hash_file
 from core.validation import Statement, Transaction
 from gui.accounts import AssignAccountNumber
 
 
 class StatementProcessor:
-
-    def __init__(
-        self, Session: sessionmaker, config: ConfigParser, plugin_manager: PluginManager
-    ) -> None:
-        """Initialize the processor and make sure config is valid
+    def __init__(self, Session: sessionmaker, plugin_manager: PluginManager) -> None:
+        """Initialize the statement processor
 
         Args:
-            config (ConfigParser): Configuration read from config.ini
+            plugin_manager: (PluginManager)
         """
         self.Session = Session
-        self.config = config
         self.plugin_manager = plugin_manager
-        try:
-            self.import_dir = Path(self.config.get("IMPORT", "import_dir")).resolve()
-            self.success_dir = Path(self.config.get("IMPORT", "success_dir")).resolve()
-            self.duplicate_dir = Path(
-                self.config.get("IMPORT", "duplicate_dir")
-            ).resolve()
-            # self.hard_fail = config.getboolean("IMPORT", "hard_fail")
-            self.fail_dir = Path(config.get("IMPORT", "fail_dir")).resolve()
-            self.extensions = [
-                ext.strip()
-                for ext in self.config.get("IMPORT", "extensions").split(",")
-            ]
-        except Exception:
-            logger.exception("Failed to load configuration: ")
 
     def import_all(self, parent=None) -> None:
         """
@@ -53,24 +35,17 @@ class StatementProcessor:
             parent: Parent class for UI dialogs.
         """
         # Gather files to process
-        fpaths = [
-            fpath
-            for ext in self.extensions
-            for fpath in self.import_dir.glob(f"*.{ext}")
-        ]
+        suffixes = set([plugin.get("SUFFIX", ".*") for plugin in self.plugin_manager.metadata.values()])
+        fpaths = [fpath for suffix in suffixes for fpath in settings.import_dir.glob(f"*{suffix}")]
         if not fpaths:
-            QMessageBox.information(
-                parent, "No Files", "No files found in the import directory."
-            )
+            QMessageBox.information(parent, "No Files", "No files found in the import directory.")
             return
 
         # Initialize counters
         success, duplicate, fail = 0, 0, 0
 
         # Progress dialog
-        progress = QProgressDialog(
-            "Processing statements...", "Cancel", 0, len(fpaths), parent
-        )
+        progress = QProgressDialog("Processing statements...", "Cancel", 0, len(fpaths), parent)
         progress.setWindowTitle("Import Progress")
         progress.setWindowModality(Qt.WindowModal)
         progress.setValue(0)
@@ -78,9 +53,7 @@ class StatementProcessor:
         for idx, fpath in enumerate(sorted(fpaths)):
             progress.setLabelText(f"Processing {fpath.name}...")
             if progress.wasCanceled():
-                QMessageBox.information(
-                    parent, "Import Canceled", "The import was canceled."
-                )
+                QMessageBox.information(parent, "Import Canceled", "The import was canceled.")
                 break
 
             try:
@@ -151,7 +124,7 @@ class StatementProcessor:
             self.attach_account_info(statement)  # Modifies in place
             for account in statement.accounts:
                 account.hash_transactions()
-            statement.set_standard_dpath(self.success_dir)
+            statement.set_standard_dpath(settings.success_dir)
 
             # Check for duplicates by filename
             if self.statement_already_imported(statement.dpath.name):
@@ -183,10 +156,7 @@ class StatementProcessor:
             return False
 
         for statement_id, filename in data:
-            logger.debug(
-                f"Previously imported {filename} (StatementID: {statement_id})"
-                f" has identical hash {md5hash}"
-            )
+            logger.debug(f"Previously imported {filename} (StatementID: {statement_id}) has identical hash {md5hash}")
         return True
 
     def statement_already_imported(self, filename: Path) -> bool:
@@ -204,9 +174,7 @@ class StatementProcessor:
             return False
 
         for statement_id, filename in data:
-            logger.debug(
-                f"Previously imported {filename} (StatementID: {statement_id})"
-            )
+            logger.debug(f"Previously imported {filename} (StatementID: {statement_id})")
         return True
 
     def handle_failure(self, fpath: Path, error: Exception):
@@ -217,18 +185,18 @@ class StatementProcessor:
             fpath (Path): Path to the failed statement file.
             error (Exception): The exception that occurred.
         """
-        dpath = self.fail_dir / fpath.name
+        dpath = settings.fail_dir / fpath.name
         self.move_file_safely(fpath, dpath)
         logger.error(f"Failed to process {fpath.name}: {error}")
 
-    def handle_duplicate(self, fpath):
+    def handle_duplicate(self, fpath: Path):
         """
         Handle duplicate statement imports by moving the file to the duplicate directory.
 
         Args:
             fpath (Path): Path to the failed statement file.
         """
-        dpath = self.duplicate_dir / fpath.name
+        dpath = settings.duplicate_dir / fpath.name
         self.move_file_safely(fpath, dpath)
         logger.debug("Duplicate statement moved to {d}", d=dpath)
 
@@ -264,13 +232,9 @@ class StatementProcessor:
                 dialog.setWindowModality(Qt.ApplicationModal)  # Ensure it's on top
                 dialog.setWindowFlags(dialog.windowFlags() | Qt.WindowStaysOnTopHint)
                 if dialog.exec_() == QMessageBox.Cancel:
-                    raise RuntimeError(
-                        f"File move operation for <pre>{fpath}</pre> was cancelled by the user."
-                    ) from e
+                    raise RuntimeError(f"File move operation for <pre>{fpath}</pre> was cancelled by the user.") from e
             except Exception as e:
-                raise RuntimeError(
-                    f"An unexpected error occurred while moving <pre>{fpath}</pre>: {e}"
-                ) from e
+                raise RuntimeError(f"An unexpected error occurred while moving <pre>{fpath}</pre>: {e}") from e
 
     def attach_account_info(self, statement: Statement) -> Statement:
         """
@@ -282,18 +246,12 @@ class StatementProcessor:
             try:
                 # Lookup existing account
                 with self.Session() as session:
-                    account_id = query.account_id_of_account_number(
-                        session, account.account_num
-                    )
+                    account_id = query.account_id_of_account_number(session, account.account_num)
             except KeyError:
                 # Prompt user to select account to associate with this account_num
-                plugin_metadata = self.plugin_manager.metadata.get(
-                    statement.plugin_name
-                )
+                plugin_metadata = self.plugin_manager.metadata.get(statement.plugin_name)
                 try:
-                    account_id = self.prompt_account_num(
-                        statement.fpath, account.account_num, plugin_metadata
-                    )
+                    account_id = self.prompt_account_num(statement.fpath, account.account_num, plugin_metadata)
                 except RuntimeError as e:
                     logger.error(f"Account assignment canceled: {e}")
                     raise
@@ -305,9 +263,7 @@ class StatementProcessor:
             # Add the new data to the account
             account.add_account_info(account_id, account_name)
 
-    def prompt_account_num(
-        self, fpath: Path, account_num: str, plugin_metadata: dict, parent=None
-    ) -> int:
+    def prompt_account_num(self, fpath: Path, account_num: str, plugin_metadata: dict, parent=None) -> int:
         """
         Ask user to associate this unknown account_num with an Accounts.AccountID
         """
@@ -363,15 +319,13 @@ class StatementProcessor:
             for account in statement.accounts:
                 # Validate account information
                 if not account.account_id or not account.account_name:
-                    raise ValueError(
-                        f"Account {account.account_num} must have"
-                        " account_id and account_name set."
-                    )
+                    raise ValueError(f"Account {account.account_num} must have account_id and account_name set.")
 
                 # Prepare and insert statement metadata
                 metadata = statement.to_db_row(account)
                 statements_table = Statements(
-                    **metadata, PluginID=plugin_id  # Associate with the plugin
+                    **metadata,
+                    PluginID=plugin_id,  # Associate with the plugin
                 )
                 session.add(statements_table)
 
@@ -380,14 +334,10 @@ class StatementProcessor:
                 statement_id = statements_table.StatementID
 
                 # Prepare transactions for insertion
-                transactions_table = Transaction.to_db_rows(
-                    statement_id, account.account_id, account.transactions
-                )
+                transactions_table = Transaction.to_db_rows(statement_id, account.account_id, account.transactions)
 
                 # Insert transactions using insert_rows_carefully
-                query.insert_rows_carefully(
-                    session, Transactions, transactions_table, skip_duplicates=True
-                )
+                query.insert_rows_carefully(session, Transactions, transactions_table, skip_duplicates=True)
 
             # Attempt to move file to destination.
             # If it fails in this context, the whole transaction is rolled back.

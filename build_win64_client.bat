@@ -1,7 +1,5 @@
 @echo off
 
-set SERVER_DIR=..\pyguibank-server\data\clients\win64
-
 SET "SRCDIR=%~dp0src\"
 SET "CONDA_ENV_PATH=%USERPROFILE%\.conda\envs\pyguibank"
 SET "CONDA_PATH=%USERPROFILE%\miniconda3\Scripts\activate.bat"
@@ -18,13 +16,9 @@ if ERRORLEVEL 1 (
     goto :error_exit
 )
 
-:: Compile plugins and copy into dist\plugins
-python .\src\build_plugins.py
-if ERRORLEVEL 1 (
-    echo ERROR: Failed to compile plugins.
-    set ERRORS=1
-    goto :error_exit
-)
+:: Shortcuts
+::goto :nsis_installer
+::goto :deploy
 
 :: Build the executable
 pyinstaller ^
@@ -32,15 +26,15 @@ pyinstaller ^
     --noconfirm ^
     --noconsole ^
     -n "PyGuiBank" ^
-    --workpath "build" ^
-    --distpath "dist" ^
+    --workpath "prebuild" ^
+    --distpath "build" ^
     --paths %SRCDIR% ^
     --add-data "assets;assets" ^
     --hidden-import=openpyxl.cell._writer ^
     --hidden-import=scipy._lib.array_api_compat.numpy.fft ^
     --hidden-import=scipy.special._special_ufuncs ^
-    --splash "assets\pyguibank.png" ^
-    --icon "assets\pyguibank.png" ^
+    --splash "assets\pyguibank_base.png" ^
+    --icon "assets\pyguibank_128px.ico" ^
     "%SRCDIR%main.py"
 
 if ERRORLEVEL 1 (
@@ -49,8 +43,14 @@ if ERRORLEVEL 1 (
     goto :error_exit
 )
 
-:: Create Install Package as dist\pyguibank_version_setup.exe
-makensis /V4 .\scripts\win64_installer.nsi
+:nsis_installer
+:: Create Install Package at dist\pyguibank_version_win64_setup.exe
+mkdir dist\win64 2>NUL
+for /f "tokens=2 delims== " %%A in ('findstr "^__version__" "src\version.py"') do (
+    set VERSION=%%~A
+)
+set VERSION=%VERSION:"=%
+makensis /V4 -DVERSION="%VERSION%" .\scripts\win64_installer.nsi
 
 if ERRORLEVEL 1 (
     echo ERROR: Failed to create the install package.
@@ -58,39 +58,32 @@ if ERRORLEVEL 1 (
     goto :error_exit
 )
 
-:: Rename the file with the version.py version
-for /f "tokens=2 delims== " %%A in ('findstr "^__version__" "src\version.py"') do (
-    set VERSION=%%~A
-)
-set VERSION=%VERSION:"=%
-set INSTALLER_NAME=pyguibank_%VERSION%_win64_setup.exe
-ren "dist\pyguibank_version_win64_setup.exe" "%INSTALLER_NAME%"
+:: Deactivate the conda environment
+call conda deactivate
+
+:deploy
+:: Deploy the installer to the server
+echo Deploying installer to server
+set SCRIPT_PATH=/mnt/c/Users/tbrow/dev/pyguibank/scripts/deploy_win64_client.sh
+wsl /bin/sh %SCRIPT_PATH%
+
 if ERRORLEVEL 1 (
-    echo ERROR: Failed to rename the installer.
+    echo ERROR: Failed to transfer installer to server
     set ERRORS=1
     goto :error_exit
 )
 
-:: Copy final installer to server data
-if not exist "%SERVER_DIR%" (
-    mkdir "%SERVER_DIR%"
-)
-copy "dist\%INSTALLER_NAME%" "%SERVER_DIR%\"
-if errorlevel 1 (
-    echo Failed to copy the installer to the server directory.
-    exit /b 1
-) else (
-    echo Installer successfully copied to %SERVER_DIR%.
-)
+:: Delete prebuild and build dirs
+echo Deleting temporary build dirs
+RMDIR .\prebuild /S /Q
+RMDIR .\build /S /Q
 
-:: Deactivate the conda environment
-call conda deactivate
-
+:: Exit without error
 @echo Script execution completed successfully!
 pause
 exit /b 0
 
-
+:: Exit with errors
 :error_exit
 echo Script encountered errors and is exiting.
 pause
