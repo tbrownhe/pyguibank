@@ -11,6 +11,9 @@ repos:
       - id: trailing-whitespace
       - id: no-commit-to-branch
         args: [--branch, main]
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: fix-byte-order-marker
 
   - repo: https://github.com/charliermarsh/ruff-pre-commit
     rev: v0.9.2

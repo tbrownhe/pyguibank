@@ -25,10 +25,16 @@ if ERRORLEVEL 1 (
 )
 
 :deploy
-:: Deploy the installer to the server
+:: Deploy the plugins to the server
 echo Deploying plugins to server
 set SCRIPT_PATH=/mnt/c/Users/tbrow/dev/pyguibank/scripts/deploy_plugins.sh
 wsl /bin/sh %SCRIPT_PATH%
+
+if ERRORLEVEL 1 (
+    echo ERROR: Failed to deploy plugins.
+    set ERRORS=1
+    goto :error_exit
+)
 
 :: Exit without error
 pause
