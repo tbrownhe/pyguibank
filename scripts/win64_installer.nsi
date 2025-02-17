@@ -67,14 +67,18 @@ Section "${APP_NAME}"
     loop_check:
       Sleep 500  # Wait 500ms
       IntOp $timeout $timeout + 1
+      StrCmp $timeout 20 timeout_reached
       IfFileExists "$R0\uninstall.exe" loop_check
-      IfFileExists "$R0\*.*" loop_check
-      StrCmp $timeout 20 new_install
+      IfFileExists "$R0\" loop_check
+      Goto new_install
 
+  timeout_reached:
     MessageBox MB_ICONEXCLAMATION "Uninstallation did not complete in time. Proceeding with new install."
+    Goto new_install
 
   skip_uninstall:
     MessageBox MB_ICONEXCLAMATION "Previous version found, but uninstaller is missing!"
+    Goto new_install
 
   new_install:
     # Continue with main installation
